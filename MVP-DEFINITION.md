@@ -228,5 +228,3 @@ The project evolves in **stages**:
 - Engineering judgment over framework usage
 
 This repository is intended to be read, reviewed, and reasoned about — not just run.
-
----
