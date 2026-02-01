@@ -12,7 +12,7 @@ For project overview, architecture summary, getting started instructions, reposi
 
 **What must every function that does I/O accept?** `context.Context` as its first parameter. No exceptions — this is CI-enforced. See [Go Conventions](#go-conventions).
 
-**Where do ADRs live?** Project root as `ADR-NNN.md`. There are currently 17. Read them before proposing changes to architecture, data flow, or consistency guarantees. See [ADR Process](#adr-process).
+**Where do ADRs live?** In `docs/ADR-NNN.md`. There are currently 17. Read them before proposing changes to architecture, data flow, or consistency guarantees. See [ADR Process](#adr-process).
 
 **What if I need to break a rule?** If a contribution would violate an existing convention but improves correctness or observability, don't work around it — [propose an ADR first](#when-to-write-an-adr). Rules are changed explicitly, never silently.
 

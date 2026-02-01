@@ -8,24 +8,47 @@ This repository is intended to be read, reviewed, and reasoned about — not jus
 
 The system implements a **three-plane architecture** (ADR-002) with four services:
 
-```
-┌─────────────────────────────────────────────────────────┐
-│  CONNECTION PLANE          Gateway Service               │
-│  WebSocket termination, auth, backpressure               │
-└──────────────────┬──────────────────────────────────────┘
-                   │ sync gRPC
-┌──────────────────▼──────────────────────────────────────┐
-│  DURABILITY PLANE          Ingest Service                │
-│  Persist messages, allocate sequences (DynamoDB)         │
-└──────────────────┬──────────────────────────────────────┘
-                   │ async Kafka
-┌──────────────────▼──────────────────────────────────────┐
-│  FANOUT PLANE              Fanout Service                │
-│  Deliver to online users, membership resolution          │
-└─────────────────────────────────────────────────────────┘
+```mermaid
+flowchart TB
+    subgraph CP["CONNECTION PLANE"]
+        GW["Gateway Service<br/><i>WebSocket termination, auth, backpressure</i>"]
+    end
 
-  Chat Management Service — REST + gRPC (grpc-gateway)
-  Chat CRUD, membership, message history
+    subgraph DP["DURABILITY PLANE"]
+        IS["Ingest Service<br/><i>Persist messages, allocate sequences</i>"]
+    end
+
+    subgraph FP["FANOUT PLANE"]
+        FW["Fanout Service<br/><i>Deliver to online users, membership resolution</i>"]
+    end
+
+    subgraph CM["CHAT MANAGEMENT"]
+        CMS["Chat Mgmt Service<br/><i>REST + gRPC (grpc-gateway)</i>"]
+    end
+
+    subgraph DATA["DATA STORES"]
+        DDB[("DynamoDB<br/><i>Authoritative</i>")]
+        KAFKA["Kafka<br/><i>Event Log</i>"]
+        REDIS[("Redis<br/><i>Ephemeral</i>")]
+    end
+
+    CLIENT((Client)) -->|WebSocket| GW
+    CLIENT -->|REST| CMS
+    GW -->|"sync gRPC"| IS
+    IS --> DDB
+    IS -->|"async"| KAFKA
+    KAFKA --> FW
+    FW --> REDIS
+    FW -->|"push"| GW
+    CMS --> DDB
+    CMS --> KAFKA
+    GW --> REDIS
+
+    style CP fill:#e3f2fd,stroke:#1565c0
+    style DP fill:#e8f5e9,stroke:#2e7d32
+    style FP fill:#fff3e0,stroke:#e65100
+    style CM fill:#f3e5f5,stroke:#7b1fa2
+    style DATA fill:#fafafa,stroke:#616161
 ```
 
 **Foundational axiom:** ACK = Durability. A client acknowledgment confirms the message is persisted and will never be lost. It says nothing about whether recipients have received it.
