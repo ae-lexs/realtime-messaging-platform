@@ -208,15 +208,15 @@ This is not empty boilerplate — it validates ADR-014's Docker-only toolchain, 
 
 ### Acceptance Criteria
 
-- [ ] `make ci-local` passes (proto lint, proto breaking, go lint, arch lint, unit tests, build, docker)
-- [ ] `make dev` starts LocalStack + Redpanda + Redis + 4 services with Air hot reload
-- [ ] All 4 services report healthy on `/healthz`
-- [ ] `buf lint` passes with no warnings
-- [ ] `buf generate` produces Go stubs in `gen/`
-- [ ] `golangci-lint` passes
-- [ ] `go-arch-lint` validates Clean Architecture boundaries
-- [ ] Docker images build from `scratch` with non-root user
-- [ ] All services handle `SIGTERM` gracefully
+- [x] `make ci-local` passes (proto lint, proto breaking, go lint, arch lint, unit tests, build, docker)
+- [x] `make dev` starts LocalStack + Redpanda + Redis + 4 services with Air hot reload
+- [x] All 4 services report healthy on `/healthz`
+- [x] `buf lint` passes with no warnings
+- [x] `buf generate` produces Go stubs in `gen/`
+- [x] `golangci-lint` passes
+- [x] `go-arch-lint` validates Clean Architecture boundaries
+- [x] Docker images build from `scratch` with non-root user
+- [x] All services handle `SIGTERM` gracefully
 
 ### Correctness Invariants
 

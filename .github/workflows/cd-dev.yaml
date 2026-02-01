@@ -1,0 +1,131 @@
+# CD Pipeline - Deploy to Dev Environment
+# Triggered on merge to main branch.
+
+name: CD Dev
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: cd-dev
+  cancel-in-progress: false  # Don't cancel in-progress deployments
+
+env:
+  AWS_REGION: us-east-1
+  ECR_REGISTRY: ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.us-east-1.amazonaws.com
+  ENVIRONMENT: dev
+
+jobs:
+  build-and-push:
+    name: Build & Push Images
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        service: [gateway, ingest, fanout, chatmgmt]
+    outputs:
+      image-tag: ${{ github.sha }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and push ${{ matrix.service }}
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: docker/${{ matrix.service }}.Dockerfile
+          push: true
+          tags: |
+            ${{ env.ECR_REGISTRY }}/messaging-${{ matrix.service }}:${{ github.sha }}
+            ${{ env.ECR_REGISTRY }}/messaging-${{ matrix.service }}:dev-latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  deploy:
+    name: Deploy to Dev
+    runs-on: ubuntu-latest
+    needs: build-and-push
+    environment: dev
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Deploy Gateway
+        run: |
+          aws ecs update-service \
+            --cluster messaging-dev \
+            --service gateway \
+            --force-new-deployment
+
+      - name: Deploy Ingest
+        run: |
+          aws ecs update-service \
+            --cluster messaging-dev \
+            --service ingest \
+            --force-new-deployment
+
+      - name: Deploy Fanout
+        run: |
+          aws ecs update-service \
+            --cluster messaging-dev \
+            --service fanout \
+            --force-new-deployment
+
+      - name: Deploy ChatMgmt
+        run: |
+          aws ecs update-service \
+            --cluster messaging-dev \
+            --service chatmgmt \
+            --force-new-deployment
+
+      - name: Wait for deployment
+        run: |
+          for service in gateway ingest fanout chatmgmt; do
+            echo "Waiting for $service deployment..."
+            aws ecs wait services-stable \
+              --cluster messaging-dev \
+              --services $service
+          done
+
+  smoke-test:
+    name: Smoke Tests
+    runs-on: ubuntu-latest
+    needs: deploy
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Health check - Gateway
+        run: |
+          curl -sf https://gateway.dev.messaging.example.com/healthz || exit 1
+
+      - name: Health check - Ingest
+        run: |
+          curl -sf https://ingest.dev.messaging.example.com/healthz || exit 1
+
+      - name: Health check - Fanout
+        run: |
+          curl -sf https://fanout.dev.messaging.example.com/healthz || exit 1
+
+      - name: Health check - ChatMgmt
+        run: |
+          curl -sf https://chatmgmt.dev.messaging.example.com/healthz || exit 1

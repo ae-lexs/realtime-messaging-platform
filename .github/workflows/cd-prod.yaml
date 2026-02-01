@@ -1,0 +1,171 @@
+# CD Pipeline - Deploy to Production Environment
+# Triggered manually or on release tag.
+
+name: CD Prod
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      image-tag:
+        description: 'Image tag to deploy (default: latest release)'
+        required: false
+
+concurrency:
+  group: cd-prod
+  cancel-in-progress: false  # Never cancel production deployments
+
+env:
+  AWS_REGION: us-east-1
+  ECR_REGISTRY: ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.us-east-1.amazonaws.com
+  ENVIRONMENT: prod
+
+jobs:
+  validate:
+    name: Validate Release
+    runs-on: ubuntu-latest
+    outputs:
+      image-tag: ${{ steps.get-tag.outputs.tag }}
+    steps:
+      - name: Get image tag
+        id: get-tag
+        run: |
+          if [[ -n "${{ github.event.inputs.image-tag }}" ]]; then
+            echo "tag=${{ github.event.inputs.image-tag }}" >> $GITHUB_OUTPUT
+          elif [[ "${{ github.event_name }}" == "release" ]]; then
+            echo "tag=${{ github.event.release.tag_name }}" >> $GITHUB_OUTPUT
+          else
+            echo "No image tag specified"
+            exit 1
+          fi
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Verify images exist
+        run: |
+          for service in gateway ingest fanout chatmgmt; do
+            aws ecr describe-images \
+              --repository-name messaging-$service \
+              --image-ids imageTag=${{ steps.get-tag.outputs.tag }} \
+              || exit 1
+          done
+
+  deploy:
+    name: Deploy to Production
+    runs-on: ubuntu-latest
+    needs: validate
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      # Production uses rolling deployment with health checks
+      - name: Deploy Gateway
+        run: |
+          aws ecs update-service \
+            --cluster messaging-prod \
+            --service gateway \
+            --task-definition messaging-gateway-prod \
+            --force-new-deployment
+
+      - name: Wait for Gateway
+        run: |
+          aws ecs wait services-stable \
+            --cluster messaging-prod \
+            --services gateway
+
+      - name: Deploy Ingest
+        run: |
+          aws ecs update-service \
+            --cluster messaging-prod \
+            --service ingest \
+            --task-definition messaging-ingest-prod \
+            --force-new-deployment
+
+      - name: Wait for Ingest
+        run: |
+          aws ecs wait services-stable \
+            --cluster messaging-prod \
+            --services ingest
+
+      - name: Deploy Fanout
+        run: |
+          aws ecs update-service \
+            --cluster messaging-prod \
+            --service fanout \
+            --task-definition messaging-fanout-prod \
+            --force-new-deployment
+
+      - name: Wait for Fanout
+        run: |
+          aws ecs wait services-stable \
+            --cluster messaging-prod \
+            --services fanout
+
+      - name: Deploy ChatMgmt
+        run: |
+          aws ecs update-service \
+            --cluster messaging-prod \
+            --service chatmgmt \
+            --task-definition messaging-chatmgmt-prod \
+            --force-new-deployment
+
+      - name: Wait for ChatMgmt
+        run: |
+          aws ecs wait services-stable \
+            --cluster messaging-prod \
+            --services chatmgmt
+
+  smoke-test:
+    name: Production Smoke Tests
+    runs-on: ubuntu-latest
+    needs: deploy
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Health check - Gateway
+        run: |
+          curl -sf https://gateway.messaging.example.com/healthz || exit 1
+
+      - name: Health check - Ingest
+        run: |
+          curl -sf https://ingest.messaging.example.com/healthz || exit 1
+
+      - name: Health check - Fanout
+        run: |
+          curl -sf https://fanout.messaging.example.com/healthz || exit 1
+
+      - name: Health check - ChatMgmt
+        run: |
+          curl -sf https://chatmgmt.messaging.example.com/healthz || exit 1
+
+  notify:
+    name: Notify
+    runs-on: ubuntu-latest
+    needs: [deploy, smoke-test]
+    if: always()
+    steps:
+      - name: Notify on success
+        if: needs.deploy.result == 'success' && needs.smoke-test.result == 'success'
+        run: |
+          echo "Production deployment successful!"
+          # Add Slack/Discord notification here
+
+      - name: Notify on failure
+        if: needs.deploy.result == 'failure' || needs.smoke-test.result == 'failure'
+        run: |
+          echo "Production deployment failed!"
+          # Add PagerDuty/incident notification here
+          exit 1

@@ -1,0 +1,245 @@
+# go-arch-lint configuration
+# Enforces Clean Architecture layer boundaries per CONTRIBUTING.md
+
+version: 1
+
+# Module name
+module: github.com/aelexs/realtime-messaging-platform
+
+# Excluded paths from analysis
+excludedPaths:
+  - gen/           # Generated code
+  - vendor/        # Vendored dependencies
+  - cmd/           # Entry points wire everything together
+
+# Layer definitions
+components:
+  # Domain layer - pure business logic, no external dependencies
+  - name: domain
+    patterns:
+      - internal/domain/**
+
+  # Application layer - use cases and orchestration
+  - name: gateway-app
+    patterns:
+      - internal/gateway/app/**
+  - name: ingest-app
+    patterns:
+      - internal/ingest/app/**
+  - name: fanout-app
+    patterns:
+      - internal/fanout/app/**
+  - name: chatmgmt-app
+    patterns:
+      - internal/chatmgmt/app/**
+
+  # Port layer - entry points (HTTP, gRPC, WebSocket handlers)
+  - name: gateway-port
+    patterns:
+      - internal/gateway/port/**
+  - name: ingest-port
+    patterns:
+      - internal/ingest/port/**
+  - name: fanout-port
+    patterns:
+      - internal/fanout/port/**
+  - name: chatmgmt-port
+    patterns:
+      - internal/chatmgmt/port/**
+
+  # Adapter layer - I/O implementations
+  - name: gateway-adapter
+    patterns:
+      - internal/gateway/adapter/**
+  - name: ingest-adapter
+    patterns:
+      - internal/ingest/adapter/**
+  - name: fanout-adapter
+    patterns:
+      - internal/fanout/adapter/**
+  - name: chatmgmt-adapter
+    patterns:
+      - internal/chatmgmt/adapter/**
+
+  # Shared infrastructure adapters
+  - name: config
+    patterns:
+      - internal/config/**
+  - name: observability
+    patterns:
+      - internal/observability/**
+  - name: errors
+    patterns:
+      - internal/errors/**
+
+  # Public protocol types
+  - name: protocol
+    patterns:
+      - pkg/protocol/**
+
+# Dependency rules - dependencies flow inward only
+rules:
+  # Domain depends on nothing (innermost layer)
+  - name: domain-isolation
+    components:
+      - domain
+    shouldNotDependOn:
+      - gateway-app
+      - gateway-port
+      - gateway-adapter
+      - ingest-app
+      - ingest-port
+      - ingest-adapter
+      - fanout-app
+      - fanout-port
+      - fanout-adapter
+      - chatmgmt-app
+      - chatmgmt-port
+      - chatmgmt-adapter
+      - config
+      - observability
+      - errors
+
+  # App layer depends only on domain
+  - name: gateway-app-deps
+    components:
+      - gateway-app
+    mayDependOn:
+      - domain
+    shouldNotDependOn:
+      - gateway-port
+      - gateway-adapter
+      - ingest-port
+      - ingest-adapter
+      - fanout-port
+      - fanout-adapter
+      - chatmgmt-port
+      - chatmgmt-adapter
+
+  - name: ingest-app-deps
+    components:
+      - ingest-app
+    mayDependOn:
+      - domain
+    shouldNotDependOn:
+      - ingest-port
+      - ingest-adapter
+      - gateway-port
+      - gateway-adapter
+      - fanout-port
+      - fanout-adapter
+      - chatmgmt-port
+      - chatmgmt-adapter
+
+  - name: fanout-app-deps
+    components:
+      - fanout-app
+    mayDependOn:
+      - domain
+    shouldNotDependOn:
+      - fanout-port
+      - fanout-adapter
+      - gateway-port
+      - gateway-adapter
+      - ingest-port
+      - ingest-adapter
+      - chatmgmt-port
+      - chatmgmt-adapter
+
+  - name: chatmgmt-app-deps
+    components:
+      - chatmgmt-app
+    mayDependOn:
+      - domain
+    shouldNotDependOn:
+      - chatmgmt-port
+      - chatmgmt-adapter
+      - gateway-port
+      - gateway-adapter
+      - ingest-port
+      - ingest-adapter
+      - fanout-port
+      - fanout-adapter
+
+  # Port layer depends on app and domain
+  - name: gateway-port-deps
+    components:
+      - gateway-port
+    mayDependOn:
+      - gateway-app
+      - domain
+      - observability
+      - errors
+      - protocol
+    shouldNotDependOn:
+      - gateway-adapter
+
+  - name: ingest-port-deps
+    components:
+      - ingest-port
+    mayDependOn:
+      - ingest-app
+      - domain
+      - observability
+      - errors
+    shouldNotDependOn:
+      - ingest-adapter
+
+  - name: fanout-port-deps
+    components:
+      - fanout-port
+    mayDependOn:
+      - fanout-app
+      - domain
+      - observability
+      - errors
+    shouldNotDependOn:
+      - fanout-adapter
+
+  - name: chatmgmt-port-deps
+    components:
+      - chatmgmt-port
+    mayDependOn:
+      - chatmgmt-app
+      - domain
+      - observability
+      - errors
+    shouldNotDependOn:
+      - chatmgmt-adapter
+
+  # Adapter layer depends on app, domain, and shared infra
+  - name: gateway-adapter-deps
+    components:
+      - gateway-adapter
+    mayDependOn:
+      - gateway-app
+      - domain
+      - observability
+      - errors
+
+  - name: ingest-adapter-deps
+    components:
+      - ingest-adapter
+    mayDependOn:
+      - ingest-app
+      - domain
+      - observability
+      - errors
+
+  - name: fanout-adapter-deps
+    components:
+      - fanout-adapter
+    mayDependOn:
+      - fanout-app
+      - domain
+      - observability
+      - errors
+
+  - name: chatmgmt-adapter-deps
+    components:
+      - chatmgmt-adapter
+    mayDependOn:
+      - chatmgmt-app
+      - domain
+      - observability
+      - errors

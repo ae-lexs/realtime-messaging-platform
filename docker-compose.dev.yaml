@@ -1,0 +1,148 @@
+# Development overlay - adds services with hot reload via Air.
+# Use with: docker compose -f docker-compose.yaml -f docker-compose.dev.yaml up
+
+services:
+  # Toolbox - for running make targets (lint, test, proto, etc.)
+  toolbox:
+    build:
+      context: .
+      dockerfile: docker/dev.Dockerfile
+    volumes:
+      - .:/app
+      - go-mod-cache:/go/pkg/mod
+      - go-build-cache:/root/.cache/go-build
+    working_dir: /app
+    command: ["sleep", "infinity"]
+    environment:
+      - GOPROXY=https://proxy.golang.org,direct
+      - GOPRIVATE=github.com/aelexs/*
+
+  # Gateway Service
+  gateway:
+    build:
+      context: .
+      dockerfile: docker/dev.Dockerfile
+    ports:
+      - "8080:8080"   # HTTP health check
+      - "9090:9090"   # gRPC
+      - "2345:2345"   # Delve debugger
+    volumes:
+      - .:/app
+      - go-mod-cache:/go/pkg/mod
+      - go-build-cache:/root/.cache/go-build
+    working_dir: /app
+    command: ["air", "-c", ".air/gateway.toml"]
+    env_file:
+      - .env.dev
+    environment:
+      - ENVIRONMENT=local
+      - GATEWAY_HTTP_PORT=8080
+      - GATEWAY_GRPC_PORT=9090
+      - AWS_ENDPOINT=http://localstack:4566
+      - KAFKA_BROKERS=redpanda:9092
+      - REDIS_ADDR=redis:6379
+    depends_on:
+      localstack:
+        condition: service_healthy
+      redpanda:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  # Ingest Service
+  ingest:
+    build:
+      context: .
+      dockerfile: docker/dev.Dockerfile
+    ports:
+      - "8081:8081"   # HTTP health check
+      - "9091:9091"   # gRPC
+      - "2346:2345"   # Delve debugger
+    volumes:
+      - .:/app
+      - go-mod-cache:/go/pkg/mod
+      - go-build-cache:/root/.cache/go-build
+    working_dir: /app
+    command: ["air", "-c", ".air/ingest.toml"]
+    env_file:
+      - .env.dev
+    environment:
+      - ENVIRONMENT=local
+      - INGEST_HTTP_PORT=8081
+      - INGEST_GRPC_PORT=9091
+      - AWS_ENDPOINT=http://localstack:4566
+      - KAFKA_BROKERS=redpanda:9092
+      - REDIS_ADDR=redis:6379
+    depends_on:
+      localstack:
+        condition: service_healthy
+      redpanda:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  # Fanout Service
+  fanout:
+    build:
+      context: .
+      dockerfile: docker/dev.Dockerfile
+    ports:
+      - "8082:8082"   # HTTP health check
+      - "2347:2345"   # Delve debugger
+    volumes:
+      - .:/app
+      - go-mod-cache:/go/pkg/mod
+      - go-build-cache:/root/.cache/go-build
+    working_dir: /app
+    command: ["air", "-c", ".air/fanout.toml"]
+    env_file:
+      - .env.dev
+    environment:
+      - ENVIRONMENT=local
+      - FANOUT_HTTP_PORT=8082
+      - AWS_ENDPOINT=http://localstack:4566
+      - KAFKA_BROKERS=redpanda:9092
+      - REDIS_ADDR=redis:6379
+    depends_on:
+      localstack:
+        condition: service_healthy
+      redpanda:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  # Chat Management Service
+  chatmgmt:
+    build:
+      context: .
+      dockerfile: docker/dev.Dockerfile
+    ports:
+      - "8083:8083"   # HTTP health check
+      - "9093:9093"   # gRPC
+      - "2348:2345"   # Delve debugger
+    volumes:
+      - .:/app
+      - go-mod-cache:/go/pkg/mod
+      - go-build-cache:/root/.cache/go-build
+    working_dir: /app
+    command: ["air", "-c", ".air/chatmgmt.toml"]
+    env_file:
+      - .env.dev
+    environment:
+      - ENVIRONMENT=local
+      - CHATMGMT_HTTP_PORT=8083
+      - CHATMGMT_GRPC_PORT=9093
+      - AWS_ENDPOINT=http://localstack:4566
+      - KAFKA_BROKERS=redpanda:9092
+      - REDIS_ADDR=redis:6379
+    depends_on:
+      localstack:
+        condition: service_healthy
+      redpanda:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+volumes:
+  go-mod-cache:
+  go-build-cache:

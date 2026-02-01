@@ -1,0 +1,34 @@
+# Air configuration for Ingest service hot reload
+
+root = "/app"
+tmp_dir = "tmp/ingest"
+
+[build]
+  bin = "./tmp/ingest/main"
+  cmd = "go build -o ./tmp/ingest/main ./cmd/ingest"
+  delay = 1000
+  exclude_dir = ["tmp", "vendor", "gen", ".git", "node_modules"]
+  exclude_file = []
+  exclude_regex = ["_test\\.go$"]
+  exclude_unchanged = true
+  follow_symlink = false
+  full_bin = ""
+  include_dir = ["cmd/ingest", "internal"]
+  include_ext = ["go", "tpl", "tmpl", "html"]
+  kill_delay = "2s"
+  log = "build-errors.log"
+  send_interrupt = true
+  stop_on_error = true
+
+[color]
+  app = ""
+  build = "yellow"
+  main = "magenta"
+  runner = "green"
+  watcher = "cyan"
+
+[log]
+  time = false
+
+[misc]
+  clean_on_exit = true

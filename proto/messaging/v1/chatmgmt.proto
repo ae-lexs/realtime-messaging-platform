@@ -1,0 +1,232 @@
+syntax = "proto3";
+
+package messaging.v1;
+
+import "google/api/annotations.proto";
+import "messaging/v1/common.proto";
+
+option go_package = "github.com/aelexs/realtime-messaging-platform/gen/messaging/v1;messagingv1";
+
+// ChatMgmtService handles chat lifecycle and membership operations.
+// Exposes both gRPC and REST (via grpc-gateway) endpoints.
+service ChatMgmtService {
+  // CreateChat creates a new chat (direct or group).
+  // For direct chats, returns existing chat if one already exists for the pair.
+  rpc CreateChat(CreateChatRequest) returns (CreateChatResponse) {
+    option (google.api.http) = {
+      post: "/v1/chats"
+      body: "*"
+    };
+  }
+
+  // GetChat retrieves chat details by ID.
+  rpc GetChat(GetChatRequest) returns (GetChatResponse) {
+    option (google.api.http) = {
+      get: "/v1/chats/{chat_id}"
+    };
+  }
+
+  // ListChats lists chats the user is a member of.
+  rpc ListChats(ListChatsRequest) returns (ListChatsResponse) {
+    option (google.api.http) = {
+      get: "/v1/chats"
+    };
+  }
+
+  // AddMember adds a user to a group chat.
+  // Direct chats do not allow membership changes.
+  rpc AddMember(AddMemberRequest) returns (AddMemberResponse) {
+    option (google.api.http) = {
+      post: "/v1/chats/{chat_id}/members"
+      body: "*"
+    };
+  }
+
+  // RemoveMember removes a user from a group chat.
+  // Only chat owner can remove members.
+  rpc RemoveMember(RemoveMemberRequest) returns (RemoveMemberResponse) {
+    option (google.api.http) = {
+      delete: "/v1/chats/{chat_id}/members/{user_id}"
+    };
+  }
+
+  // LeaveChat removes the calling user from a group chat.
+  // Owner cannot leave (must transfer ownership first).
+  rpc LeaveChat(LeaveChatRequest) returns (LeaveChatResponse) {
+    option (google.api.http) = {
+      post: "/v1/chats/{chat_id}/leave"
+      body: "*"
+    };
+  }
+
+  // GetMessages retrieves message history for a chat.
+  rpc GetMessages(GetMessagesRequest) returns (GetMessagesResponse) {
+    option (google.api.http) = {
+      get: "/v1/chats/{chat_id}/messages"
+    };
+  }
+}
+
+// CreateChatRequest contains parameters for creating a chat.
+message CreateChatRequest {
+  // Type of chat to create.
+  ChatType chat_type = 1;
+
+  // Display name for group chats. Ignored for direct chats.
+  string name = 2;
+
+  // Initial members. For direct chats, must contain exactly 2 user IDs.
+  // For group chats, must contain at least 2 and at most 100 user IDs.
+  repeated string member_ids = 3;
+}
+
+// CreateChatResponse contains the created or existing chat.
+message CreateChatResponse {
+  // The chat.
+  Chat chat = 1;
+
+  // True if this is an existing direct chat (idempotent creation).
+  bool is_existing = 2;
+}
+
+// GetChatRequest identifies the chat to retrieve.
+message GetChatRequest {
+  string chat_id = 1;
+}
+
+// GetChatResponse contains the requested chat.
+message GetChatResponse {
+  Chat chat = 1;
+}
+
+// ListChatsRequest contains pagination parameters.
+message ListChatsRequest {
+  // Pagination.
+  PageRequest page = 1;
+}
+
+// ListChatsResponse contains the user's chats.
+message ListChatsResponse {
+  // Chats the user is a member of.
+  repeated Chat chats = 1;
+
+  // Pagination metadata.
+  PageResponse page = 2;
+}
+
+// AddMemberRequest specifies the member to add.
+message AddMemberRequest {
+  string chat_id = 1;
+  string user_id = 2;
+}
+
+// AddMemberResponse confirms the member was added.
+message AddMemberResponse {
+  // Updated member count.
+  int32 member_count = 1;
+}
+
+// RemoveMemberRequest specifies the member to remove.
+message RemoveMemberRequest {
+  string chat_id = 1;
+  string user_id = 2;
+}
+
+// RemoveMemberResponse confirms the member was removed.
+message RemoveMemberResponse {
+  // Updated member count.
+  int32 member_count = 1;
+}
+
+// LeaveChatRequest identifies the chat to leave.
+message LeaveChatRequest {
+  string chat_id = 1;
+}
+
+// LeaveChatResponse confirms the user left.
+message LeaveChatResponse {}
+
+// GetMessagesRequest specifies message history query parameters.
+message GetMessagesRequest {
+  string chat_id = 1;
+
+  // Return messages with sequence > after_sequence.
+  // Used for sync-on-reconnect.
+  optional uint64 after_sequence = 2;
+
+  // Return messages with sequence < before_sequence.
+  // Used for backward pagination.
+  optional uint64 before_sequence = 3;
+
+  // Pagination.
+  PageRequest page = 4;
+}
+
+// GetMessagesResponse contains message history.
+message GetMessagesResponse {
+  // Messages in ascending sequence order.
+  repeated Message messages = 1;
+
+  // Pagination metadata.
+  PageResponse page = 2;
+}
+
+// Chat represents a chat room.
+message Chat {
+  string chat_id = 1;
+  ChatType chat_type = 2;
+  string name = 3;
+
+  // Number of members.
+  int32 member_count = 4;
+
+  // When the chat was created.
+  Timestamp created_at = 5;
+
+  // Last message sequence (for sync purposes).
+  uint64 last_sequence = 6;
+}
+
+// ChatMember represents a chat membership.
+message ChatMember {
+  string user_id = 1;
+  string chat_id = 2;
+
+  // Role in the chat.
+  MemberRole role = 3;
+
+  // When the user joined.
+  Timestamp joined_at = 4;
+}
+
+// MemberRole defines user roles in a chat.
+enum MemberRole {
+  MEMBER_ROLE_UNSPECIFIED = 0;
+  MEMBER_ROLE_MEMBER = 1;
+  MEMBER_ROLE_OWNER = 2;
+}
+
+// ChatCreatedEvent is published to Kafka when a chat is created.
+// Topic: chats.created
+message ChatCreatedEvent {
+  Chat chat = 1;
+  repeated ChatMember initial_members = 2;
+  Timestamp event_time = 3;
+}
+
+// MembershipChangedEvent is published to Kafka when membership changes.
+// Topic: memberships.changed
+message MembershipChangedEvent {
+  string chat_id = 1;
+  string user_id = 2;
+  MembershipChangeType change_type = 3;
+  Timestamp event_time = 4;
+}
+
+// MembershipChangeType defines types of membership changes.
+enum MembershipChangeType {
+  MEMBERSHIP_CHANGE_TYPE_UNSPECIFIED = 0;
+  MEMBERSHIP_CHANGE_TYPE_JOINED = 1;
+  MEMBERSHIP_CHANGE_TYPE_LEFT = 2;
+  MEMBERSHIP_CHANGE_TYPE_REMOVED = 3;
+}
