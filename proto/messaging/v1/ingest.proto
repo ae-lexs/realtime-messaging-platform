@@ -1,0 +1,64 @@
+syntax = "proto3";
+
+package messaging.v1;
+
+import "messaging/v1/common.proto";
+
+option go_package = "github.com/aelexs/realtime-messaging-platform/gen/messaging/v1;messagingv1";
+
+// IngestService handles message persistence in the Durability Plane.
+// Called by Gateway when clients send messages.
+// Implements the 5-step persist flow from ADR-004.
+service IngestService {
+  // PersistMessage persists a message to DynamoDB and publishes to Kafka.
+  // Idempotent: same client_message_id returns same sequence without re-persisting.
+  // Returns the assigned sequence number and message ID.
+  rpc PersistMessage(PersistMessageRequest) returns (PersistMessageResponse);
+}
+
+// PersistMessageRequest contains the message to persist.
+message PersistMessageRequest {
+  // ID of the chat this message belongs to.
+  string chat_id = 1;
+
+  // ID of the user sending the message.
+  string sender_id = 2;
+
+  // Client-provided message ID for idempotency.
+  // Must be unique per chat for this client.
+  string client_message_id = 3;
+
+  // Content type of the message.
+  ContentType content_type = 4;
+
+  // Message body (text content).
+  string content = 5;
+}
+
+// PersistMessageResponse contains the result of message persistence.
+message PersistMessageResponse {
+  // Server-assigned message ID (UUID).
+  string message_id = 1;
+
+  // Per-chat sequence number assigned to this message.
+  // Monotonically increasing within the chat.
+  uint64 sequence = 2;
+
+  // Timestamp when the message was persisted.
+  Timestamp created_at = 3;
+
+  // True if this was a duplicate (idempotency hit).
+  // The response contains the original message's data.
+  bool is_duplicate = 4;
+}
+
+// MessagePersistedEvent is published to Kafka after successful persistence.
+// Topic: messages.persisted
+// Key: chat_id (for per-chat ordering)
+message MessagePersistedEvent {
+  // The persisted message.
+  Message message = 1;
+
+  // Event timestamp (when published to Kafka).
+  Timestamp event_time = 2;
+}

@@ -1,0 +1,51 @@
+# Generated code (proto stubs regenerated in CI)
+gen/
+
+# Environment files (local secrets)
+.env
+.env.dev
+.env.local
+.env.*.local
+
+# Go build artifacts
+bin/
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Test binary, coverage
+*.test
+*.out
+coverage.txt
+coverage.html
+
+# Go workspace
+go.work
+go.work.sum
+
+# Dependency directories
+vendor/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Air tmp directories
+tmp/
+
+# Debug binaries
+__debug_bin*
+
+# Terraform
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfvars
+!*.tfvars.example
+.terraform.lock.hcl

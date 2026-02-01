@@ -790,26 +790,26 @@ func main() {
 ## Validation Checklist
 
 ### Configuration (TBD-PR0-1)
-- [ ] Configuration loads with correct precedence (env overrides AWS SDK overrides defaults)
-- [ ] `.env.dev` is git-ignored
-- [ ] Required config key missing → process startup failure (exit 1)
-- [ ] Optional config key missing → fallback to default + warning log
-- [ ] AWS SDK unavailable for required secret → startup failure
-- [ ] Logging a struct with `SecretString` fields outputs `[REDACTED]`
+- [x] Configuration loads with correct precedence (env overrides AWS SDK overrides defaults)
+- [x] `.env.dev` is git-ignored
+- [x] Required config key missing → process startup failure (exit 1)
+- [x] Optional config key missing → fallback to default + warning log
+- [x] AWS SDK unavailable for required secret → startup failure
+- [x] Logging a struct with `SecretString` fields outputs `[REDACTED]`
 
 ### Error Taxonomy (TBD-PR0-2)
-- [ ] Golden tests pass for all domain error → gRPC/HTTP/WebSocket mappings
-- [ ] Wrapped errors (via `%w`) map to correct wire codes
-- [ ] Unknown errors map to `Internal`/500/1011 (never expose details)
-- [ ] `ErrDuplicateMessage` returns success with original message (not error response)
-- [ ] CI linter verifies every sentinel error has mapper coverage
+- [x] Golden tests pass for all domain error → gRPC/HTTP/WebSocket mappings
+- [x] Wrapped errors (via `%w`) map to correct wire codes
+- [x] Unknown errors map to `Internal`/500/1011 (never expose details)
+- [x] `ErrDuplicateMessage` returns success with original message (not error response)
+- [x] CI linter verifies every sentinel error has mapper coverage
 
 ### Clock Semantics (TBD-PR0-3)
-- [ ] `MockClock` enables deterministic time-dependent tests
-- [ ] No `time.Time` values are persisted to DynamoDB — only `int64` epoch millis
-- [ ] All time comparisons use `Equal()` or epoch comparison, never `==`
-- [ ] Downstream services (Fanout, Gateway) never regenerate `created_at` timestamps
-- [ ] Ingest Service is sole authority for message `created_at`
+- [x] `MockClock` enables deterministic time-dependent tests
+- [x] No `time.Time` values are persisted to DynamoDB — only `int64` epoch millis
+- [x] All time comparisons use `Equal()` or epoch comparison, never `==`
+- [x] Downstream services (Fanout, Gateway) never regenerate `created_at` timestamps
+- [x] Ingest Service is sole authority for message `created_at`
 
 ---
 

@@ -57,7 +57,7 @@ flowchart TB
 
 | Component | Technology | Role |
 |-----------|-----------|------|
-| Language | Go 1.22+ | All four services |
+| Language | Go 1.25+ | All four services |
 | Database | DynamoDB | Authoritative source of truth (ADR-003) |
 | Event log | Kafka (MSK Serverless / Redpanda locally) | Durable event stream for fanout (ADR-011) |
 | Cache | Redis (ElastiCache / Redis 7 locally) | Ephemeral presence and connection routing (ADR-010) |
@@ -86,7 +86,7 @@ flowchart TB
 
 **Optional (IDE support only):**
 
-- Go 1.22+ — enables `gopls` for autocomplete and jump-to-definition
+- Go 1.25+ — enables `gopls` for autocomplete and jump-to-definition
 - Not required to build, test, lint, or run any part of the project
 
 All build, test, lint, and code generation commands run inside Docker containers. The Makefile is the single interface — no local Go toolchain, `buf`, `golangci-lint`, or `terraform` installation is needed.

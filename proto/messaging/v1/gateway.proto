@@ -1,0 +1,69 @@
+syntax = "proto3";
+
+package messaging.v1;
+
+import "messaging/v1/common.proto";
+
+option go_package = "github.com/aelexs/realtime-messaging-platform/gen/messaging/v1;messagingv1";
+
+// GatewayService is called by Fanout to deliver messages to connected clients.
+// This is an internal service - not exposed to external clients.
+service GatewayService {
+  // DeliverMessage pushes a message to a connected WebSocket client.
+  // Called by Fanout after consuming from Kafka.
+  // If the connection doesn't exist, returns NOT_FOUND (client will sync on reconnect).
+  rpc DeliverMessage(DeliverMessageRequest) returns (DeliverMessageResponse);
+}
+
+// DeliverMessageRequest contains the message to deliver.
+message DeliverMessageRequest {
+  // Target connection ID.
+  string connection_id = 1;
+
+  // Target user ID (for validation).
+  string user_id = 2;
+
+  // The message to deliver.
+  Message message = 3;
+}
+
+// DeliverMessageResponse confirms delivery attempt.
+message DeliverMessageResponse {
+  // True if the message was queued for delivery.
+  // False if the connection was not found.
+  bool delivered = 1;
+}
+
+// Connection represents a WebSocket connection in the Gateway.
+message Connection {
+  // Unique connection ID.
+  string connection_id = 1;
+
+  // User this connection belongs to.
+  string user_id = 2;
+
+  // Device this connection is from.
+  string device_id = 3;
+
+  // Gateway instance handling this connection.
+  string gateway_id = 4;
+
+  // When the connection was established.
+  Timestamp connected_at = 5;
+
+  // When the last activity occurred.
+  Timestamp last_activity_at = 6;
+}
+
+// DeliveryState tracks message delivery watermarks per user per chat.
+// Used for sync-on-reconnect to determine which messages need to be sent.
+message DeliveryState {
+  string user_id = 1;
+  string chat_id = 2;
+
+  // Highest sequence the client has acknowledged.
+  uint64 last_acked_sequence = 3;
+
+  // When this state was last updated.
+  Timestamp updated_at = 4;
+}

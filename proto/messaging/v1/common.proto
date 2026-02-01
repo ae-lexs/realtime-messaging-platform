@@ -1,0 +1,112 @@
+syntax = "proto3";
+
+package messaging.v1;
+
+option go_package = "github.com/aelexs/realtime-messaging-platform/gen/messaging/v1;messagingv1";
+
+// Common types used across all services.
+
+// Timestamp represents a point in time as UTC milliseconds since epoch.
+// All persisted timestamps use this format per TBD-PR0-3.
+message Timestamp {
+  // UTC milliseconds since Unix epoch (1970-01-01T00:00:00Z).
+  int64 millis = 1;
+}
+
+// ChatType defines the type of chat.
+enum ChatType {
+  CHAT_TYPE_UNSPECIFIED = 0;
+  CHAT_TYPE_DIRECT = 1;
+  CHAT_TYPE_GROUP = 2;
+}
+
+// ContentType defines supported message content types.
+enum ContentType {
+  CONTENT_TYPE_UNSPECIFIED = 0;
+  CONTENT_TYPE_TEXT = 1;
+}
+
+// ErrorCode defines domain error codes for wire protocols.
+// Maps to domain errors per TBD-PR0-2.
+enum ErrorCode {
+  ERROR_CODE_UNSPECIFIED = 0;
+
+  // Resource errors
+  ERROR_CODE_NOT_FOUND = 1;
+  ERROR_CODE_ALREADY_EXISTS = 2;
+
+  // Authorization errors
+  ERROR_CODE_UNAUTHENTICATED = 3;
+  ERROR_CODE_PERMISSION_DENIED = 4;
+  ERROR_CODE_NOT_MEMBER = 5;
+
+  // Validation errors
+  ERROR_CODE_INVALID_ARGUMENT = 6;
+  ERROR_CODE_MESSAGE_TOO_LARGE = 7;
+  ERROR_CODE_INVALID_CONTENT_TYPE = 8;
+
+  // Operational errors
+  ERROR_CODE_RATE_LIMITED = 9;
+  ERROR_CODE_UNAVAILABLE = 10;
+  ERROR_CODE_SLOW_CONSUMER = 11;
+
+  // Internal error (details hidden from clients)
+  ERROR_CODE_INTERNAL = 99;
+}
+
+// Error represents a structured error response.
+message Error {
+  // Machine-readable error code.
+  ErrorCode code = 1;
+
+  // Human-readable error message.
+  string message = 2;
+
+  // Optional additional details (e.g., field-level validation errors).
+  map<string, string> details = 3;
+}
+
+// PageRequest contains pagination parameters.
+message PageRequest {
+  // Maximum number of items to return. Defaults to 50, max 100.
+  int32 page_size = 1;
+
+  // Cursor from a previous response for continuation.
+  string page_token = 2;
+}
+
+// PageResponse contains pagination metadata.
+message PageResponse {
+  // Cursor for the next page. Empty if no more results.
+  string next_page_token = 1;
+
+  // Total count of items (if available).
+  optional int64 total_count = 2;
+}
+
+// Message represents a chat message.
+message Message {
+  // Unique message identifier.
+  string message_id = 1;
+
+  // Chat this message belongs to.
+  string chat_id = 2;
+
+  // User who sent the message.
+  string sender_id = 3;
+
+  // Client-generated message ID for deduplication (ADR-001).
+  string client_message_id = 4;
+
+  // Server-assigned monotonic sequence number (ADR-001, ADR-004).
+  uint64 sequence = 5;
+
+  // Message content type.
+  ContentType content_type = 6;
+
+  // Message body.
+  string content = 7;
+
+  // When the message was persisted (server time).
+  Timestamp created_at = 8;
+}
