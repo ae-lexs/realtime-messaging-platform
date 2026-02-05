@@ -46,10 +46,10 @@ jobs:
           go-version: '1.25'
           cache: true
 
-      # Build golangci-lint from source to support Go 1.25
+      # Build golangci-lint v2 from source to support Go 1.25
       # Pre-built binaries may be built with older Go versions
       - name: Install golangci-lint
-        run: go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
+        run: go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@latest
 
       - name: Run golangci-lint
         run: golangci-lint run ./...

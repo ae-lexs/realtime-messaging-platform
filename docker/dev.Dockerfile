@@ -12,8 +12,8 @@ RUN go install github.com/air-verse/air@latest
 # Install Delve for debugging
 RUN go install github.com/go-delve/delve/cmd/dlv@latest
 
-# Install golangci-lint (built from source to match Go 1.25)
-RUN go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
+# Install golangci-lint v2 (built from source to match Go 1.25)
+RUN go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@latest
 
 # Install buf for proto generation
 RUN go install github.com/bufbuild/buf/cmd/buf@latest
