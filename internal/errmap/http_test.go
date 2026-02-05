@@ -1,4 +1,4 @@
-package errors_test
+package errmap_test
 
 import (
 	"fmt"
@@ -8,7 +8,7 @@ import (
 	"github.com/stretchr/testify/assert"
 
 	"github.com/aelexs/realtime-messaging-platform/internal/domain"
-	"github.com/aelexs/realtime-messaging-platform/internal/errors"
+	"github.com/aelexs/realtime-messaging-platform/internal/errmap"
 )
 
 func TestToHTTPError(t *testing.T) {
@@ -54,7 +54,7 @@ func TestToHTTPError(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := errors.ToHTTPError(tt.err)
+			got := errmap.ToHTTPError(tt.err)
 			assert.Equal(t, tt.wantStatusCode, got.StatusCode, "expected status %d, got %d", tt.wantStatusCode, got.StatusCode)
 			assert.Equal(t, tt.wantCode, got.Code, "expected code %q, got %q", tt.wantCode, got.Code)
 		})
@@ -75,14 +75,14 @@ func TestToHTTPStatusCode(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := errors.ToHTTPStatusCode(tt.err)
+			got := errmap.ToHTTPStatusCode(tt.err)
 			assert.Equal(t, tt.want, got)
 		})
 	}
 }
 
 func TestHTTPErrorImplementsError(t *testing.T) {
-	httpErr := errors.ToHTTPError(domain.ErrNotFound)
+	httpErr := errmap.ToHTTPError(domain.ErrNotFound)
 	var err error = httpErr
 	assert.NotEmpty(t, err.Error())
 }
@@ -121,7 +121,7 @@ func TestHTTPMappingMatchesGRPCGateway(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.err.Error(), func(t *testing.T) {
-			got := errors.ToHTTPStatusCode(tc.err)
+			got := errmap.ToHTTPStatusCode(tc.err)
 			assert.Equal(t, tc.expectedHTTPStatus, got,
 				"HTTP mapping should match grpc-gateway defaults for %v", tc.err)
 		})
