@@ -2,7 +2,7 @@
 # All targets delegate to Docker containers per ADR-014 (PR0-INV-1).
 # No Go, buf, or lint tools are invoked directly on the host.
 
-.PHONY: all dev up down logs lint test test-integration proto proto-lint proto-breaking build docker ci-local clean help
+.PHONY: all dev up down logs lint fmt test test-integration proto proto-lint proto-breaking build docker ci-local clean help
 
 # Default target
 all: ci-local
@@ -35,6 +35,11 @@ logs:
 lint:
 	docker compose -f docker-compose.yaml -f docker-compose.dev.yaml run --rm toolbox \
 		golangci-lint run ./...
+
+## Run gofmt (format all Go files in-place)
+fmt:
+	docker compose -f docker-compose.yaml -f docker-compose.dev.yaml run --rm toolbox \
+		golangci-lint fmt
 
 ## Run architectural linting (go-arch-lint)
 lint-arch:
@@ -145,6 +150,7 @@ help:
 	@echo ""
 	@echo "Code Quality:"
 	@echo "  make lint             Run golangci-lint"
+	@echo "  make fmt              Run gofmt on all Go files"
 	@echo "  make lint-arch        Run architectural linting"
 	@echo "  make lint-all         Run all linters"
 	@echo ""
