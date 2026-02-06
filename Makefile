@@ -143,8 +143,8 @@ terraform-validate:
 
 ## Lint Terraform with tflint
 terraform-lint:
-	docker run --rm -v "$(CURDIR)/terraform:/terraform" -w /terraform $(TFLINT_IMAGE) \
-		--recursive --config /terraform/.tflint.hcl
+	docker run --rm -v "$(CURDIR)/terraform:/terraform" -w /terraform --entrypoint sh $(TFLINT_IMAGE) \
+		-c "tflint --init --config /terraform/.tflint.hcl && tflint --recursive --config /terraform/.tflint.hcl"
 
 ## Security scan Terraform with trivy
 terraform-security:

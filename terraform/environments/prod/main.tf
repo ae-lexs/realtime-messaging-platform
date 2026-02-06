@@ -48,12 +48,12 @@ module "ecr" {
 module "ecs_cluster" {
   source = "../../modules/ecs-cluster"
 
-  project_name           = var.project_name
-  environment            = var.environment
+  project_name        = var.project_name
+  environment         = var.environment
   enable_fargate_spot = false
   fargate_base        = 2
-  fargate_weight         = 3
-  log_retention_days     = 90
+  fargate_weight      = 3
+  log_retention_days  = 90
 }
 
 # -----------------------------------------------------------------------------
