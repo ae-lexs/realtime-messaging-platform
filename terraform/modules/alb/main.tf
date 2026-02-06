@@ -16,13 +16,15 @@ locals {
 # -----------------------------------------------------------------------------
 
 resource "aws_lb" "main" {
-  name               = "${local.name}-alb"
+  name = "${local.name}-alb"
+  #trivy:ignore:AVD-AWS-0053 -- ALB is intentionally public (internet-facing per TBD-TF0-5)
   internal           = false
   load_balancer_type = "application"
   security_groups    = [var.alb_security_group_id]
   subnets            = var.public_subnet_ids
 
   enable_deletion_protection = var.enable_deletion_protection
+  drop_invalid_header_fields = true
 
   idle_timeout = var.idle_timeout_seconds
 
