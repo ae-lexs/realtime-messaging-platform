@@ -36,8 +36,11 @@ const (
 	RedisTimeout        = 2 * time.Second  // Max time for Redis operations
 	GRPCCallTimeout     = 10 * time.Second // Max time for inter-service gRPC calls
 
-	// Graceful shutdown (ADR-014 §4.1)
-	GracefulShutdownTimeout = 30 * time.Second // Max time to drain connections on shutdown
+	// Graceful shutdown budget (ADR-014 §4.1)
+	GracefulShutdownTimeout = 30 * time.Second // Total shutdown budget
+	ShutdownDrainDelay      = 3 * time.Second  // Pause after failing health checks for LB propagation
+	ShutdownHTTPTimeout     = 20 * time.Second // HTTP server drain for in-flight requests
+	ShutdownOTELTimeout     = 5 * time.Second  // OTEL tracer + metrics flush
 
 	// Rate limiting (ADR-013 §4.1)
 	OTPRequestRateLimitPerPhone = 3                // Max OTP requests per phone per window

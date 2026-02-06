@@ -8,6 +8,8 @@ require (
 	github.com/knadh/koanf/providers/env v1.0.0
 	github.com/knadh/koanf/v2 v2.1.1
 	github.com/stretchr/testify v1.9.0
+	go.uber.org/goleak v1.3.0
+	golang.org/x/sync v0.19.0
 	go.opentelemetry.io/otel v1.27.0
 	go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetricgrpc v1.27.0
 	go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc v1.27.0
