@@ -13,6 +13,43 @@ This document resolves the infrastructure decisions for TF-0, the Terraform foun
 
 > **Normative Policy Layer**: This document defines **mandatory infrastructure conventions**. All Terraform code in this repository must conform to these specifications. Deviations require an ADR or explicit justification in the PR description with reviewer approval.
 
+### Infrastructure Overview
+
+```mermaid
+graph TB
+    Internet((Internet))
+
+    subgraph VPC["VPC 10.0.0.0/16 — us-east-2, 2 AZs"]
+        subgraph pub["Public Subnets (/20)"]
+            ALB["ALB :443<br/>sg-alb · idle 3600s"]
+            NAT["NAT Gateway"]
+        end
+
+        subgraph priv["Private Subnets (/18)"]
+            subgraph ecs["ECS Cluster (Fargate) · messaging.local"]
+                GW["Gateway :8080<br/>sg-gateway"]
+                IN["Ingest :9091<br/>sg-ingest"]
+                FO["Fanout<br/>sg-fanout"]
+                CM["Chat Mgmt :8083<br/>sg-chatmgmt"]
+            end
+        end
+
+        DDBEP["DynamoDB<br/>Gateway Endpoint"]
+        S3EP["S3<br/>Gateway Endpoint"]
+    end
+
+    ECR["ECR × 4<br/>Immutable Tags"]
+
+    Internet -->|"HTTPS"| ALB
+    ALB -->|"/ws"| GW
+    ALB -->|"/api/v1/*"| CM
+    GW -->|"gRPC"| IN
+    FO -->|"gRPC"| GW
+    IN --> DDBEP
+    CM --> DDBEP
+    S3EP -.-> ECR
+```
+
 ---
 
 ## TBD-TF0-1: Region & Availability Zones
