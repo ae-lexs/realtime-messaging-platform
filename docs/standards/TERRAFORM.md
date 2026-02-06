@@ -58,14 +58,14 @@ terraform/modules/networking/
 
 **Child modules** (`terraform/modules/*`):
 - Must NOT configure providers or backends
-- Define `required_providers` version constraints (broad: `>= 5.0`)
+- Define `required_providers` version constraints (broad: `>= 6.0`)
 - Expose flexible interfaces via variables with sensible defaults
 - Export at least one output per resource created
 
 **Root modules** (`terraform/environments/*`):
 - Configure providers with `default_tags` and region
 - Configure backend (S3 + DynamoDB)
-- Pin providers to minor version (`~> 5.x.0`)
+- Pin providers to minor version (`~> 6.x.0`)
 - Compose child modules — contain minimal inline resources
 - Target < 100 resources per state file
 
@@ -196,7 +196,7 @@ terraform {
   backend "s3" {
     bucket         = "messaging-platform-terraform-state"
     key            = "dev/terraform.tfstate"
-    region         = "us-east-1"
+    region         = "us-east-2"
     dynamodb_table = "terraform-locks"
     encrypt        = true
   }
@@ -218,8 +218,8 @@ terraform {
 ```
 
 **Provider versions:**
-- Root modules: pessimistic constraint to minor version — `~> 5.82.0`
-- Child modules: broader constraint — `>= 5.0`
+- Root modules: pessimistic constraint to minor version — `~> 6.31.0`
+- Child modules: broader constraint — `>= 6.0`
 
 ```hcl
 # modules/*/versions.tf — broad constraint
@@ -227,7 +227,7 @@ terraform {
   required_providers {
     aws = {
       source  = "hashicorp/aws"
-      version = ">= 5.0"
+      version = ">= 6.0"
     }
   }
 }
@@ -239,7 +239,7 @@ terraform {
   required_providers {
     aws = {
       source  = "hashicorp/aws"
-      version = "~> 5.82.0"
+      version = "~> 6.31.0"
     }
   }
 }
