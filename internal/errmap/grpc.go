@@ -1,6 +1,6 @@
-// Package errors provides wire protocol mappers for domain errors.
+// Package errmap provides wire protocol mappers for domain errors.
 // Per TBD-PR0-2: every domain error has explicit gRPC, HTTP, and WebSocket mappings.
-package errors
+package errmap
 
 import (
 	"errors"

@@ -1,7 +1,7 @@
-package errors_test
+package errmap_test
 
 import (
-	stderrors "errors"
+	"errors"
 	"fmt"
 	"testing"
 
@@ -9,7 +9,7 @@ import (
 	"google.golang.org/grpc/codes"
 
 	"github.com/aelexs/realtime-messaging-platform/internal/domain"
-	"github.com/aelexs/realtime-messaging-platform/internal/errors"
+	"github.com/aelexs/realtime-messaging-platform/internal/errmap"
 )
 
 func TestToGRPCStatus(t *testing.T) {
@@ -57,7 +57,7 @@ func TestToGRPCStatus(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := errors.ToGRPCStatus(tt.err)
+			got := errmap.ToGRPCStatus(tt.err)
 			assert.Equal(t, tt.wantCode, got.Code(), "expected code %v, got %v", tt.wantCode, got.Code())
 		})
 	}
@@ -65,31 +65,31 @@ func TestToGRPCStatus(t *testing.T) {
 
 func TestToGRPCError(t *testing.T) {
 	t.Run("returns nil for nil error", func(t *testing.T) {
-		got := errors.ToGRPCError(nil)
+		got := errmap.ToGRPCError(nil)
 		assert.Nil(t, got)
 	})
 
 	t.Run("returns error for non-nil", func(t *testing.T) {
-		got := errors.ToGRPCError(domain.ErrNotFound)
+		got := errmap.ToGRPCError(domain.ErrNotFound)
 		assert.NotNil(t, got)
-		assert.Equal(t, codes.NotFound, errors.FromGRPCError(got))
+		assert.Equal(t, codes.NotFound, errmap.FromGRPCError(got))
 	})
 }
 
 func TestFromGRPCError(t *testing.T) {
 	t.Run("returns OK for nil", func(t *testing.T) {
-		got := errors.FromGRPCError(nil)
+		got := errmap.FromGRPCError(nil)
 		assert.Equal(t, codes.OK, got)
 	})
 
 	t.Run("extracts code from gRPC error", func(t *testing.T) {
-		grpcErr := errors.ToGRPCError(domain.ErrNotFound)
-		got := errors.FromGRPCError(grpcErr)
+		grpcErr := errmap.ToGRPCError(domain.ErrNotFound)
+		got := errmap.FromGRPCError(grpcErr)
 		assert.Equal(t, codes.NotFound, got)
 	})
 
 	t.Run("returns Unknown for non-gRPC error", func(t *testing.T) {
-		got := errors.FromGRPCError(fmt.Errorf("regular error"))
+		got := errmap.FromGRPCError(fmt.Errorf("regular error"))
 		assert.Equal(t, codes.Unknown, got)
 	})
 }
@@ -118,10 +118,10 @@ func TestGRPCMappingCompleteness(t *testing.T) {
 
 	for _, err := range domainErrors {
 		t.Run(err.Error(), func(t *testing.T) {
-			status := errors.ToGRPCStatus(err)
+			status := errmap.ToGRPCStatus(err)
 			// ErrConfigRequired is internal, so it maps to Internal
 			// All others should NOT map to Internal (they should have explicit mappings)
-			if !stderrors.Is(err, domain.ErrConfigRequired) {
+			if !errors.Is(err, domain.ErrConfigRequired) {
 				assert.NotEqual(t, codes.Internal, status.Code(),
 					"domain error %q should have explicit gRPC mapping, not Internal", err.Error())
 			}

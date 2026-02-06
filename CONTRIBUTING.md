@@ -4,6 +4,51 @@ This document defines the code standards, development workflow, and architectura
 
 For project overview, architecture summary, getting started instructions, repository structure, and Makefile reference, see [README.md](README.md).
 
+## Our Standards
+
+This project follows the [Go Senior-Level Handbook](https://github.com/ae-lexs/go-senior-level-handbook) as our authoritative Go style guide. The handbook emphasizes three core concepts:
+
+- **Invariants** — Rules that must never be violated
+- **Lifecycle** — How things start, run, and stop
+- **Ownership** — Who is responsible for what
+
+Before contributing, familiarize yourself with the handbook's philosophy: *clarity over cleverness, explicit over implicit, composition over inheritance*.
+
+## Who This Is For
+
+These guidelines favor long-term maintainability over onboarding speed. New contributors are welcome, but we expect familiarity with:
+
+- `context.Context` and cancellation propagation
+- Error handling patterns (wrapping, sentinel vs typed errors)
+- Goroutine ownership and lifecycle management
+- Interface design (small, consumer-defined)
+- The Architecture Decision Records in `docs/`
+
+If these concepts are unfamiliar, the [Go Senior-Level Handbook](https://github.com/ae-lexs/go-senior-level-handbook) is an excellent starting point.
+
+## Non-Goals
+
+This project does **not** optimize for:
+
+- **Maximum abstraction** — Indirection only when it solves a concrete problem
+- **Framework-driven design** — Standard library and explicit wiring preferred
+- **Micro-optimizations without evidence** — Profile first, optimize second
+- **Consensus-driven style** — `gofmt` decides formatting; the handbook decides patterns
+
+## Go Proverbs (Non-Negotiable)
+
+These proverbs from the Go community inform every decision in this project. They are not guidelines — they are non-negotiable.
+
+1. Don't communicate by sharing memory; share memory by communicating.
+2. The bigger the interface, the weaker the abstraction.
+3. Make the zero value useful.
+4. `interface{}` says nothing.
+5. Clear is better than clever.
+6. A little copying is better than a little dependency.
+7. Gofmt's style is no one's favorite, yet gofmt is everyone's favorite.
+
+> 📖 See [Go Proverbs](https://go-proverbs.github.io/) by Rob Pike
+
 ## Quick Start for Contributors
 
 **What will CI block?** Lint failures (`golangci-lint`), architectural boundary violations (`go-arch-lint`, `depguard`), failing tests (unit + integration), proto breaking changes (`buf breaking`), and non-compiling code. Run `make ci-local` before pushing — if it passes locally, CI will pass. See [CI/CD Pipeline](#cicd-pipeline).
@@ -67,6 +112,37 @@ Each service follows the Three Dots Labs interpretation of Clean Architecture wi
 **`port/`** — Entry points into the service. HTTP handlers, gRPC servers, WebSocket handlers, Kafka consumer entrypoints. Translates external protocols into `app/` calls. Performs request validation, serialization/deserialization, and error mapping to protocol-specific responses.
 
 **`adapter/`** — Implementations of interfaces defined in `app/` or `domain/`. DynamoDB clients, Kafka producers, Redis operations, gRPC clients to other services. This is where I/O lives.
+
+### Boundary vs Core Model
+
+The handbook's boundary/core framing is the conceptual model that our layer definitions implement. Internalize this separation — it drives every architectural decision.
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                     BOUNDARY LAYER                              │
+│  HTTP handlers, gRPC servers, CLI commands, DB adapters         │
+│  • Creates context with timeouts                                │
+│  • Translates errors (domain → HTTP status)                     │
+│  • Handles serialization/deserialization                        │
+│  • Implements interfaces defined in core                        │
+└─────────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                       CORE LAYER                                │
+│  Domain logic, business rules, pure functions                   │
+│  • Receives context, respects cancellation                      │
+│  • Returns domain errors                                        │
+│  • Defines interfaces for dependencies                          │
+│  • No knowledge of HTTP, SQL, wire formats                      │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+**Mapping to this project:** boundary = `port/` + `adapter/`, core = `app/` + `domain/`.
+
+**Dependency rule:** Boundary imports core. Core never imports boundary.
+
+> 📖 See handbook: [Package and Project Design](https://github.com/ae-lexs/go-senior-level-handbook/blob/main/08_PACKAGE_AND_PROJECT_DESIGN.md)
 
 ### Dependency Rule
 
@@ -176,6 +252,187 @@ The following DDD patterns are **not adopted** for MVP — the project's complex
 
 These patterns may become valuable post-MVP if business rules grow in complexity (e.g., role-based permissions, message editing with time windows, reaction aggregation). The signal to revisit: when `app/` layer tests start testing business logic instead of orchestration.
 
+## Go Invariants
+
+These rules must never be violated. PRs that break these will not be merged. Each invariant is rooted in the [Go Senior-Level Handbook](https://github.com/ae-lexs/go-senior-level-handbook) and reinforced by this project's CI tooling where possible.
+
+### Interfaces
+
+| Rule | Rationale |
+|------|-----------|
+| The bigger the interface, the weaker the abstraction | Small interfaces are easy to implement, fake, and reason about |
+| Accept interfaces, return structs | Decouples callers; they define their own interfaces as needed |
+| Define interfaces at the consumer, not the producer | The package that uses a capability defines what it needs |
+| Don't design interfaces upfront — discover them | Wait for concrete need: multiple implementations, testing, decoupling |
+
+See [Interface Placement](#interface-placement) for how this project applies these rules in its Clean Architecture layers.
+
+> 📖 See handbook: [Types and Composition](https://github.com/ae-lexs/go-senior-level-handbook/blob/main/02_TYPES_AND_COMPOSITION.md), [Interface Patterns](https://github.com/ae-lexs/go-senior-level-handbook/blob/main/DD_INTERFACE_PATTERNS.md)
+
+### Errors
+
+| Rule | Rationale |
+|------|-----------|
+| Handle an error or return it — never both | Logging and returning causes duplicate handling |
+| Wrap with context: `fmt.Errorf("...: %w", err)` | Error chains should tell a story |
+| Translate errors at boundaries | Domain errors → HTTP codes; internals stay hidden |
+
+```go
+// ✓ Wrapping with context
+if err != nil {
+    return fmt.Errorf("processing order %s: %w", orderID, err)
+}
+
+// ✓ Boundary translation
+if errors.Is(err, order.ErrNotFound) {
+    http.Error(w, "order not found", http.StatusNotFound)
+    return
+}
+```
+
+CI enforcement: `errcheck` blocks unchecked errors. `errorlint` enforces `errors.Is`/`errors.As` usage. See [golangci-lint Configuration](#golangci-lint-configuration).
+
+> 📖 See handbook: [Error Philosophy](https://github.com/ae-lexs/go-senior-level-handbook/blob/main/03_ERROR_PHILOSOPHY.md)
+
+### Context
+
+| Rule | Rationale |
+|------|-----------|
+| Context is the first parameter, named `ctx` | Go convention; enables grep-ability |
+| Never store context in structs | Context is request-scoped, not instance-scoped |
+| Create at boundaries, propagate through core | Handlers create; domain logic receives |
+| Respect cancellation | Check `ctx.Done()` in long-running operations |
+
+```go
+// ✓ Correct signature
+func (s *Service) Process(ctx context.Context, id string) error
+
+// ✗ Never do this
+type Service struct {
+    ctx context.Context // Wrong: storing context
+}
+```
+
+CI enforcement: `contextcheck` and `noctx` linters catch violations. See [golangci-lint Configuration](#golangci-lint-configuration).
+
+> 📖 See handbook: [Context and Lifecycle](https://github.com/ae-lexs/go-senior-level-handbook/blob/main/04_CONTEXT_AND_LIFECYCLE.md)
+
+### Concurrency
+
+| Rule | Rationale |
+|------|-----------|
+| Every goroutine must have an owner | The starter ensures it can stop |
+| Share memory by communicating | Channels for coordination; mutexes for protection |
+| Sender owns the channel; receivers never close | Only producers know when there are no more values |
+| Use `errgroup` for structured concurrency | Groups goroutines, propagates errors, enables cancellation |
+
+```go
+// ✓ Structured concurrency
+g, ctx := errgroup.WithContext(ctx)
+
+g.Go(func() error {
+    return processA(ctx)
+})
+
+g.Go(func() error {
+    return processB(ctx)
+})
+
+return g.Wait()
+```
+
+> 📖 See handbook: [Concurrency Architecture](https://github.com/ae-lexs/go-senior-level-handbook/blob/main/05_CONCURRENCY_ARCHITECTURE.md)
+
+### Graceful Shutdown
+
+| Rule | Rationale |
+|------|-----------|
+| Shutdown order is reverse of startup order | Dependencies must outlive dependents |
+| Every component must have a shutdown path | If it can start, it must be stoppable |
+| Shutdown must complete within bounded time | Open-ended shutdown = hanging; SIGKILL is the backstop |
+
+> 📖 See handbook: [Graceful Shutdown](https://github.com/ae-lexs/go-senior-level-handbook/blob/main/06_GRACEFUL_SHUTDOWN.md)
+
+### Slices, Maps & Aliasing
+
+| Rule | Rationale |
+|------|-----------|
+| Maps are reference types — copying a map copies the header, not the data | Two variables pointing to the same map mutate shared state |
+| Slices alias underlying arrays; `append` may or may not reallocate | Mutations through one slice can affect another |
+| Never expose internal slices or maps without copying | Callers can mutate your internal state. Return copies |
+
+In this project, this is especially relevant to domain value objects (e.g., chat membership lists in `internal/domain/`). Domain types must return defensive copies of any internal collection. 🔍
+
+> 📖 See handbook: [Types and Composition](https://github.com/ae-lexs/go-senior-level-handbook/blob/main/02_TYPES_AND_COMPOSITION.md)
+
+### Package Design
+
+| Rule | Rationale |
+|------|-----------|
+| Name packages by responsibility, not by type | `order`, not `models`. Purpose over form |
+| Dependencies point inward: boundary → core | Domain logic must not import HTTP, database drivers, etc. |
+| `internal/` protects your right to change | Compiler-enforced privacy. Use it aggressively |
+
+This project enforces inward dependencies via `go-arch-lint` + `depguard` in CI — see [Clean Architecture](#clean-architecture) and [Architectural Enforcement](#architectural-enforcement). 🚫
+
+> 📖 See handbook: [Package and Project Design](https://github.com/ae-lexs/go-senior-level-handbook/blob/main/08_PACKAGE_AND_PROJECT_DESIGN.md)
+
+## Decision Matrices
+
+These quick-reference tables help choose between common Go patterns. Each maps to an invariant or enforcement mechanism in this project.
+
+### When to Use What
+
+| If You Need... | Use... | Not... |
+|----------------|--------|--------|
+| Coordination between goroutines | Channels | Shared memory + mutex |
+| Protection of shared state | Mutex | Channel (overkill) |
+| Cancellation propagation | `context.Context` — enforced by `contextcheck` linter 🚫 | Custom done channels |
+| Multiple implementations | Interface at consumer | Interface at producer |
+| Optional parameters | Functional options | Config struct with zero-value ambiguity |
+| Required parameters | Explicit constructor args | Functional options |
+
+### Error Type Selection
+
+| Situation | Error Type | Example |
+|-----------|------------|---------|
+| Expected condition, callers check identity | Sentinel | `var ErrNotFound = errors.New("not found")` — see `internal/domain/errors.go` |
+| Callers need structured data | Typed | `type ValidationError struct { Field, Reason string }` |
+| Implementation detail, no caller action | Opaque | `fmt.Errorf("internal: %w", err)` — see `internal/errmap/` for boundary translation |
+
+> 📖 See handbook: [Error Philosophy](https://github.com/ae-lexs/go-senior-level-handbook/blob/main/03_ERROR_PHILOSOPHY.md)
+
+### Interface Size Guide
+
+| Methods | Verdict | Examples |
+|---------|---------|----------|
+| 1 | Ideal | `io.Reader`, `fmt.Stringer`, `http.Handler` |
+| 2-3 | Good if cohesive | `io.ReadWriter`, `sort.Interface` |
+| 4+ | Needs justification | Split or accept coupling |
+
+> 📖 See handbook: [Interface Patterns](https://github.com/ae-lexs/go-senior-level-handbook/blob/main/DD_INTERFACE_PATTERNS.md)
+
+## Common Mistakes
+
+These mistakes appear frequently in Go codebases. The third column shows how this project catches or prevents each one.
+
+| Mistake | Correct Approach | Project Enforcement |
+|---------|------------------|---------------------|
+| Fire-and-forget goroutines | Every goroutine has an owner who ensures it stops | `goleak` in tests |
+| `time.Sleep` in tests | Use channels, timeouts, synchronization primitives | Code review 🔍 |
+| Storing context in structs | Pass context to each method | `contextcheck` linter 🚫 |
+| Logging and returning errors | Handle OR return, never both | Code review 🔍 |
+| Large interfaces upfront | Discover small interfaces at consumers | Code review 🔍 |
+| `pkg/` for everything | Use `internal/`; anything outside is implicitly public | Project convention 📐 |
+| Packages named `utils`, `models` | Name by responsibility: `order`, `auth`, `postgres` | `revive` linter 🚫 |
+| Core importing boundary | Dependencies point inward only | `go-arch-lint` + `depguard` 🚫 |
+| Closing channels from receiver | Sender owns the channel lifecycle | Code review 🔍 |
+| Mock-heavy tests | Fakes verify contracts; mocks verify implementation | Code review 🔍 |
+| Returning internal slices/maps | Return copies to prevent caller mutation | Code review 🔍 |
+| String keys in `context.WithValue` | Use unexported struct types as keys | `staticcheck` 🚫 |
+
+> 📖 See handbook: [Common Mistakes](https://github.com/ae-lexs/go-senior-level-handbook/blob/main/CONTRIBUTING.md)
+
 ## Code Standards
 
 Throughout this section, each rule is marked with its enforcement level:
@@ -188,7 +445,21 @@ Throughout this section, each rule is marked with its enforcement level:
 
 **Formatting:** `gofmt` via `golangci-lint fmt`. No exceptions. 🚫
 
-**Naming:** Follow [Effective Go](https://go.dev/doc/effective_go) and the Go standard library as the primary style guide. Exported names are `PascalCase`, unexported are `camelCase`, acronyms are all-caps (`HTTPHandler`, `UserID`). 🔍
+**Naming:** Follow [Effective Go](https://go.dev/doc/effective_go) and the Go standard library as the primary style guide. 🔍
+
+| Element | Convention | Example |
+|---------|------------|---------|
+| Packages | Lowercase, single-word, by responsibility | `order`, `auth`, `postgres` |
+| Interfaces | `-er` suffix for single-method | `Reader`, `Handler`, `Validator` |
+| Exported | MixedCaps | `ProcessOrder`, `ValidateInput` |
+| Unexported | mixedCaps | `parseConfig`, `handleError` |
+| Acronyms | All caps | `HTTPServer`, `UserID` |
+
+**Avoid:** `utils`, `common`, `helpers`, `models`, `types` — these reveal nothing about responsibility.
+
+**Avoid stuttering:** `order.Service`, not `order.OrderService`.
+
+> 📖 See handbook: [Package and Project Design](https://github.com/ae-lexs/go-senior-level-handbook/blob/main/08_PACKAGE_AND_PROJECT_DESIGN.md)
 
 **Error handling:** Always check errors. `errcheck` is enabled in CI and blocks PRs on unchecked errors. 🚫 Wrap errors with `fmt.Errorf("context: %w", err)` to preserve the error chain. 🔍 Use sentinel errors (defined in `domain/`) for expected failure conditions that callers need to match. Use `errors.Is()` and `errors.As()` for matching — never compare error strings. 🚫 (`errorlint` enforces this.)
 
@@ -287,6 +558,17 @@ Generated code lands in `gen/` at the repo root and is **git-ignored** — gener
 - Comments on every RPC method and message field
 
 ## Testing
+
+This project follows the [Go Senior-Level Handbook](https://github.com/ae-lexs/go-senior-level-handbook)'s testing philosophy. These testing invariants apply to all test code:
+
+| Rule | Rationale |
+|------|-----------|
+| Fakes over mocks | Fakes verify contracts; mocks verify calls. Fakes survive refactoring |
+| Assert behavioral contracts, not call order | Test *what happened*, not *how* |
+| Never `time.Sleep` for synchronization | Use channels, polling with timeout, `goleak` |
+| Time is a dependency; inject it | Direct `time.Now()` calls are untestable |
+
+> 📖 See handbook: [Testing Philosophy](https://github.com/ae-lexs/go-senior-level-handbook/blob/main/07_TESTING_PHILOSOPHY.md)
 
 ### Test Pyramid
 
@@ -393,6 +675,86 @@ Use **table-driven** when many inputs share identical assertion logic. Use **nes
 - **Port layer:** Test request/response mapping, validation, and error translation. Use httptest for HTTP handlers. 🔍
 - **Adapter layer:** Integration tests against real infrastructure (LocalStack, Redpanda, Redis via docker-compose). 📐
 
+## Pull Request Process
+
+### Self-Review Checklist
+
+Before opening a PR, verify your changes locally and run through this checklist. The commands map to our Docker-based toolchain:
+
+```bash
+make lint            # go fmt + go vet + golangci-lint (all linters)
+make test            # go test -race ./...
+make ci-local        # full CI pipeline locally
+```
+
+Then confirm each item:
+
+- [ ] No fire-and-forget goroutines
+- [ ] Context passed explicitly, not stored in structs
+- [ ] Errors handled OR returned, never both
+- [ ] Interfaces defined at consumers, not producers
+- [ ] Dependencies point inward (boundary → core)
+- [ ] Tests use fakes, not mocks (where applicable)
+- [ ] No `time.Sleep` in tests
+- [ ] Internal slices/maps not exposed directly
+
+### Before Opening
+
+Run `make ci-local` to verify your changes pass all checks locally. This runs the same pipeline as CI:
+
+```bash
+make ci-local        # lint + test + build — if it passes, CI will pass
+```
+
+### PR Description Template
+
+```markdown
+## What
+[One sentence: what does this change?]
+
+## Why
+[Context: why is this needed?]
+
+## How Tested
+[Manual steps or test coverage]
+
+## Trade-offs
+[Any alternatives considered or accepted costs]
+```
+
+### Review Expectations
+
+**Authors:**
+- Respond to all comments
+- Small, focused PRs get reviewed faster
+- If you disagree, explain reasoning — be open to being wrong
+
+**Reviewers:**
+- Be specific: "This could leak goroutines because..." not "This looks wrong"
+- Distinguish blocking issues from suggestions
+- Review within 24 hours when possible
+
+## Code Review Checklist
+
+### Correctness
+- [ ] Does the code do what it claims?
+- [ ] Are error cases handled?
+- [ ] Are edge cases considered?
+
+### Clarity
+- [ ] Could someone understand this in 6 months?
+- [ ] Is there unnecessary cleverness?
+
+### Lifecycle & Ownership
+- [ ] Do all goroutines have termination paths?
+- [ ] Is context propagated correctly?
+- [ ] Are resources cleaned up?
+
+### Invariants
+- [ ] Interfaces small and consumer-defined?
+- [ ] Errors handled or returned, not both?
+- [ ] Dependencies point inward?
+
 ## Commit Conventions
 
 This project uses [Conventional Commits](https://www.conventionalcommits.org/). Every commit message follows this format:
@@ -443,6 +805,18 @@ feat(proto)!: rename PersistMessage to IngestMessage
 BREAKING CHANGE: Requires regenerating all proto stubs and updating
 gRPC client calls in gateway service.
 ```
+
+### Unacceptable Commit Messages
+
+Commits must describe *what changed*, not *why you touched the code*:
+
+```
+fix stuff
+WIP
+addressing review comments
+```
+
+These will not pass review. Branch commits can be informal since PRs use squash-merge, but the squashed commit message must follow Conventional Commits format.
 
 ### Merge Strategy
 
@@ -530,3 +904,30 @@ Later stages may extend but never silently violate earlier decisions (MVP Defini
 ### When a Contribution Appears to Violate a Rule
 
 If a change improves correctness, observability, or failure handling but would violate an existing convention or ADR — **stop and propose an ADR first**. Do not work around the rule or submit a PR with a justification comment. Rules in this document are changed explicitly through the ADR process, never silently through precedent. This applies equally to the original author and to contributors.
+
+## Quick Reference
+
+| Category | Invariant |
+|----------|-----------|
+| Proverbs | Make the zero value useful |
+| Proverbs | Gofmt's style is no one's favorite, yet gofmt is everyone's favorite |
+| Philosophy | Clear is better than clever |
+| Philosophy | A little copying is better than a little dependency |
+| Interfaces | The bigger the interface, the weaker the abstraction |
+| Interfaces | Accept interfaces, return structs |
+| Errors | Handle or return — never both |
+| Errors | Translate at boundaries, don't leak internals |
+| Context | First parameter, named `ctx`; never store in structs |
+| Concurrency | Every goroutine has an owner responsible for termination |
+| Concurrency | Share memory by communicating |
+| Data Safety | Never expose internal slices or maps without copying |
+| Shutdown | Reverse of startup order; bounded time |
+| Testing | Fakes over mocks; behavioral contracts over call order |
+| Packages | Name by responsibility; dependencies point inward |
+
+## Further Reading
+
+- [Go Senior-Level Handbook](https://github.com/ae-lexs/go-senior-level-handbook) — Our authoritative style guide
+- [Effective Go](https://go.dev/doc/effective_go) — Official language patterns
+- [Go Code Review Comments](https://github.com/golang/go/wiki/CodeReviewComments) — Common review feedback
+- [Uber Go Style Guide](https://github.com/uber-go/guide) — Additional production patterns

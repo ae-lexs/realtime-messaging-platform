@@ -1,4 +1,4 @@
-package errors
+package errmap
 
 import (
 	"errors"

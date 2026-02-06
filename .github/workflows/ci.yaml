@@ -23,6 +23,10 @@ jobs:
         with:
           fetch-depth: 0  # Needed for buf breaking against main
 
+      - name: Fetch main branch
+        if: github.event_name == 'pull_request'
+        run: git fetch origin main:refs/heads/main
+
       - uses: bufbuild/buf-setup-action@v1
         with:
           version: 'latest'
@@ -46,10 +50,10 @@ jobs:
           go-version: '1.25'
           cache: true
 
-      # Build golangci-lint from source to support Go 1.25
+      # Build golangci-lint v2 from source to support Go 1.25
       # Pre-built binaries may be built with older Go versions
       - name: Install golangci-lint
-        run: go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
+        run: go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@latest
 
       - name: Run golangci-lint
         run: golangci-lint run ./...
@@ -135,6 +139,11 @@ jobs:
           - 4566:4566
         env:
           SERVICES: dynamodb,secretsmanager,ssm
+        options: >-
+          --health-cmd "curl -sf http://localhost:4566/_localstack/health"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
 
     steps:
       - uses: actions/checkout@v4
@@ -143,10 +152,6 @@ jobs:
         with:
           go-version: '1.25'
           cache: true
-
-      - name: Wait for LocalStack
-        run: |
-          timeout 60 bash -c 'until curl -s http://localhost:4566/_localstack/health | grep -q running; do sleep 1; done'
 
       - name: Run integration tests
         run: go test -race -tags=integration -v ./...
