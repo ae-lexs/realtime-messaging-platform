@@ -25,7 +25,7 @@ jobs:
 
       - name: Fetch main branch
         if: github.event_name == 'pull_request'
-        run: git fetch origin main
+        run: git fetch origin main:refs/heads/main
 
       - uses: bufbuild/buf-setup-action@v1
         with:
