@@ -15,60 +15,27 @@ For project overview, architecture summary, getting started instructions, reposi
 - [Pull Request Process](#pull-request-process)
 - [CI/CD Pipeline](#cicd-pipeline)
 - [ADR Process](#adr-process)
-- [Quick Reference](#quick-reference)
+- [Further Reading](#further-reading)
 
 ## Our Standards
 
-This project follows the [Go Senior-Level Handbook](https://github.com/ae-lexs/go-senior-level-handbook) as our authoritative Go style guide. The handbook emphasizes three core concepts:
+This project values **clarity over cleverness**, **explicit over implicit**, and **minimal complexity for the current task**.
 
-- **Invariants** — Rules that must never be violated
-- **Lifecycle** — How things start, run, and stop
-- **Ownership** — Who is responsible for what
+Before contributing, familiarize yourself with:
 
-Before contributing, familiarize yourself with the handbook's philosophy: *clarity over cleverness, explicit over implicit, composition over inheritance*.
-
-## Who This Is For
-
-These guidelines favor long-term maintainability over onboarding speed. New contributors are welcome, but we expect familiarity with:
-
-- `context.Context` and cancellation propagation
-- Error handling patterns (wrapping, sentinel vs typed errors)
-- Goroutine ownership and lifecycle management
-- Interface design (small, consumer-defined)
-- The Architecture Decision Records in `docs/`
-
-If these concepts are unfamiliar, the [Go Senior-Level Handbook](https://github.com/ae-lexs/go-senior-level-handbook) is an excellent starting point.
-
-## Non-Goals
-
-This project does **not** optimize for:
-
-- **Maximum abstraction** — Indirection only when it solves a concrete problem
-- **Framework-driven design** — Standard library and explicit wiring preferred
-- **Micro-optimizations without evidence** — Profile first, optimize second
-- **Consensus-driven style** — `gofmt` decides formatting; the handbook decides patterns
-
-## Go Proverbs (Non-Negotiable)
-
-These proverbs from the Go community inform every decision in this project. They are not guidelines — they are non-negotiable.
-
-1. Don't communicate by sharing memory; share memory by communicating.
-2. The bigger the interface, the weaker the abstraction.
-3. Make the zero value useful.
-4. `interface{}` says nothing.
-5. Clear is better than clever.
-6. A little copying is better than a little dependency.
-7. Gofmt's style is no one's favorite, yet gofmt is everyone's favorite.
-
-> 📖 See [Go Proverbs](https://go-proverbs.github.io/) by Rob Pike
+- The Architecture Decision Records in `docs/adr/`
+- **[docs/standards/GO.md](docs/standards/GO.md)** — Go philosophy, invariants, code conventions, and testing
+- **[docs/standards/TERRAFORM.md](docs/standards/TERRAFORM.md)** — Terraform invariants, file structure, naming, and security
 
 ## Quick Start for Contributors
 
-**What will CI block?** Lint failures (`golangci-lint`), architectural boundary violations (`go-arch-lint`, `depguard`), failing tests (unit + integration), proto breaking changes (`buf breaking`), and non-compiling code. Run `make ci-local` before pushing — if it passes locally, CI will pass. See [CI/CD Pipeline](#cicd-pipeline).
+**What will CI block?** Lint failures (`golangci-lint`), architectural boundary violations (`go-arch-lint`, `depguard`), failing tests (unit + integration), proto breaking changes (`buf breaking`), non-compiling code, Terraform formatting/lint/validate/security failures. Run `make ci-local` before pushing — if it passes locally, CI will pass. See [CI/CD Pipeline](#cicd-pipeline).
 
-**Where do I put new code?** Each service has three layers: `port/` (entry points), `app/` (orchestration), `adapter/` (I/O). Business types go in `internal/domain/`. Dependencies flow inward only — `domain` imports nothing, `app` imports `domain`, ports and adapters import `app`. See [Clean Architecture](#clean-architecture).
+**Where do I put Go code?** Each service has three layers: `port/` (entry points), `app/` (orchestration), `adapter/` (I/O). Business types go in `internal/domain/`. Dependencies flow inward only — `domain` imports nothing, `app` imports `domain`, ports and adapters import `app`. See [Clean Architecture](#clean-architecture).
 
-**What must every function that does I/O accept?** `context.Context` as its first parameter. No exceptions — this is CI-enforced. See [Go Conventions](docs/standards/GO.md#go-conventions).
+**Where do I put Terraform?** Reusable modules in `terraform/modules/`, environment-specific configuration in `terraform/environments/{dev,prod}`. Providers are configured only in environments, never in modules. See [Terraform Standards](#terraform-standards).
+
+**What must every Go function that does I/O accept?** `context.Context` as its first parameter. No exceptions — this is CI-enforced. See [Go Conventions](docs/standards/GO.md#go-conventions).
 
 **Where do ADRs live?** In `docs/adr/ADR-NNN.md`. There are currently 17. Read them before proposing changes to architecture, data flow, or consistency guarantees. See [ADR Process](#adr-process).
 
@@ -93,6 +60,20 @@ To run an ad-hoc command inside the toolbox:
 docker compose -f docker-compose.yaml -f docker-compose.dev.yaml \
   run --rm toolbox "go doc ./internal/domain"
 ```
+
+### Terraform Tooling
+
+Terraform validation also runs inside Docker containers. The Makefile targets mirror the Go toolchain pattern:
+
+```
+make terraform-fmt       # check formatting
+make terraform-fmt-fix   # fix formatting
+make terraform-validate  # validate per environment
+make terraform-lint      # tflint (naming, docs, AWS rules)
+make terraform-security  # trivy security scan
+```
+
+All Docker-based, per PR0-INV-1 — same pattern as Go tooling. See [Terraform Standards](#terraform-standards) for the full conventions.
 
 ### Hot Reload (Air)
 
@@ -290,12 +271,21 @@ Enforcement: `golangci-lint` (v2, strict config), `go-arch-lint`, `depguard` —
 Before opening a PR, verify your changes locally and run through this checklist. The commands map to our Docker-based toolchain:
 
 ```bash
+# Go
 make lint            # go fmt + go vet + golangci-lint (all linters)
 make test            # go test -race ./...
 make ci-local        # full CI pipeline locally
+
+# Terraform
+make terraform-fmt       # Terraform formatting
+make terraform-lint      # tflint (naming, docs, AWS rules)
+make terraform-validate  # terraform validate per environment
+make terraform-security  # trivy HIGH/CRITICAL scan
 ```
 
 Then confirm each item:
+
+**Go:**
 
 - [ ] No fire-and-forget goroutines
 - [ ] Context passed explicitly, not stored in structs
@@ -305,6 +295,13 @@ Then confirm each item:
 - [ ] Tests use fakes, not mocks (where applicable)
 - [ ] No `time.Sleep` in tests
 - [ ] Internal slices/maps not exposed directly
+
+**Terraform:**
+
+- [ ] Every variable and output has `description` and `type`
+- [ ] No credentials in code or `.tfvars`
+- [ ] Providers configured only in `environments/`, never in `modules/`
+- [ ] `.terraform.lock.hcl` committed; `.tfstate` never committed
 
 ### Before Opening
 
@@ -500,29 +497,16 @@ Later stages may extend but never silently violate earlier decisions (MVP Defini
 
 If a change improves correctness, observability, or failure handling but would violate an existing convention or ADR — **stop and propose an ADR first**. Do not work around the rule or submit a PR with a justification comment. Rules in this document are changed explicitly through the ADR process, never silently through precedent. This applies equally to the original author and to contributors.
 
-## Quick Reference
-
-| Category | Invariant |
-|----------|-----------|
-| Proverbs | Make the zero value useful |
-| Proverbs | Gofmt's style is no one's favorite, yet gofmt is everyone's favorite |
-| Philosophy | Clear is better than clever |
-| Philosophy | A little copying is better than a little dependency |
-| Interfaces | The bigger the interface, the weaker the abstraction |
-| Interfaces | Accept interfaces, return structs |
-| Errors | Handle or return — never both |
-| Errors | Translate at boundaries, don't leak internals |
-| Context | First parameter, named `ctx`; never store in structs |
-| Concurrency | Every goroutine has an owner responsible for termination |
-| Concurrency | Share memory by communicating |
-| Data Safety | Never expose internal slices or maps without copying |
-| Shutdown | Reverse of startup order; bounded time |
-| Testing | Fakes over mocks; behavioral contracts over call order |
-| Packages | Name by responsibility; dependencies point inward |
-
 ## Further Reading
 
-- [Go Senior-Level Handbook](https://github.com/ae-lexs/go-senior-level-handbook) — Our authoritative style guide
+**Go:**
+
+- [Go Senior-Level Handbook](https://github.com/ae-lexs/go-senior-level-handbook) — Our authoritative Go style guide
 - [Effective Go](https://go.dev/doc/effective_go) — Official language patterns
 - [Go Code Review Comments](https://github.com/golang/go/wiki/CodeReviewComments) — Common review feedback
 - [Uber Go Style Guide](https://github.com/uber-go/guide) — Additional production patterns
+
+**Terraform:**
+
+- [HashiCorp Best Practices](https://developer.hashicorp.com/terraform/language/modules/develop) — Module development guide
+- [AWS Provider Documentation](https://registry.terraform.io/providers/hashicorp/aws/latest/docs) — AWS resource reference

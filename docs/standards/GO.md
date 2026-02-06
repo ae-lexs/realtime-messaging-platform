@@ -1,10 +1,55 @@
 # Go Standards
 
-This document is the deep-dive reference for Go conventions in the Realtime Messaging Platform. It covers invariants, decision matrices, common mistakes, code standards, proto/API conventions, and testing philosophy.
+This document covers both Go philosophy and the technical deep-dive for the Realtime Messaging Platform — invariants, decision matrices, common mistakes, code conventions, proto/API conventions, and testing philosophy.
 
-For architecture, process, and CI/CD, see [CONTRIBUTING.md](../../CONTRIBUTING.md). For Terraform conventions, see [TERRAFORM.md](TERRAFORM.md).
+For project architecture, development workflow, and CI/CD, see [CONTRIBUTING.md](../../CONTRIBUTING.md). For Terraform conventions, see [TERRAFORM.md](TERRAFORM.md).
 
 ---
+
+## Our Standards
+
+This project follows the [Go Senior-Level Handbook](https://github.com/ae-lexs/go-senior-level-handbook) as our authoritative Go style guide. The handbook emphasizes three core concepts:
+
+- **Invariants** — Rules that must never be violated
+- **Lifecycle** — How things start, run, and stop
+- **Ownership** — Who is responsible for what
+
+Before contributing Go code, familiarize yourself with the handbook's philosophy: *clarity over cleverness, explicit over implicit, composition over inheritance*.
+
+## Who This Is For
+
+These guidelines favor long-term maintainability over onboarding speed. New contributors are welcome, but we expect familiarity with:
+
+- `context.Context` and cancellation propagation
+- Error handling patterns (wrapping, sentinel vs typed errors)
+- Goroutine ownership and lifecycle management
+- Interface design (small, consumer-defined)
+- The Architecture Decision Records in `docs/adr/`
+
+If these concepts are unfamiliar, the [Go Senior-Level Handbook](https://github.com/ae-lexs/go-senior-level-handbook) is an excellent starting point.
+
+## Non-Goals
+
+This project does **not** optimize for:
+
+- **Maximum abstraction** — Indirection only when it solves a concrete problem
+- **Framework-driven design** — Standard library and explicit wiring preferred
+- **Micro-optimizations without evidence** — Profile first, optimize second
+- **Consensus-driven style** — `gofmt` decides formatting; the handbook decides patterns
+
+## Go Proverbs (Non-Negotiable)
+
+These proverbs from the Go community inform every decision in this project. They are not guidelines — they are non-negotiable.
+
+1. Don't communicate by sharing memory; share memory by communicating.
+2. The bigger the interface, the weaker the abstraction.
+3. Make the zero value useful.
+4. `interface{}` says nothing.
+5. Clear is better than clever.
+6. A little copying is better than a little dependency.
+7. Gofmt's style is no one's favorite, yet gofmt is everyone's favorite.
+
+> 📖 See [Go Proverbs](https://go-proverbs.github.io/) by Rob Pike
 
 ## Go Invariants
 
@@ -428,3 +473,30 @@ Use **table-driven** when many inputs share identical assertion logic. Use **nes
 - **Application layer:** Mock adapter interfaces (via `app/`-defined interfaces). Test orchestration logic, error handling paths, and edge cases. Watch for business logic creeping into this layer — if `app/` tests start verifying domain invariants, promote that logic to `domain/`. Review-enforced.
 - **Port layer:** Test request/response mapping, validation, and error translation. Use httptest for HTTP handlers. Review-enforced.
 - **Adapter layer:** Integration tests against real infrastructure (LocalStack, Redpanda, Redis via docker-compose). Guideline.
+
+## Quick Reference
+
+| Category | Invariant |
+|----------|-----------|
+| Proverbs | Make the zero value useful |
+| Proverbs | Gofmt's style is no one's favorite, yet gofmt is everyone's favorite |
+| Philosophy | Clear is better than clever |
+| Philosophy | A little copying is better than a little dependency |
+| Interfaces | The bigger the interface, the weaker the abstraction |
+| Interfaces | Accept interfaces, return structs |
+| Errors | Handle or return — never both |
+| Errors | Translate at boundaries, don't leak internals |
+| Context | First parameter, named `ctx`; never store in structs |
+| Concurrency | Every goroutine has an owner responsible for termination |
+| Concurrency | Share memory by communicating |
+| Data Safety | Never expose internal slices or maps without copying |
+| Shutdown | Reverse of startup order; bounded time |
+| Testing | Fakes over mocks; behavioral contracts over call order |
+| Packages | Name by responsibility; dependencies point inward |
+
+## Further Reading
+
+- [Go Senior-Level Handbook](https://github.com/ae-lexs/go-senior-level-handbook) — Our authoritative style guide
+- [Effective Go](https://go.dev/doc/effective_go) — Official language patterns
+- [Go Code Review Comments](https://github.com/golang/go/wiki/CodeReviewComments) — Common review feedback
+- [Uber Go Style Guide](https://github.com/uber-go/guide) — Additional production patterns
