@@ -2,7 +2,8 @@
 # All targets delegate to Docker containers per ADR-014 (PR0-INV-1).
 # No Go, buf, or lint tools are invoked directly on the host.
 
-.PHONY: all dev up down logs lint fmt test test-integration proto proto-lint proto-breaking build docker ci-local clean help
+.PHONY: all dev up down logs lint fmt test test-integration proto proto-lint proto-breaking build docker ci-local clean help \
+	terraform-fmt terraform-fmt-fix terraform-validate terraform-lint terraform-security
 
 # Default target
 all: ci-local
@@ -116,6 +117,41 @@ ci-fast: proto-lint lint test
 	@echo "✅ Fast CI passed"
 
 # ============================================================================
+# Terraform (Docker-only per PR0-INV-1)
+# ============================================================================
+
+TF_IMAGE := hashicorp/terraform:1.14
+TF_DOCKER := docker run --rm -v "$(CURDIR)/terraform:/terraform" -w /terraform
+TFLINT_IMAGE := ghcr.io/terraform-linters/tflint:v0.55.1
+TRIVY_IMAGE := aquasec/trivy:0.59.1
+
+## Check Terraform formatting
+terraform-fmt:
+	$(TF_DOCKER) $(TF_IMAGE) fmt -check -recursive
+
+## Fix Terraform formatting
+terraform-fmt-fix:
+	$(TF_DOCKER) $(TF_IMAGE) fmt -recursive
+
+## Validate Terraform configurations (per environment)
+terraform-validate:
+	@for env in environments/dev environments/prod; do \
+		echo "==> Validating $$env"; \
+		$(TF_DOCKER) $(TF_IMAGE) -chdir=$$env init -backend=false > /dev/null 2>&1 && \
+		$(TF_DOCKER) $(TF_IMAGE) -chdir=$$env validate || exit 1; \
+	done
+
+## Lint Terraform with tflint
+terraform-lint:
+	docker run --rm -v "$(CURDIR)/terraform:/terraform" -w /terraform --entrypoint sh $(TFLINT_IMAGE) \
+		-c "tflint --init --config /terraform/.tflint.hcl && tflint --recursive --config /terraform/.tflint.hcl"
+
+## Security scan Terraform with trivy
+terraform-security:
+	docker run --rm -v "$(CURDIR)/terraform:/terraform" $(TRIVY_IMAGE) \
+		config --severity HIGH,CRITICAL --exit-code 1 /terraform
+
+# ============================================================================
 # Utilities
 # ============================================================================
 
@@ -171,6 +207,13 @@ help:
 	@echo "CI:"
 	@echo "  make ci-local         Run full CI pipeline locally"
 	@echo "  make ci-fast          Run fast CI (no Docker build)"
+	@echo ""
+	@echo "Terraform:"
+	@echo "  make terraform-fmt      Check Terraform formatting"
+	@echo "  make terraform-fmt-fix  Fix Terraform formatting"
+	@echo "  make terraform-validate Validate Terraform configurations"
+	@echo "  make terraform-lint     Lint with tflint"
+	@echo "  make terraform-security Security scan with trivy"
 	@echo ""
 	@echo "Utilities:"
 	@echo "  make toolbox CMD=...  Run command in toolbox"

@@ -159,11 +159,74 @@ jobs:
           AWS_ENDPOINT: http://localhost:4566
           REDIS_ADDR: localhost:6379
 
+  # Terraform validation
+  terraform:
+    name: Terraform Validate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check Terraform file changes
+        id: changes
+        uses: dorny/paths-filter@v3
+        with:
+          filters: |
+            terraform:
+              - 'terraform/**'
+
+      - name: Setup Terraform
+        if: steps.changes.outputs.terraform == 'true'
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: '1.14.0'
+
+      - name: Terraform fmt check
+        if: steps.changes.outputs.terraform == 'true'
+        run: terraform -chdir=terraform fmt -check -recursive
+
+      - name: Setup tflint
+        if: steps.changes.outputs.terraform == 'true'
+        uses: terraform-linters/setup-tflint@v4
+        with:
+          tflint_version: 'v0.55.1'
+
+      - name: Init tflint plugins
+        if: steps.changes.outputs.terraform == 'true'
+        run: tflint --init --config terraform/.tflint.hcl
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+
+      - name: Run tflint
+        if: steps.changes.outputs.terraform == 'true'
+        run: tflint --recursive --config "$(pwd)/.tflint.hcl"
+        working-directory: terraform
+
+      - name: Run trivy security scan
+        if: steps.changes.outputs.terraform == 'true'
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: 'config'
+          scan-ref: 'terraform/'
+          severity: 'HIGH,CRITICAL'
+          exit-code: '1'
+
+      - name: Validate dev environment
+        if: steps.changes.outputs.terraform == 'true'
+        run: |
+          terraform -chdir=terraform/environments/dev init -backend=false
+          terraform -chdir=terraform/environments/dev validate
+
+      - name: Validate prod environment
+        if: steps.changes.outputs.terraform == 'true'
+        run: |
+          terraform -chdir=terraform/environments/prod init -backend=false
+          terraform -chdir=terraform/environments/prod validate
+
   # Final gate - all checks must pass
   ci-passed:
     name: CI Passed
     runs-on: ubuntu-latest
-    needs: [proto, lint, test, build, docker, integration]
+    needs: [proto, lint, test, build, docker, integration, terraform]
     if: always()
     steps:
       - name: Check all jobs passed
@@ -173,7 +236,8 @@ jobs:
              [[ "${{ needs.test.result }}" != "success" ]] || \
              [[ "${{ needs.build.result }}" != "success" ]] || \
              [[ "${{ needs.docker.result }}" != "success" ]] || \
-             [[ "${{ needs.integration.result }}" != "success" ]]; then
+             [[ "${{ needs.integration.result }}" != "success" ]] || \
+             [[ "${{ needs.terraform.result }}" != "success" ]]; then
             echo "One or more CI jobs failed"
             exit 1
           fi

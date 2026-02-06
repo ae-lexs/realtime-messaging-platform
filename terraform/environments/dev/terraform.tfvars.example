@@ -1,0 +1,8 @@
+# Dev environment variable values.
+# Copy to terraform.tfvars and adjust as needed.
+# NEVER commit terraform.tfvars — it is git-ignored.
+
+domain_name  = "messaging-dev.example.com"
+project_name = "messaging-platform"
+environment  = "dev"
+aws_region   = "us-east-2"

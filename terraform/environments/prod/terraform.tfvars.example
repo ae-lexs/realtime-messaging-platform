@@ -1,0 +1,8 @@
+# Prod environment variable values.
+# Copy to terraform.tfvars and adjust as needed.
+# NEVER commit terraform.tfvars — it is git-ignored.
+
+domain_name  = "messaging.example.com"
+project_name = "messaging-platform"
+environment  = "prod"
+aws_region   = "us-east-2"

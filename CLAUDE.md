@@ -6,10 +6,12 @@ This file defines how Claude works on this project. For code standards, architec
 
 At the start of every session, read these two files before doing any work:
 
-1. **CONTRIBUTING.md** — code standards, Clean Architecture, Go invariants, testing philosophy
-2. **docs/EXECUTION_PLAN.md** — current PR scope, acceptance criteria, correctness invariants
+1. **CONTRIBUTING.md** — hub for code standards, Clean Architecture, process, CI/CD
+2. **docs/standards/GO.md** — Go invariants, code conventions, testing philosophy
+3. **docs/standards/TERRAFORM.md** — Terraform invariants, state management, security
+4. **docs/EXECUTION_PLAN.md** — current PR scope, acceptance criteria, correctness invariants
 
-Then, based on the task, read the relevant ADRs using the traceability matrix in EXECUTION_PLAN.md. Also reference **docs/TBD-PR0-DECISIONS.md** for config, error taxonomy, and clock conventions.
+Then, based on the task, read the relevant ADRs using the traceability matrix in EXECUTION_PLAN.md. Also reference **docs/tbd/PR0-DECISIONS.md** for config, error taxonomy, and clock conventions.
 
 ## Workflow
 
