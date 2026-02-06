@@ -50,9 +50,8 @@ module "ecs_cluster" {
 
   project_name           = var.project_name
   environment            = var.environment
-  enable_fargate_spot    = false
-  enable_execute_command = false
-  fargate_base           = 2
+  enable_fargate_spot = false
+  fargate_base        = 2
   fargate_weight         = 3
   log_retention_days     = 90
 }

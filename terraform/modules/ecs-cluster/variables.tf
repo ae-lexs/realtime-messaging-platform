@@ -51,12 +51,6 @@ variable "enable_container_insights" {
   default     = true
 }
 
-variable "enable_execute_command" {
-  description = "Enable ECS Exec for interactive debugging (dev only per TBD-TF0-7)"
-  type        = bool
-  default     = false
-}
-
 variable "service_connect_namespace" {
   description = "Service Connect namespace name (per ADR-014 §5.3)"
   type        = string
