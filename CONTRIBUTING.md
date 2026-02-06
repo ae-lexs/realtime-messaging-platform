@@ -10,8 +10,8 @@ For project overview, architecture summary, getting started instructions, reposi
 - [Quick Start for Contributors](#quick-start-for-contributors)
 - [Development Workflow](#development-workflow)
 - [Clean Architecture](#clean-architecture)
-- [Go Standards](#go-standards) *(detailed guide: [docs/STANDARDS-GO.md](docs/STANDARDS-GO.md))*
-- [Terraform Standards](#terraform-standards) *(detailed guide: [docs/STANDARDS-TERRAFORM.md](docs/STANDARDS-TERRAFORM.md))*
+- [Go Standards](#go-standards) *(detailed guide: [docs/standards/GO.md](docs/standards/GO.md))*
+- [Terraform Standards](#terraform-standards) *(detailed guide: [docs/standards/TERRAFORM.md](docs/standards/TERRAFORM.md))*
 - [Pull Request Process](#pull-request-process)
 - [CI/CD Pipeline](#cicd-pipeline)
 - [ADR Process](#adr-process)
@@ -68,7 +68,7 @@ These proverbs from the Go community inform every decision in this project. They
 
 **Where do I put new code?** Each service has three layers: `port/` (entry points), `app/` (orchestration), `adapter/` (I/O). Business types go in `internal/domain/`. Dependencies flow inward only — `domain` imports nothing, `app` imports `domain`, ports and adapters import `app`. See [Clean Architecture](#clean-architecture).
 
-**What must every function that does I/O accept?** `context.Context` as its first parameter. No exceptions — this is CI-enforced. See [Go Conventions](docs/STANDARDS-GO.md#go-conventions).
+**What must every function that does I/O accept?** `context.Context` as its first parameter. No exceptions — this is CI-enforced. See [Go Conventions](docs/standards/GO.md#go-conventions).
 
 **Where do ADRs live?** In `docs/ADR-NNN.md`. There are currently 17. Read them before proposing changes to architecture, data flow, or consistency guarantees. See [ADR Process](#adr-process).
 
@@ -269,7 +269,7 @@ These patterns may become valuable post-MVP if business rules grow in complexity
 
 This project follows the [Go Senior-Level Handbook](https://github.com/ae-lexs/go-senior-level-handbook) as our authoritative Go style guide, enforced by strict CI tooling.
 
-For the complete Go standards — invariants, decision matrices, common mistakes, code conventions, golangci-lint configuration, proto/API conventions, and testing philosophy — see **[docs/STANDARDS-GO.md](docs/STANDARDS-GO.md)**.
+For the complete Go standards — invariants, decision matrices, common mistakes, code conventions, golangci-lint configuration, proto/API conventions, and testing philosophy — see **[docs/standards/GO.md](docs/standards/GO.md)**.
 
 **Key invariants** (see full list in the standards doc):
 
@@ -434,7 +434,7 @@ PRs use **squash-merge** into `main`. The squashed commit message must follow Co
 
 Terraform conventions mirror our Go standards: clarity over cleverness, explicit over implicit, minimal complexity for the current task.
 
-For the complete Terraform standards — invariants, file structure, naming, variable/output design, tagging, state management, versioning, security, and validation tooling — see **[docs/STANDARDS-TERRAFORM.md](docs/STANDARDS-TERRAFORM.md)**.
+For the complete Terraform standards — invariants, file structure, naming, variable/output design, tagging, state management, versioning, security, and validation tooling — see **[docs/standards/TERRAFORM.md](docs/standards/TERRAFORM.md)**.
 
 **Key invariants** (see full list in the standards doc):
 

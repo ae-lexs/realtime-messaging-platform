@@ -2,7 +2,7 @@
 
 This document defines Terraform conventions for the Realtime Messaging Platform. The principles mirror our Go standards: clarity over cleverness, explicit over implicit, minimal complexity for the current task.
 
-For architecture, process, and CI/CD, see [CONTRIBUTING.md](../CONTRIBUTING.md). For Go conventions, see [STANDARDS-GO.md](STANDARDS-GO.md).
+For architecture, process, and CI/CD, see [CONTRIBUTING.md](../../CONTRIBUTING.md). For Go conventions, see [GO.md](GO.md).
 
 ---
 
@@ -281,7 +281,7 @@ External registry modules (if used): always specify `version`. Git-sourced modul
 3. Environment variables (local development)
 4. Static credentials in provider block — **NEVER**
 
-**Pre-apply security scanning:** `trivy config .` (successor to tfsec) runs in CI and blocks PRs on high/critical findings. See [CI/CD Pipeline](../CONTRIBUTING.md#cicd-pipeline).
+**Pre-apply security scanning:** `trivy config .` (successor to tfsec) runs in CI and blocks PRs on high/critical findings. See [CI/CD Pipeline](../../CONTRIBUTING.md#cicd-pipeline).
 
 **State file security:** Encrypted at rest (S3 SSE), access restricted to CI/CD roles and admins, never committed to git.
 

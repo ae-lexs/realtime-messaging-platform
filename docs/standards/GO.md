@@ -2,7 +2,7 @@
 
 This document is the deep-dive reference for Go conventions in the Realtime Messaging Platform. It covers invariants, decision matrices, common mistakes, code standards, proto/API conventions, and testing philosophy.
 
-For architecture, process, and CI/CD, see [CONTRIBUTING.md](../CONTRIBUTING.md). For Terraform conventions, see [STANDARDS-TERRAFORM.md](STANDARDS-TERRAFORM.md).
+For architecture, process, and CI/CD, see [CONTRIBUTING.md](../../CONTRIBUTING.md). For Terraform conventions, see [TERRAFORM.md](TERRAFORM.md).
 
 ---
 
@@ -19,7 +19,7 @@ These rules must never be violated. PRs that break these will not be merged. Eac
 | Define interfaces at the consumer, not the producer | The package that uses a capability defines what it needs |
 | Don't design interfaces upfront — discover them | Wait for concrete need: multiple implementations, testing, decoupling |
 
-See [Interface Placement](../CONTRIBUTING.md#interface-placement) for how this project applies these rules in its Clean Architecture layers.
+See [Interface Placement](../../CONTRIBUTING.md#interface-placement) for how this project applies these rules in its Clean Architecture layers.
 
 > See handbook: [Types and Composition](https://github.com/ae-lexs/go-senior-level-handbook/blob/main/02_TYPES_AND_COMPOSITION.md), [Interface Patterns](https://github.com/ae-lexs/go-senior-level-handbook/blob/main/DD_INTERFACE_PATTERNS.md)
 
@@ -127,7 +127,7 @@ In this project, this is especially relevant to domain value objects (e.g., chat
 | Dependencies point inward: boundary -> core | Domain logic must not import HTTP, database drivers, etc. |
 | `internal/` protects your right to change | Compiler-enforced privacy. Use it aggressively |
 
-This project enforces inward dependencies via `go-arch-lint` + `depguard` in CI — see [Clean Architecture](../CONTRIBUTING.md#clean-architecture) and [Architectural Enforcement](#architectural-enforcement).
+This project enforces inward dependencies via `go-arch-lint` + `depguard` in CI — see [Clean Architecture](../../CONTRIBUTING.md#clean-architecture) and [Architectural Enforcement](#architectural-enforcement).
 
 > See handbook: [Package and Project Design](https://github.com/ae-lexs/go-senior-level-handbook/blob/main/08_PACKAGE_AND_PROJECT_DESIGN.md)
 
