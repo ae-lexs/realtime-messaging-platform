@@ -42,10 +42,10 @@ func TestIsLocal(t *testing.T) {
 		env  string
 		want bool
 	}{
-		{"local returns true", "local", true},
-		{"prod returns false", "prod", false},
-		{"dev returns false", "dev", false},
-		{"empty returns false", "", false},
+		{name: "local returns true", env: "local", want: true},
+		{name: "prod returns false", env: "prod", want: false},
+		{name: "dev returns false", env: "dev", want: false},
+		{name: "empty returns false", env: "", want: false},
 	}
 
 	for _, tt := range tests {
@@ -63,10 +63,10 @@ func TestIsProd(t *testing.T) {
 		env  string
 		want bool
 	}{
-		{"prod returns true", "prod", true},
-		{"local returns false", "local", false},
-		{"dev returns false", "dev", false},
-		{"empty returns false", "", false},
+		{name: "prod returns true", env: "prod", want: true},
+		{name: "local returns false", env: "local", want: false},
+		{name: "dev returns false", env: "dev", want: false},
+		{name: "empty returns false", env: "", want: false},
 	}
 
 	for _, tt := range tests {

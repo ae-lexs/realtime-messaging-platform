@@ -15,17 +15,17 @@ func TestNewFrame_AllTypes(t *testing.T) {
 		frameType protocol.FrameType
 		payload   interface{}
 	}{
-		{"ConnectionAck", protocol.FrameTypeConnectionAck, protocol.ConnectionAck{ConnectionID: "conn-1", HeartbeatIntervalMs: 30000}},
-		{"ConnectionClosing", protocol.FrameTypeConnectionClosing, protocol.ConnectionClosing{Reason: "going away", Code: 1001}},
-		{"Ping", protocol.FrameTypePing, protocol.Ping{Timestamp: 1234567890}},
-		{"Pong", protocol.FrameTypePong, protocol.Pong{Timestamp: 1234567890}},
-		{"SendMessage", protocol.FrameTypeSendMessage, protocol.SendMessage{ChatID: "chat-1", ClientMessageID: "cmid-1", ContentType: "text", Content: "hello"}},
-		{"SendMessageAck", protocol.FrameTypeSendMessageAck, protocol.SendMessageAck{ClientMessageID: "cmid-1", MessageID: "msg-1", Sequence: 42, CreatedAt: 1234567890}},
-		{"Message", protocol.FrameTypeMessage, protocol.Message{MessageID: "msg-1", ChatID: "chat-1", SenderID: "user-1", ClientMessageID: "cmid-1", Sequence: 1, ContentType: "text", Content: "hello", CreatedAt: 1234567890}},
-		{"Ack", protocol.FrameTypeAck, protocol.Ack{ChatID: "chat-1", Sequence: 5}},
-		{"SyncRequest", protocol.FrameTypeSyncRequest, protocol.SyncRequest{ChatID: "chat-1", LastAckedSequence: 10}},
-		{"SyncResponse", protocol.FrameTypeSyncResponse, protocol.SyncResponse{ChatID: "chat-1", HasMore: true}},
-		{"Error", protocol.FrameTypeError, protocol.Error{Code: "INVALID_INPUT", Message: "bad request"}},
+		{name: "ConnectionAck", frameType: protocol.FrameTypeConnectionAck, payload: protocol.ConnectionAck{ConnectionID: "conn-1", HeartbeatIntervalMs: 30000}},
+		{name: "ConnectionClosing", frameType: protocol.FrameTypeConnectionClosing, payload: protocol.ConnectionClosing{Reason: "going away", Code: 1001}},
+		{name: "Ping", frameType: protocol.FrameTypePing, payload: protocol.Ping{Timestamp: 1234567890}},
+		{name: "Pong", frameType: protocol.FrameTypePong, payload: protocol.Pong{Timestamp: 1234567890}},
+		{name: "SendMessage", frameType: protocol.FrameTypeSendMessage, payload: protocol.SendMessage{ChatID: "chat-1", ClientMessageID: "cmid-1", ContentType: "text", Content: "hello"}},
+		{name: "SendMessageAck", frameType: protocol.FrameTypeSendMessageAck, payload: protocol.SendMessageAck{ClientMessageID: "cmid-1", MessageID: "msg-1", Sequence: 42, CreatedAt: 1234567890}},
+		{name: "Message", frameType: protocol.FrameTypeMessage, payload: protocol.Message{MessageID: "msg-1", ChatID: "chat-1", SenderID: "user-1", ClientMessageID: "cmid-1", Sequence: 1, ContentType: "text", Content: "hello", CreatedAt: 1234567890}},
+		{name: "Ack", frameType: protocol.FrameTypeAck, payload: protocol.Ack{ChatID: "chat-1", Sequence: 5}},
+		{name: "SyncRequest", frameType: protocol.FrameTypeSyncRequest, payload: protocol.SyncRequest{ChatID: "chat-1", LastAckedSequence: 10}},
+		{name: "SyncResponse", frameType: protocol.FrameTypeSyncResponse, payload: protocol.SyncResponse{ChatID: "chat-1", HasMore: true}},
+		{name: "Error", frameType: protocol.FrameTypeError, payload: protocol.Error{Code: "INVALID_INPUT", Message: "bad request"}},
 	}
 
 	for _, tt := range tests {
@@ -248,7 +248,6 @@ func TestFrameJSONStructure(t *testing.T) {
 
 	data, err := json.Marshal(frame)
 	require.NoError(t, err)
-
 	var raw map[string]json.RawMessage
 	err = json.Unmarshal(data, &raw)
 	require.NoError(t, err)

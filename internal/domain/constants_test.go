@@ -13,10 +13,10 @@ func TestIsValidContentType(t *testing.T) {
 		ct   domain.ContentType
 		want bool
 	}{
-		{"text is valid", "text", true},
-		{"empty is invalid", "", false},
-		{"image is invalid", "image", false},
-		{"TEXT is invalid (case-sensitive)", "TEXT", false},
+		{name: "text is valid", ct: "text", want: true},
+		{name: "empty is invalid", ct: "", want: false},
+		{name: "image is invalid", ct: "image", want: false},
+		{name: "TEXT is invalid (case-sensitive)", ct: "TEXT", want: false},
 	}
 
 	for _, tt := range tests {
@@ -34,11 +34,11 @@ func TestIsValidChatType(t *testing.T) {
 		ct   domain.ChatType
 		want bool
 	}{
-		{"direct is valid", "direct", true},
-		{"group is valid", "group", true},
-		{"empty is invalid", "", false},
-		{"channel is invalid", "channel", false},
-		{"Direct is invalid (case-sensitive)", "Direct", false},
+		{name: "direct is valid", ct: "direct", want: true},
+		{name: "group is valid", ct: "group", want: true},
+		{name: "empty is invalid", ct: "", want: false},
+		{name: "channel is invalid", ct: "channel", want: false},
+		{name: "Direct is invalid (case-sensitive)", ct: "Direct", want: false},
 	}
 
 	for _, tt := range tests {

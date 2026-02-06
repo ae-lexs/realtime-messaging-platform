@@ -6,11 +6,10 @@ import (
 	"testing"
 
 	"github.com/aelexs/realtime-messaging-platform/internal/observability"
-	sdktrace "go.opentelemetry.io/otel/sdk/trace"
-	"go.opentelemetry.io/otel/trace"
-
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	sdktrace "go.opentelemetry.io/otel/sdk/trace"
+	"go.opentelemetry.io/otel/trace"
 )
 
 func TestInitTracer_NoEndpoint(t *testing.T) {
