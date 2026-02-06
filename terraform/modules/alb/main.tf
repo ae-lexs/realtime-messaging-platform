@@ -24,10 +24,6 @@ resource "aws_lb" "main" {
 
   enable_deletion_protection = var.enable_deletion_protection
 
-  connection_logs {
-    enabled = false
-  }
-
   idle_timeout = var.idle_timeout_seconds
 
   tags = {
