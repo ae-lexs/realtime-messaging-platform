@@ -23,6 +23,10 @@ jobs:
         with:
           fetch-depth: 0  # Needed for buf breaking against main
 
+      - name: Fetch main branch
+        if: github.event_name == 'pull_request'
+        run: git fetch origin main
+
       - uses: bufbuild/buf-setup-action@v1
         with:
           version: 'latest'
