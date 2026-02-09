@@ -126,6 +126,33 @@ output "jwt_cache_ttl_parameter_arn" {
   value       = module.auth.jwt_cache_ttl_parameter_arn
 }
 
+# IAM Roles
+
+output "ecs_execution_role_arn" {
+  description = "ARN of the shared ECS execution role"
+  value       = module.auth.ecs_execution_role_arn
+}
+
+output "chatmgmt_task_role_arn" {
+  description = "ARN of the Chat Mgmt ECS task role"
+  value       = module.auth.chatmgmt_task_role_arn
+}
+
+output "gateway_task_role_arn" {
+  description = "ARN of the Gateway ECS task role"
+  value       = module.auth.gateway_task_role_arn
+}
+
+output "ingest_task_role_arn" {
+  description = "ARN of the Ingest ECS task role"
+  value       = module.auth.ingest_task_role_arn
+}
+
+output "fanout_task_role_arn" {
+  description = "ARN of the Fanout ECS task role"
+  value       = module.auth.fanout_task_role_arn
+}
+
 # ALB
 
 output "alb_dns_name" {

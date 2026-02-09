@@ -87,3 +87,55 @@ output "jwt_cache_ttl_parameter_arn" {
   description = "ARN of the JWT cache TTL SSM parameter"
   value       = aws_ssm_parameter.jwt_cache_ttl.arn
 }
+
+# IAM Roles — ARNs
+
+output "ecs_execution_role_arn" {
+  description = "ARN of the shared ECS execution role"
+  value       = aws_iam_role.ecs_execution.arn
+}
+
+output "ecs_execution_role_name" {
+  description = "Name of the shared ECS execution role"
+  value       = aws_iam_role.ecs_execution.name
+}
+
+output "chatmgmt_task_role_arn" {
+  description = "ARN of the Chat Mgmt ECS task role"
+  value       = aws_iam_role.chatmgmt_task.arn
+}
+
+output "chatmgmt_task_role_name" {
+  description = "Name of the Chat Mgmt ECS task role"
+  value       = aws_iam_role.chatmgmt_task.name
+}
+
+output "gateway_task_role_arn" {
+  description = "ARN of the Gateway ECS task role"
+  value       = aws_iam_role.gateway_task.arn
+}
+
+output "gateway_task_role_name" {
+  description = "Name of the Gateway ECS task role"
+  value       = aws_iam_role.gateway_task.name
+}
+
+output "ingest_task_role_arn" {
+  description = "ARN of the Ingest ECS task role"
+  value       = aws_iam_role.ingest_task.arn
+}
+
+output "ingest_task_role_name" {
+  description = "Name of the Ingest ECS task role"
+  value       = aws_iam_role.ingest_task.name
+}
+
+output "fanout_task_role_arn" {
+  description = "ARN of the Fanout ECS task role"
+  value       = aws_iam_role.fanout_task.arn
+}
+
+output "fanout_task_role_name" {
+  description = "Name of the Fanout ECS task role"
+  value       = aws_iam_role.fanout_task.name
+}
