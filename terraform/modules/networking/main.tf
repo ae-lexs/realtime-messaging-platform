@@ -189,3 +189,34 @@ resource "aws_vpc_endpoint" "dynamodb" {
     Name = "${local.name}-dynamodb-endpoint"
   }
 }
+
+# -----------------------------------------------------------------------------
+# VPC Interface Endpoints (TBD-TF1-6: Auth services)
+# Secrets Manager, SSM, and KMS — required for ECS tasks in private subnets.
+# Controlled by enable_vpc_interface_endpoints toggle.
+# -----------------------------------------------------------------------------
+
+locals {
+  interface_endpoint_services = var.enable_vpc_interface_endpoints ? {
+    secretsmanager = "com.amazonaws.${data.aws_region.current.region}.secretsmanager"
+    ssm            = "com.amazonaws.${data.aws_region.current.region}.ssm"
+    kms            = "com.amazonaws.${data.aws_region.current.region}.kms"
+  } : {}
+}
+
+resource "aws_vpc_endpoint" "interface" {
+  for_each = local.interface_endpoint_services
+
+  vpc_id            = aws_vpc.main.id
+  service_name      = each.value
+  vpc_endpoint_type = "Interface"
+
+  subnet_ids         = [for s in aws_subnet.private : s.id]
+  security_group_ids = [aws_security_group.vpc_endpoints[0].id]
+
+  private_dns_enabled = true
+
+  tags = {
+    Name = "${local.name}-${each.key}-endpoint"
+  }
+}

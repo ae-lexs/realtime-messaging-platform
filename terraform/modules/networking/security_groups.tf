@@ -323,3 +323,93 @@ resource "aws_security_group" "msk" {
     Name = "${local.name}-msk"
   }
 }
+
+# -----------------------------------------------------------------------------
+# sg-vpc-endpoints — Shared SG for VPC Interface Endpoints (TBD-TF1-6)
+# Ingress: HTTPS from services that need AWS API access.
+# No egress: Interface Endpoints are inbound-only targets.
+# -----------------------------------------------------------------------------
+
+resource "aws_security_group" "vpc_endpoints" {
+  count = var.enable_vpc_interface_endpoints ? 1 : 0
+
+  name_prefix = "${local.name}-vpc-endpoints-"
+  description = "VPC Interface Endpoints: HTTPS inbound from ChatMgmt, Gateway, Ingest"
+  vpc_id      = aws_vpc.main.id
+
+  lifecycle {
+    create_before_destroy = true
+  }
+
+  tags = {
+    Name = "${local.name}-vpc-endpoints"
+  }
+}
+
+resource "aws_vpc_security_group_ingress_rule" "vpc_endpoints_from_chatmgmt" {
+  count = var.enable_vpc_interface_endpoints ? 1 : 0
+
+  security_group_id            = aws_security_group.vpc_endpoints[0].id
+  description                  = "HTTPS from Chat Mgmt (Secrets Manager, SSM, KMS)"
+  ip_protocol                  = "tcp"
+  from_port                    = 443
+  to_port                      = 443
+  referenced_security_group_id = aws_security_group.chatmgmt.id
+}
+
+resource "aws_vpc_security_group_ingress_rule" "vpc_endpoints_from_gateway" {
+  count = var.enable_vpc_interface_endpoints ? 1 : 0
+
+  security_group_id            = aws_security_group.vpc_endpoints[0].id
+  description                  = "HTTPS from Gateway (SSM)"
+  ip_protocol                  = "tcp"
+  from_port                    = 443
+  to_port                      = 443
+  referenced_security_group_id = aws_security_group.gateway.id
+}
+
+resource "aws_vpc_security_group_ingress_rule" "vpc_endpoints_from_ingest" {
+  count = var.enable_vpc_interface_endpoints ? 1 : 0
+
+  security_group_id            = aws_security_group.vpc_endpoints[0].id
+  description                  = "HTTPS from Ingest (SSM)"
+  ip_protocol                  = "tcp"
+  from_port                    = 443
+  to_port                      = 443
+  referenced_security_group_id = aws_security_group.ingest.id
+}
+
+# Service SG egress rules to VPC Interface Endpoints
+
+resource "aws_vpc_security_group_egress_rule" "chatmgmt_to_vpc_endpoints" {
+  count = var.enable_vpc_interface_endpoints ? 1 : 0
+
+  security_group_id            = aws_security_group.chatmgmt.id
+  description                  = "HTTPS to VPC Interface Endpoints (Secrets Manager, SSM, KMS)"
+  ip_protocol                  = "tcp"
+  from_port                    = 443
+  to_port                      = 443
+  referenced_security_group_id = aws_security_group.vpc_endpoints[0].id
+}
+
+resource "aws_vpc_security_group_egress_rule" "gateway_to_vpc_endpoints" {
+  count = var.enable_vpc_interface_endpoints ? 1 : 0
+
+  security_group_id            = aws_security_group.gateway.id
+  description                  = "HTTPS to VPC Interface Endpoints (SSM)"
+  ip_protocol                  = "tcp"
+  from_port                    = 443
+  to_port                      = 443
+  referenced_security_group_id = aws_security_group.vpc_endpoints[0].id
+}
+
+resource "aws_vpc_security_group_egress_rule" "ingest_to_vpc_endpoints" {
+  count = var.enable_vpc_interface_endpoints ? 1 : 0
+
+  security_group_id            = aws_security_group.ingest.id
+  description                  = "HTTPS to VPC Interface Endpoints (SSM)"
+  ip_protocol                  = "tcp"
+  from_port                    = 443
+  to_port                      = 443
+  referenced_security_group_id = aws_security_group.vpc_endpoints[0].id
+}

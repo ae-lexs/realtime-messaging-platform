@@ -14,9 +14,10 @@
 module "networking" {
   source = "../../modules/networking"
 
-  project_name       = var.project_name
-  environment        = var.environment
-  single_nat_gateway = true
+  project_name                   = var.project_name
+  environment                    = var.environment
+  single_nat_gateway             = true
+  enable_vpc_interface_endpoints = true
 }
 
 # -----------------------------------------------------------------------------

@@ -55,3 +55,9 @@ variable "single_nat_gateway" {
   type        = bool
   default     = true
 }
+
+variable "enable_vpc_interface_endpoints" {
+  description = "Enable VPC Interface Endpoints for auth services (Secrets Manager, SSM, KMS)"
+  type        = bool
+  default     = false
+}
