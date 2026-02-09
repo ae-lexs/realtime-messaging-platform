@@ -32,8 +32,12 @@ resource "aws_dynamodb_table" "users" {
 
   global_secondary_index {
     name            = "phone_number-index"
-    hash_key        = "phone_number"
     projection_type = "KEYS_ONLY"
+
+    key_schema {
+      attribute_name = "phone_number"
+      key_type       = "HASH"
+    }
   }
 
   point_in_time_recovery {
@@ -70,8 +74,12 @@ resource "aws_dynamodb_table" "sessions" {
 
   global_secondary_index {
     name            = "user_sessions-index"
-    hash_key        = "user_id"
     projection_type = "ALL"
+
+    key_schema {
+      attribute_name = "user_id"
+      key_type       = "HASH"
+    }
   }
 
   ttl {
