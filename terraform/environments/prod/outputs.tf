@@ -83,6 +83,76 @@ output "service_connect_namespace_arn" {
   value       = module.ecs_cluster.service_connect_namespace_arn
 }
 
+# DynamoDB Auth Tables
+
+output "users_table_arn" {
+  description = "ARN of the users DynamoDB table"
+  value       = module.auth.users_table_arn
+}
+
+output "sessions_table_arn" {
+  description = "ARN of the sessions DynamoDB table"
+  value       = module.auth.sessions_table_arn
+}
+
+output "otp_requests_table_arn" {
+  description = "ARN of the otp_requests DynamoDB table"
+  value       = module.auth.otp_requests_table_arn
+}
+
+# KMS Keys
+
+output "auth_secrets_kms_key_arn" {
+  description = "ARN of the auth-secrets KMS CMK"
+  value       = module.auth.auth_secrets_kms_key_arn
+}
+
+output "otp_encryption_kms_key_arn" {
+  description = "ARN of the otp-encryption KMS CMK"
+  value       = module.auth.otp_encryption_kms_key_arn
+}
+
+# Secrets Manager
+
+output "otp_pepper_secret_arn" {
+  description = "ARN of the OTP pepper Secrets Manager secret"
+  value       = module.auth.otp_pepper_secret_arn
+}
+
+# SSM Parameters
+
+output "jwt_cache_ttl_parameter_arn" {
+  description = "ARN of the JWT cache TTL SSM parameter"
+  value       = module.auth.jwt_cache_ttl_parameter_arn
+}
+
+# IAM Roles
+
+output "ecs_execution_role_arn" {
+  description = "ARN of the shared ECS execution role"
+  value       = module.auth.ecs_execution_role_arn
+}
+
+output "chatmgmt_task_role_arn" {
+  description = "ARN of the Chat Mgmt ECS task role"
+  value       = module.auth.chatmgmt_task_role_arn
+}
+
+output "gateway_task_role_arn" {
+  description = "ARN of the Gateway ECS task role"
+  value       = module.auth.gateway_task_role_arn
+}
+
+output "ingest_task_role_arn" {
+  description = "ARN of the Ingest ECS task role"
+  value       = module.auth.ingest_task_role_arn
+}
+
+output "fanout_task_role_arn" {
+  description = "ARN of the Fanout ECS task role"
+  value       = module.auth.fanout_task_role_arn
+}
+
 # ALB
 
 output "alb_dns_name" {

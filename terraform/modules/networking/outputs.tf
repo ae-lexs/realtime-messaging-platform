@@ -71,6 +71,18 @@ output "dynamodb_endpoint_id" {
   value       = aws_vpc_endpoint.dynamodb.id
 }
 
+# VPC Interface Endpoints (TBD-TF1-6)
+
+output "vpc_endpoints_security_group_id" {
+  description = "Security group ID for VPC Interface Endpoints (null when disabled)"
+  value       = var.enable_vpc_interface_endpoints ? aws_security_group.vpc_endpoints[0].id : null
+}
+
+output "interface_endpoint_ids" {
+  description = "Map of service name to VPC Interface Endpoint ID (empty when disabled)"
+  value       = { for k, ep in aws_vpc_endpoint.interface : k => ep.id }
+}
+
 # NAT Gateway
 
 output "nat_gateway_ids" {

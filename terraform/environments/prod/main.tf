@@ -14,9 +14,10 @@
 module "networking" {
   source = "../../modules/networking"
 
-  project_name       = var.project_name
-  environment        = var.environment
-  single_nat_gateway = false
+  project_name                   = var.project_name
+  environment                    = var.environment
+  single_nat_gateway             = false
+  enable_vpc_interface_endpoints = true
 }
 
 # -----------------------------------------------------------------------------
@@ -54,6 +55,19 @@ module "ecs_cluster" {
   fargate_base        = 2
   fargate_weight      = 3
   log_retention_days  = 90
+}
+
+# -----------------------------------------------------------------------------
+# Auth
+# -----------------------------------------------------------------------------
+
+module "auth" {
+  source = "../../modules/auth"
+
+  project_name                = var.project_name
+  environment                 = var.environment
+  enable_deletion_protection  = true
+  secret_recovery_window_days = 30
 }
 
 # -----------------------------------------------------------------------------
