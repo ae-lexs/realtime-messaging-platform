@@ -62,9 +62,10 @@ module "ecs_cluster" {
 module "auth" {
   source = "../../modules/auth"
 
-  project_name               = var.project_name
-  environment                = var.environment
-  enable_deletion_protection = false
+  project_name                = var.project_name
+  environment                 = var.environment
+  enable_deletion_protection  = false
+  secret_recovery_window_days = 0
 }
 
 # -----------------------------------------------------------------------------

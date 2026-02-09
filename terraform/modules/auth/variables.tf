@@ -26,3 +26,9 @@ variable "enable_deletion_protection" {
   type        = bool
   default     = false
 }
+
+variable "secret_recovery_window_days" {
+  description = "Number of days Secrets Manager waits before permanently deleting a secret (0 for dev, 30 for prod)"
+  type        = number
+  default     = 0
+}

@@ -100,6 +100,32 @@ output "otp_requests_table_arn" {
   value       = module.auth.otp_requests_table_arn
 }
 
+# KMS Keys
+
+output "auth_secrets_kms_key_arn" {
+  description = "ARN of the auth-secrets KMS CMK"
+  value       = module.auth.auth_secrets_kms_key_arn
+}
+
+output "otp_encryption_kms_key_arn" {
+  description = "ARN of the otp-encryption KMS CMK"
+  value       = module.auth.otp_encryption_kms_key_arn
+}
+
+# Secrets Manager
+
+output "otp_pepper_secret_arn" {
+  description = "ARN of the OTP pepper Secrets Manager secret"
+  value       = module.auth.otp_pepper_secret_arn
+}
+
+# SSM Parameters
+
+output "jwt_cache_ttl_parameter_arn" {
+  description = "ARN of the JWT cache TTL SSM parameter"
+  value       = module.auth.jwt_cache_ttl_parameter_arn
+}
+
 # ALB
 
 output "alb_dns_name" {
