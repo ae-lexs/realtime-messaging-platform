@@ -83,6 +83,23 @@ output "service_connect_namespace_arn" {
   value       = module.ecs_cluster.service_connect_namespace_arn
 }
 
+# DynamoDB Auth Tables
+
+output "users_table_arn" {
+  description = "ARN of the users DynamoDB table"
+  value       = module.auth.users_table_arn
+}
+
+output "sessions_table_arn" {
+  description = "ARN of the sessions DynamoDB table"
+  value       = module.auth.sessions_table_arn
+}
+
+output "otp_requests_table_arn" {
+  description = "ARN of the otp_requests DynamoDB table"
+  value       = module.auth.otp_requests_table_arn
+}
+
 # ALB
 
 output "alb_dns_name" {
