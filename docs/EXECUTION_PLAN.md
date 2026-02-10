@@ -308,10 +308,10 @@ internal/auth/
 | PR1-INV-2 | `∀ refresh R1, R2 where R1.token = R2.prev_token: replay(R1.token) after R2 ⟹ session revoked` — Refresh token reuse triggers full session revocation | ADR-015 §4 | Unit test: rotate token, replay old token, assert session deleted |
 | PR1-INV-* | All 14 machine-checkable invariants in ADR-015 Appendix D are enforced by this PR. PR-1 is the primary (and sole) implementation of ADR-015; no subsequent PR implements these invariants from scratch. See ADR-015 Appendix D for formal definitions. | ADR-015 Appendix D | Unit and integration tests per ADR-015 Confirmation §1–§9 |
 
-### TBD Notes (Resolve During Implementation)
+### TBD Notes (Resolved)
 
-- **TBD-PR1-1: Key rotation workflow & dual-key validation.** ADR-015 specifies `kid` in JWT header, implying key rotation support. Pin the rotation workflow: (1) generate new key pair, store in Secrets Manager with new version, (2) publish new public key to SSM alongside old key, (3) validators accept JWTs signed by either key for `rotation_window` duration, (4) after window, remove old public key. Define `rotation_window` (recommendation: 2× max token lifetime = 2 hours). Define public key cache TTL in validators (recommendation: 5 minutes). **Decide during PR-1; PR-2 (Gateway) will import the validator.**
-- **TBD-PR1-2: TTL values for auth tables.** Define explicit TTL for: `otp_requests` (recommendation: 10 minutes — 2× OTP validity), `sessions` (recommendation: 30 days — max refresh token lifetime), revoked JTI in Redis (recommendation: equal to access token max lifetime, 1 hour). Ensure `sessions` TTL doesn't break refresh rotation detection — a revoked session record must persist long enough for reuse detection to trigger. **Decide during PR-1.**
+- **TBD-PR1-1: Key rotation workflow & dual-key validation.** ✅ Resolved in [PR1-DECISIONS.md](tbd/PR1-DECISIONS.md). Key decisions: RS256/RSA-2048, 90-day rotation with 7-day signing overlap (not 2 hours — operational safety margin), 300s validator cache TTL, unknown `kid` triggers single SSM refresh with 30s cooldown, 4-phase operational rotation checklist with explicit timing gates.
+- **TBD-PR1-2: TTL values for auth tables.** ✅ Resolved in [PR1-DECISIONS.md](tbd/PR1-DECISIONS.md). Key decisions: access token 60 min, OTP validity 5 min, OTP DynamoDB TTL `created_at + 1 hour` (not 10 min — DynamoDB TTL is GC, not security boundary), session 30 days, session DynamoDB TTL `expires_at + 24 hours`, revoked JTI Redis TTL fixed 3600s, strict refresh rotation (0s grace), Redis `noeviction` for revocation keyspace.
 
 ---
 
