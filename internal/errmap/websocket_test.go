@@ -25,6 +25,19 @@ func TestToWebSocketClose(t *testing.T) {
 		{"ErrForbidden", domain.ErrForbidden, errmap.CloseForbidden, "forbidden"},
 		{"ErrNotMember", domain.ErrNotMember, errmap.CloseForbidden, "not_a_member"},
 
+		// Auth errors (ADR-015)
+		{"ErrInvalidOTP", domain.ErrInvalidOTP, errmap.CloseUnauthorized, "invalid_otp"},
+		{"ErrOTPExpired", domain.ErrOTPExpired, errmap.CloseUnauthorized, "otp_expired"},
+		{"ErrDeviceMismatch", domain.ErrDeviceMismatch, errmap.CloseUnauthorized, "device_mismatch"},
+		{"ErrInvalidRefreshToken", domain.ErrInvalidRefreshToken, errmap.CloseUnauthorized, "invalid_refresh_token"},
+		{"ErrRefreshTokenReuse", domain.ErrRefreshTokenReuse, errmap.CloseUnauthorized, "refresh_token_reuse"},
+		{"ErrSessionExpired", domain.ErrSessionExpired, errmap.CloseUnauthorized, "session_expired"},
+		{"ErrSessionRevoked", domain.ErrSessionRevoked, errmap.CloseUnauthorized, "session_revoked"},
+		{"ErrInvalidPhoneNumber", domain.ErrInvalidPhoneNumber, errmap.CloseInvalidMessage, "invalid_phone_number"},
+		{"ErrPhoneRateLimited", domain.ErrPhoneRateLimited, errmap.CloseRateLimited, "phone_rate_limited"},
+		{"ErrIPRateLimited", domain.ErrIPRateLimited, errmap.CloseRateLimited, "ip_rate_limited"},
+		{"ErrMaxSessionsExceeded", domain.ErrMaxSessionsExceeded, errmap.CloseRateLimited, "max_sessions_exceeded"},
+
 		// Resource errors
 		{"ErrNotFound", domain.ErrNotFound, errmap.CloseNotFound, "not_found"},
 		{"ErrAlreadyExists", domain.ErrAlreadyExists, errmap.CloseAlreadyExists, "already_exists"},
@@ -129,6 +142,18 @@ func TestWebSocketMappingCompleteness(t *testing.T) {
 		domain.ErrUnavailable,
 		domain.ErrSlowConsumer,
 		domain.ErrDuplicateMessage,
+		// Auth errors (ADR-015)
+		domain.ErrInvalidOTP,
+		domain.ErrOTPExpired,
+		domain.ErrDeviceMismatch,
+		domain.ErrInvalidRefreshToken,
+		domain.ErrRefreshTokenReuse,
+		domain.ErrSessionExpired,
+		domain.ErrSessionRevoked,
+		domain.ErrMaxSessionsExceeded,
+		domain.ErrPhoneRateLimited,
+		domain.ErrIPRateLimited,
+		domain.ErrInvalidPhoneNumber,
 	}
 
 	for _, err := range domainErrors {

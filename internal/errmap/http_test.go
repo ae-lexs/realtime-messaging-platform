@@ -37,6 +37,19 @@ func TestToHTTPError(t *testing.T) {
 		{"ErrEmptyID", domain.ErrEmptyID, http.StatusBadRequest, "INVALID_ARGUMENT"},
 		{"ErrInvalidID", domain.ErrInvalidID, http.StatusBadRequest, "INVALID_ARGUMENT"},
 
+		// Auth errors (ADR-015)
+		{"ErrInvalidOTP", domain.ErrInvalidOTP, http.StatusUnauthorized, "INVALID_OTP"},
+		{"ErrOTPExpired", domain.ErrOTPExpired, http.StatusUnauthorized, "OTP_EXPIRED"},
+		{"ErrDeviceMismatch", domain.ErrDeviceMismatch, http.StatusUnauthorized, "DEVICE_MISMATCH"},
+		{"ErrInvalidRefreshToken", domain.ErrInvalidRefreshToken, http.StatusUnauthorized, "INVALID_REFRESH_TOKEN"},
+		{"ErrRefreshTokenReuse", domain.ErrRefreshTokenReuse, http.StatusUnauthorized, "REFRESH_TOKEN_REUSE"},
+		{"ErrSessionExpired", domain.ErrSessionExpired, http.StatusUnauthorized, "SESSION_EXPIRED"},
+		{"ErrSessionRevoked", domain.ErrSessionRevoked, http.StatusUnauthorized, "SESSION_REVOKED"},
+		{"ErrInvalidPhoneNumber", domain.ErrInvalidPhoneNumber, http.StatusBadRequest, "INVALID_ARGUMENT"},
+		{"ErrPhoneRateLimited", domain.ErrPhoneRateLimited, http.StatusTooManyRequests, "PHONE_RATE_LIMITED"},
+		{"ErrIPRateLimited", domain.ErrIPRateLimited, http.StatusTooManyRequests, "IP_RATE_LIMITED"},
+		{"ErrMaxSessionsExceeded", domain.ErrMaxSessionsExceeded, http.StatusTooManyRequests, "MAX_SESSIONS_EXCEEDED"},
+
 		// Operational errors
 		{"ErrRateLimited", domain.ErrRateLimited, http.StatusTooManyRequests, "RATE_LIMITED"},
 		{"ErrSlowConsumer", domain.ErrSlowConsumer, http.StatusTooManyRequests, "RESOURCE_EXHAUSTED"},

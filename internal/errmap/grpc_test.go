@@ -37,6 +37,19 @@ func TestToGRPCStatus(t *testing.T) {
 		{"ErrEmptyID", domain.ErrEmptyID, codes.InvalidArgument},
 		{"ErrInvalidID", domain.ErrInvalidID, codes.InvalidArgument},
 
+		// Auth errors (ADR-015)
+		{"ErrInvalidOTP", domain.ErrInvalidOTP, codes.Unauthenticated},
+		{"ErrOTPExpired", domain.ErrOTPExpired, codes.Unauthenticated},
+		{"ErrDeviceMismatch", domain.ErrDeviceMismatch, codes.Unauthenticated},
+		{"ErrInvalidRefreshToken", domain.ErrInvalidRefreshToken, codes.Unauthenticated},
+		{"ErrRefreshTokenReuse", domain.ErrRefreshTokenReuse, codes.Unauthenticated},
+		{"ErrSessionExpired", domain.ErrSessionExpired, codes.Unauthenticated},
+		{"ErrSessionRevoked", domain.ErrSessionRevoked, codes.Unauthenticated},
+		{"ErrInvalidPhoneNumber", domain.ErrInvalidPhoneNumber, codes.InvalidArgument},
+		{"ErrPhoneRateLimited", domain.ErrPhoneRateLimited, codes.ResourceExhausted},
+		{"ErrIPRateLimited", domain.ErrIPRateLimited, codes.ResourceExhausted},
+		{"ErrMaxSessionsExceeded", domain.ErrMaxSessionsExceeded, codes.ResourceExhausted},
+
 		// Operational errors
 		{"ErrRateLimited", domain.ErrRateLimited, codes.ResourceExhausted},
 		{"ErrSlowConsumer", domain.ErrSlowConsumer, codes.ResourceExhausted},
@@ -114,6 +127,18 @@ func TestGRPCMappingCompleteness(t *testing.T) {
 		domain.ErrSlowConsumer,
 		domain.ErrDuplicateMessage,
 		domain.ErrConfigRequired,
+		// Auth errors (ADR-015)
+		domain.ErrInvalidOTP,
+		domain.ErrOTPExpired,
+		domain.ErrDeviceMismatch,
+		domain.ErrInvalidRefreshToken,
+		domain.ErrRefreshTokenReuse,
+		domain.ErrSessionExpired,
+		domain.ErrSessionRevoked,
+		domain.ErrMaxSessionsExceeded,
+		domain.ErrPhoneRateLimited,
+		domain.ErrIPRateLimited,
+		domain.ErrInvalidPhoneNumber,
 	}
 
 	for _, err := range domainErrors {

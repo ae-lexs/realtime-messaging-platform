@@ -35,59 +35,62 @@ type WebSocketClose struct {
 	Reason string
 }
 
+// wsMappings maps domain errors to WebSocket close codes and reasons.
+// Order matters: first match wins (via errors.Is).
+var wsMappings = []struct {
+	err    error
+	code   int
+	reason string
+}{
+	// Auth errors — unauthorized (ADR-015)
+	{domain.ErrUnauthorized, CloseUnauthorized, "unauthorized"},
+	{domain.ErrInvalidOTP, CloseUnauthorized, "invalid_otp"},
+	{domain.ErrOTPExpired, CloseUnauthorized, "otp_expired"},
+	{domain.ErrDeviceMismatch, CloseUnauthorized, "device_mismatch"},
+	{domain.ErrInvalidRefreshToken, CloseUnauthorized, "invalid_refresh_token"},
+	{domain.ErrRefreshTokenReuse, CloseUnauthorized, "refresh_token_reuse"},
+	{domain.ErrSessionExpired, CloseUnauthorized, "session_expired"},
+	{domain.ErrSessionRevoked, CloseUnauthorized, "session_revoked"},
+
+	// Permission errors
+	{domain.ErrForbidden, CloseForbidden, "forbidden"},
+	{domain.ErrNotMember, CloseForbidden, "not_a_member"},
+
+	// Resource errors
+	{domain.ErrNotFound, CloseNotFound, "not_found"},
+	{domain.ErrAlreadyExists, CloseAlreadyExists, "already_exists"},
+	{domain.ErrDuplicateMessage, CloseAlreadyExists, "duplicate_message"},
+
+	// Validation errors
+	{domain.ErrInvalidInput, CloseInvalidMessage, "invalid_message"},
+	{domain.ErrEmptyID, CloseInvalidMessage, "invalid_message"},
+	{domain.ErrInvalidID, CloseInvalidMessage, "invalid_message"},
+	{domain.ErrInvalidPhoneNumber, CloseInvalidMessage, "invalid_phone_number"},
+	{domain.ErrMessageTooLarge, CloseMessageTooLarge, "message_too_large"},
+	{domain.ErrInvalidContentType, CloseInvalidMessage, "invalid_content_type"},
+
+	// Rate limiting
+	{domain.ErrRateLimited, CloseRateLimited, "rate_limited"},
+	{domain.ErrPhoneRateLimited, CloseRateLimited, "phone_rate_limited"},
+	{domain.ErrIPRateLimited, CloseRateLimited, "ip_rate_limited"},
+	{domain.ErrMaxSessionsExceeded, CloseRateLimited, "max_sessions_exceeded"},
+	{domain.ErrSlowConsumer, CloseRateLimited, "slow_consumer"},
+
+	// Availability
+	{domain.ErrUnavailable, CloseTryAgainLater, "service_unavailable"},
+}
+
 // ToWebSocketClose converts a domain error to a WebSocket close code and reason.
 func ToWebSocketClose(err error) WebSocketClose {
 	if err == nil {
 		return WebSocketClose{Code: CloseNormalClosure, Reason: "normal_closure"}
 	}
-
-	switch {
-	case errors.Is(err, domain.ErrUnauthorized):
-		return WebSocketClose{Code: CloseUnauthorized, Reason: "unauthorized"}
-
-	case errors.Is(err, domain.ErrForbidden):
-		return WebSocketClose{Code: CloseForbidden, Reason: "forbidden"}
-
-	case errors.Is(err, domain.ErrNotMember):
-		return WebSocketClose{Code: CloseForbidden, Reason: "not_a_member"}
-
-	case errors.Is(err, domain.ErrNotFound):
-		return WebSocketClose{Code: CloseNotFound, Reason: "not_found"}
-
-	case errors.Is(err, domain.ErrAlreadyExists):
-		return WebSocketClose{Code: CloseAlreadyExists, Reason: "already_exists"}
-
-	case errors.Is(err, domain.ErrDuplicateMessage):
-		// Idempotency hit - not an error, but we include it for completeness
-		return WebSocketClose{Code: CloseAlreadyExists, Reason: "duplicate_message"}
-
-	case errors.Is(err, domain.ErrInvalidInput):
-		return WebSocketClose{Code: CloseInvalidMessage, Reason: "invalid_message"}
-
-	case errors.Is(err, domain.ErrEmptyID):
-		return WebSocketClose{Code: CloseInvalidMessage, Reason: "invalid_message"}
-
-	case errors.Is(err, domain.ErrInvalidID):
-		return WebSocketClose{Code: CloseInvalidMessage, Reason: "invalid_message"}
-
-	case errors.Is(err, domain.ErrMessageTooLarge):
-		return WebSocketClose{Code: CloseMessageTooLarge, Reason: "message_too_large"}
-
-	case errors.Is(err, domain.ErrInvalidContentType):
-		return WebSocketClose{Code: CloseInvalidMessage, Reason: "invalid_content_type"}
-
-	case errors.Is(err, domain.ErrRateLimited):
-		return WebSocketClose{Code: CloseRateLimited, Reason: "rate_limited"}
-
-	case errors.Is(err, domain.ErrSlowConsumer):
-		return WebSocketClose{Code: CloseRateLimited, Reason: "slow_consumer"}
-
-	case errors.Is(err, domain.ErrUnavailable):
-		return WebSocketClose{Code: CloseTryAgainLater, Reason: "service_unavailable"}
-
-	default:
-		return WebSocketClose{Code: CloseInternalError, Reason: "internal_error"}
+	for _, m := range wsMappings {
+		if errors.Is(err, m.err) {
+			return WebSocketClose{Code: m.code, Reason: m.reason}
+		}
 	}
+	return WebSocketClose{Code: CloseInternalError, Reason: "internal_error"}
 }
 
 // Common close reasons for special cases not directly mapped to domain errors.
