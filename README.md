@@ -225,7 +225,7 @@ All targets delegate to Docker. This is the complete interface for development:
 
 ## Architecture Decision Records
 
-Every non-trivial design decision is documented as an Architecture Decision Record. The project currently has 17 ADRs plus a Client Protocol Contract and MVP Definition.
+Every non-trivial design decision is documented as an Architecture Decision Record. The project currently has 18 ADRs plus a Client Protocol Contract and MVP Definition.
 
 | ADR | Topic | Key Decisions |
 |-----|-------|---------------|
@@ -243,11 +243,23 @@ Every non-trivial design decision is documented as an Architecture Decision Reco
 | ADR-012 | Observability | OTel traces, metrics, SLOs, console exporter for local |
 | ADR-013 | Security | Defense-in-depth, JWT validation, device binding, abuse controls |
 | ADR-014 | Dev Environment | Docker-only toolchain, CI pipeline, monorepo layout |
-| ADR-015 | gRPC Contracts | Inter-service proto definitions, error mapping |
-| ADR-016 | Deployment Topology | ECS Fargate, service discovery, scaling policies |
-| ADR-017 | Test Pyramid | L1–L4 layers, reference client, chaos testing |
+| ADR-015 | Authentication & OTP | OTP lifecycle, token minting, refresh rotation, session management |
+| ADR-016 | Chat Lifecycle | Chat CRUD, direct chat dedup, membership orchestration |
+| ADR-017 | Client Contract & Test Harness | L1–L4 test layers, reference client, chaos testing |
+| ADR-018 | Service Lifecycle Extraction | `internal/server` package, shared graceful shutdown |
 
 Read ADRs before proposing changes to architecture, data flow, or consistency guarantees.
+
+### TBD Decision Documents
+
+Implementation specifications that pin concrete values within the bounds established by the ADRs. Each resolves TBD notes from the [Execution Plan](docs/EXECUTION_PLAN.md).
+
+| Document | Scope | Key Decisions |
+|----------|-------|---------------|
+| [PR0-DECISIONS](docs/tbd/PR0-DECISIONS.md) | Configuration, Error Taxonomy & Clock | koanf config precedence, `SecretString` redaction, sentinel error → wire mappers, injectable `Clock` interface |
+| [PR1-DECISIONS](docs/tbd/PR1-DECISIONS.md) | Key Rotation & Auth TTLs | RS256/RSA-2048, 7-day overlap, 300s cache TTL, 60-min access token, 30-day session, 3600s revoked JTI, strict refresh rotation |
+| [TF0-DECISIONS](docs/tbd/TF0-DECISIONS.md) | Infrastructure Foundation | us-east-2, 2 AZs, VPC 10.0.0.0/16, 6 security groups, ALB 3600s idle, ECS Fargate + Service Connect, S3 state backend |
+| [TF1-DECISIONS](docs/tbd/TF1-DECISIONS.md) | Auth Infrastructure | 3 DynamoDB tables, 2 KMS CMKs, Secrets Manager + SSM hierarchy, 3 VPC Interface Endpoints, 4 task roles with least-privilege |
 
 ## Contributing
 
