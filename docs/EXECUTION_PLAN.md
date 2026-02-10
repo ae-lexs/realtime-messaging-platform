@@ -306,7 +306,7 @@ internal/auth/
 |----|-----------|-----------|--------------|
 | PR1-INV-1 | `∀ security failure F: F.result = DENY` — Redis unavailable during rate limit or revocation check returns 503, never silently allows | ADR-013 `revocation_fail_secure` | Integration test: stop Redis → verify 503 on request-otp and verify-otp |
 | PR1-INV-2 | `∀ refresh R1, R2 where R1.token = R2.prev_token: replay(R1.token) after R2 ⟹ session revoked` — Refresh token reuse triggers full session revocation | ADR-015 §4 | Unit test: rotate token, replay old token, assert session deleted |
-| PR1-INV-3 | `|{services}| = 4 ∧ services = {gateway, ingest, fanout, chatmgmt}` — Auth implementation adds zero new services | ADR-015 `four_service_preserved` | docker-compose service count assertion |
+| PR1-INV-* | All 14 machine-checkable invariants in ADR-015 Appendix D are enforced by this PR. PR-1 is the primary (and sole) implementation of ADR-015; no subsequent PR implements these invariants from scratch. See ADR-015 Appendix D for formal definitions. | ADR-015 Appendix D | Unit and integration tests per ADR-015 Confirmation §1–§9 |
 
 ### TBD Notes (Resolve During Implementation)
 
