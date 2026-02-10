@@ -3,7 +3,6 @@ package auth_test
 import (
 	"crypto/rand"
 	"crypto/rsa"
-	"sync"
 	"testing"
 	"time"
 
@@ -12,38 +11,8 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/aelexs/realtime-messaging-platform/internal/auth"
+	"github.com/aelexs/realtime-messaging-platform/internal/domain/domaintest"
 )
-
-// FakeClock is a deterministic, advanceable clock for tests.
-// Follows the pattern from DD_TIME_AND_CLOCKS.md: "Time is a dependency;
-// inject it like any other." Use Advance/Set to control time progression
-// instead of creating new clock instances.
-type FakeClock struct {
-	mu      sync.Mutex
-	current time.Time
-}
-
-func NewFakeClock(t time.Time) *FakeClock {
-	return &FakeClock{current: t}
-}
-
-func (c *FakeClock) Now() time.Time {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	return c.current
-}
-
-func (c *FakeClock) Advance(d time.Duration) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	c.current = c.current.Add(d)
-}
-
-func (c *FakeClock) Set(t time.Time) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	c.current = t
-}
 
 func generateTestKey(t *testing.T) *rsa.PrivateKey {
 	t.Helper()
@@ -56,7 +25,7 @@ func TestMintAccessToken(t *testing.T) {
 	key := generateTestKey(t)
 	keyID := "test-key-001"
 	start := time.Date(2026, 1, 15, 12, 0, 0, 0, time.UTC)
-	clock := NewFakeClock(start)
+	clock := domaintest.NewFakeClock(start)
 
 	minter := auth.NewMinter(auth.MinterConfig{
 		KeyStore:  auth.NewStaticKeyStore(key, keyID),

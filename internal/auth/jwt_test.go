@@ -10,14 +10,15 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/aelexs/realtime-messaging-platform/internal/auth"
+	"github.com/aelexs/realtime-messaging-platform/internal/domain/domaintest"
 )
 
-func newTestMinterAndValidator(t *testing.T) (*auth.Minter, *auth.Validator, *auth.StaticKeyStore, *FakeClock) {
+func newTestMinterAndValidator(t *testing.T) (*auth.Minter, *auth.Validator, *auth.StaticKeyStore, *domaintest.FakeClock) {
 	t.Helper()
 	key := generateTestKey(t)
 	keyID := "test-key-001"
 	start := time.Date(2026, 1, 15, 12, 0, 0, 0, time.UTC)
-	clock := NewFakeClock(start)
+	clock := domaintest.NewFakeClock(start)
 	keyStore := auth.NewStaticKeyStore(key, keyID)
 
 	minter := auth.NewMinter(auth.MinterConfig{
