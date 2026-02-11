@@ -37,8 +37,8 @@ func (p *SNSSMSProvider) SendOTP(ctx context.Context, phone, otp string) error {
 	ctx, span := tracer.Start(ctx, "sns.sms.send_otp")
 	defer span.End()
 	span.SetAttributes(
-		attribute.String("db.system", "sns"),
-		attribute.String("db.operation", "Publish"),
+		attribute.String("messaging.system", "aws_sns"),
+		attribute.String("messaging.operation", "publish"),
 	)
 
 	message := fmt.Sprintf("Your verification code is: %s", otp)

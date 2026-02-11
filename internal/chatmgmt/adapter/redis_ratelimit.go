@@ -8,6 +8,7 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
 
+	"github.com/aelexs/realtime-messaging-platform/internal/chatmgmt/app"
 	redisclient "github.com/aelexs/realtime-messaging-platform/internal/redis"
 )
 
@@ -22,6 +23,9 @@ if count == 1 then
 end
 return count
 `
+
+// Compile-time check: RateLimiter satisfies app.RateLimiter.
+var _ app.RateLimiter = (*RateLimiter)(nil)
 
 // RateLimiter implements rate-limiting operations backed by Redis.
 // All methods follow the fail-closed policy from ADR-013: Redis errors

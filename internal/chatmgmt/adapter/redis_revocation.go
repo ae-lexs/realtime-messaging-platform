@@ -8,6 +8,7 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
 
+	"github.com/aelexs/realtime-messaging-platform/internal/chatmgmt/app"
 	redisclient "github.com/aelexs/realtime-messaging-platform/internal/redis"
 )
 
@@ -23,6 +24,9 @@ const (
 	// including admin-initiated revocations.
 	revokedJTITTL = 3600 * time.Second
 )
+
+// Compile-time check: RevocationStore satisfies app.RevocationStore.
+var _ app.RevocationStore = (*RevocationStore)(nil)
 
 // RevocationStore implements JTI revocation backed by Redis.
 // All methods follow the fail-closed policy from ADR-013: Redis errors
