@@ -4,6 +4,9 @@ import (
 	"context"
 	"fmt"
 
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
+
 	"github.com/aelexs/realtime-messaging-platform/internal/domain"
 	"github.com/aelexs/realtime-messaging-platform/internal/dynamo"
 )
@@ -44,6 +47,13 @@ func (t *Transactor) VerifyOTPAndCreateUser(
 	phoneSentinelPut dynamo.TransactWriteItem,
 	sessionPut dynamo.TransactWriteItem,
 ) error {
+	ctx, span := tracer.Start(ctx, "dynamo.tx.verify_otp_create_user")
+	defer span.End()
+	span.SetAttributes(
+		attribute.String("db.system", "dynamodb"),
+		attribute.String("db.operation", "TransactWriteItems"),
+	)
+
 	_, err := t.db.TransactWriteItems(ctx, &dynamo.TransactWriteItemsInput{
 		TransactItems: []dynamo.TransactWriteItem{
 			otpUpdate,
@@ -53,8 +63,11 @@ func (t *Transactor) VerifyOTPAndCreateUser(
 		},
 	})
 	if err != nil {
-		return t.classifyTxError(err, "verify otp and create user",
+		txErr := t.classifyTxError(err, "verify otp and create user",
 			"otp_update", "user_put", "phone_sentinel", "session_put")
+		span.RecordError(txErr)
+		span.SetStatus(codes.Error, txErr.Error())
+		return txErr
 	}
 
 	return nil
@@ -72,6 +85,13 @@ func (t *Transactor) VerifyOTPAndCreateSession(
 	otpUpdate dynamo.TransactWriteItem,
 	sessionPut dynamo.TransactWriteItem,
 ) error {
+	ctx, span := tracer.Start(ctx, "dynamo.tx.verify_otp_create_session")
+	defer span.End()
+	span.SetAttributes(
+		attribute.String("db.system", "dynamodb"),
+		attribute.String("db.operation", "TransactWriteItems"),
+	)
+
 	_, err := t.db.TransactWriteItems(ctx, &dynamo.TransactWriteItemsInput{
 		TransactItems: []dynamo.TransactWriteItem{
 			otpUpdate,
@@ -79,8 +99,11 @@ func (t *Transactor) VerifyOTPAndCreateSession(
 		},
 	})
 	if err != nil {
-		return t.classifyTxError(err, "verify otp and create session",
+		txErr := t.classifyTxError(err, "verify otp and create session",
 			"otp_update", "session_put")
+		span.RecordError(txErr)
+		span.SetStatus(codes.Error, txErr.Error())
+		return txErr
 	}
 
 	return nil

@@ -5,6 +5,9 @@ import (
 	"fmt"
 	"time"
 
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
+
 	redisclient "github.com/aelexs/realtime-messaging-platform/internal/redis"
 )
 
@@ -37,9 +40,18 @@ func NewRevocationStore(cmd redisclient.Cmdable) *RevocationStore {
 // Written by Chat Mgmt Service on logout, session revoke, and reuse
 // detection per ADR-015 §6.2.
 func (s *RevocationStore) Revoke(ctx context.Context, jti string) error {
+	ctx, span := tracer.Start(ctx, "redis.revocation.revoke")
+	defer span.End()
+	span.SetAttributes(
+		attribute.String("db.system", "redis"),
+		attribute.String("db.operation", "SET"),
+	)
+
 	key := revokedJTIPrefix + jti
 	err := s.cmd.Set(ctx, key, "1", revokedJTITTL).Err()
 	if err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
 		return fmt.Errorf("revoke JTI %q: %w", jti, err)
 	}
 
@@ -51,9 +63,18 @@ func (s *RevocationStore) Revoke(ctx context.Context, jti string) error {
 // (true, err) on Redis failure (fail-closed per ADR-013: treat as
 // revoked when the revocation store is unavailable).
 func (s *RevocationStore) IsRevoked(ctx context.Context, jti string) (bool, error) {
+	ctx, span := tracer.Start(ctx, "redis.revocation.is_revoked")
+	defer span.End()
+	span.SetAttributes(
+		attribute.String("db.system", "redis"),
+		attribute.String("db.operation", "EXISTS"),
+	)
+
 	key := revokedJTIPrefix + jti
 	result, err := s.cmd.Exists(ctx, key).Result()
 	if err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
 		return true, fmt.Errorf("check revocation %q: %w", jti, err)
 	}
 

@@ -6,6 +6,8 @@ import (
 	"log/slog"
 
 	"github.com/aws/aws-sdk-go-v2/service/sns"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
 
 	"github.com/aelexs/realtime-messaging-platform/internal/auth"
 )
@@ -32,6 +34,13 @@ func NewSNSSMSProvider(client snsPublisher) *SNSSMSProvider {
 
 // SendOTP publishes an OTP message to the given phone number via SNS.
 func (p *SNSSMSProvider) SendOTP(ctx context.Context, phone, otp string) error {
+	ctx, span := tracer.Start(ctx, "sns.sms.send_otp")
+	defer span.End()
+	span.SetAttributes(
+		attribute.String("db.system", "sns"),
+		attribute.String("db.operation", "Publish"),
+	)
+
 	message := fmt.Sprintf("Your verification code is: %s", otp)
 
 	_, err := p.client.Publish(ctx, &sns.PublishInput{
@@ -39,6 +48,8 @@ func (p *SNSSMSProvider) SendOTP(ctx context.Context, phone, otp string) error {
 		Message:     &message,
 	})
 	if err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
 		return fmt.Errorf("sns sms: send otp to %s: %w", phone, err)
 	}
 

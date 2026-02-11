@@ -6,6 +6,9 @@ import (
 	"strconv"
 	"time"
 
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
+
 	"github.com/aelexs/realtime-messaging-platform/internal/domain"
 	"github.com/aelexs/realtime-messaging-platform/internal/dynamo"
 )
@@ -73,10 +76,19 @@ func NewOTPStore(db otpDynamoDB, tableName string, clock domain.Clock) *OTPStore
 // On ConditionalCheckFailed the caller receives domain.ErrAlreadyExists,
 // signalling that an active OTP already exists for this phone hash.
 func (s *OTPStore) CreateOTP(ctx context.Context, record OTPRecord) error {
+	ctx, span := tracer.Start(ctx, "dynamo.otp.create")
+	defer span.End()
+	span.SetAttributes(
+		attribute.String("db.system", "dynamodb"),
+		attribute.String("db.operation", "PutItem"),
+	)
+
 	item := otpItem(record)
 
 	av, err := dynamo.MarshalMap(item)
 	if err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
 		return fmt.Errorf("otp store: marshal item: %w", err)
 	}
 
@@ -101,6 +113,8 @@ func (s *OTPStore) CreateOTP(ctx context.Context, record OTPRecord) error {
 		if dynamo.IsConditionalCheckFailed(err) {
 			return fmt.Errorf("otp store: create otp: %w", domain.ErrAlreadyExists)
 		}
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
 		return fmt.Errorf("otp store: create otp: %w", err)
 	}
 
@@ -110,6 +124,13 @@ func (s *OTPStore) CreateOTP(ctx context.Context, record OTPRecord) error {
 // GetOTP retrieves an OTP record by phone hash using a strongly consistent read.
 // Returns domain.ErrNotFound when no record exists for the given phone hash.
 func (s *OTPStore) GetOTP(ctx context.Context, phoneHash string) (*OTPRecord, error) {
+	ctx, span := tracer.Start(ctx, "dynamo.otp.get")
+	defer span.End()
+	span.SetAttributes(
+		attribute.String("db.system", "dynamodb"),
+		attribute.String("db.operation", "GetItem"),
+	)
+
 	consistentRead := true
 
 	out, err := s.db.GetItem(ctx, &dynamo.GetItemInput{
@@ -120,6 +141,8 @@ func (s *OTPStore) GetOTP(ctx context.Context, phoneHash string) (*OTPRecord, er
 		ConsistentRead: &consistentRead,
 	})
 	if err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
 		return nil, fmt.Errorf("otp store: get otp: %w", err)
 	}
 
@@ -129,6 +152,8 @@ func (s *OTPStore) GetOTP(ctx context.Context, phoneHash string) (*OTPRecord, er
 
 	var item otpItem
 	if err := dynamo.UnmarshalMap(out.Item, &item); err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
 		return nil, fmt.Errorf("otp store: unmarshal otp: %w", err)
 	}
 
@@ -147,6 +172,13 @@ func (s *OTPStore) GetOTP(ctx context.Context, phoneHash string) (*OTPRecord, er
 // IncrementAttempts atomically increments the attempt_count attribute for
 // the OTP record identified by phoneHash.
 func (s *OTPStore) IncrementAttempts(ctx context.Context, phoneHash string) error {
+	ctx, span := tracer.Start(ctx, "dynamo.otp.increment_attempts")
+	defer span.End()
+	span.SetAttributes(
+		attribute.String("db.system", "dynamodb"),
+		attribute.String("db.operation", "UpdateItem"),
+	)
+
 	updateExpr := "SET attempt_count = attempt_count + :one"
 
 	_, err := s.db.UpdateItem(ctx, &dynamo.UpdateItemInput{
@@ -160,6 +192,8 @@ func (s *OTPStore) IncrementAttempts(ctx context.Context, phoneHash string) erro
 		},
 	})
 	if err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
 		return fmt.Errorf("otp store: increment attempts: %w", err)
 	}
 

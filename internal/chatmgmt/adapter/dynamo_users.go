@@ -4,6 +4,9 @@ import (
 	"context"
 	"fmt"
 
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
+
 	"github.com/aelexs/realtime-messaging-platform/internal/domain"
 	"github.com/aelexs/realtime-messaging-platform/internal/dynamo"
 )
@@ -52,6 +55,13 @@ func NewUserStore(db userDynamoDB, tableName string) *UserStore {
 // GetByID retrieves a user record by user ID using a strongly consistent read.
 // Returns domain.ErrNotFound when no user exists for the given ID.
 func (s *UserStore) GetByID(ctx context.Context, userID string) (*UserRecord, error) {
+	ctx, span := tracer.Start(ctx, "dynamo.users.get_by_id")
+	defer span.End()
+	span.SetAttributes(
+		attribute.String("db.system", "dynamodb"),
+		attribute.String("db.operation", "GetItem"),
+	)
+
 	consistentRead := true
 
 	out, err := s.db.GetItem(ctx, &dynamo.GetItemInput{
@@ -62,6 +72,8 @@ func (s *UserStore) GetByID(ctx context.Context, userID string) (*UserRecord, er
 		ConsistentRead: &consistentRead,
 	})
 	if err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
 		return nil, fmt.Errorf("user store: get by id: %w", err)
 	}
 
@@ -71,6 +83,8 @@ func (s *UserStore) GetByID(ctx context.Context, userID string) (*UserRecord, er
 
 	var item userItem
 	if err := dynamo.UnmarshalMap(out.Item, &item); err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
 		return nil, fmt.Errorf("user store: unmarshal user: %w", err)
 	}
 
@@ -90,6 +104,13 @@ func (s *UserStore) GetByID(ctx context.Context, userID string) (*UserRecord, er
 // Per 04_CONTEXT_AND_LIFECYCLE: checks ctx.Err() between the Query and GetItem
 // steps to honour cancellation between multi-step operations.
 func (s *UserStore) FindByPhone(ctx context.Context, phoneNumber string) (*UserRecord, error) {
+	ctx, span := tracer.Start(ctx, "dynamo.users.find_by_phone")
+	defer span.End()
+	span.SetAttributes(
+		attribute.String("db.system", "dynamodb"),
+		attribute.String("db.operation", "Query+GetItem"),
+	)
+
 	keyExpr := "phone_number = :phone"
 
 	queryOut, err := s.db.Query(ctx, &dynamo.QueryInput{
@@ -101,6 +122,8 @@ func (s *UserStore) FindByPhone(ctx context.Context, phoneNumber string) (*UserR
 		},
 	})
 	if err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
 		return nil, fmt.Errorf("user store: find by phone query: %w", err)
 	}
 
@@ -113,11 +136,15 @@ func (s *UserStore) FindByPhone(ctx context.Context, phoneNumber string) (*UserR
 		UserID string `dynamodbav:"user_id"`
 	}
 	if err := dynamo.UnmarshalMap(queryOut.Items[0], &projected); err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
 		return nil, fmt.Errorf("user store: unmarshal gsi projection: %w", err)
 	}
 
 	// Check context between multi-step operations per 04_CONTEXT.
 	if err := ctx.Err(); err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
 		return nil, fmt.Errorf("user store: find by phone: %w", err)
 	}
 

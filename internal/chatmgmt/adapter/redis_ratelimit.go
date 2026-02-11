@@ -5,6 +5,9 @@ import (
 	"fmt"
 	"time"
 
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
+
 	redisclient "github.com/aelexs/realtime-messaging-platform/internal/redis"
 )
 
@@ -38,8 +41,17 @@ func NewRateLimiter(cmd redisclient.Cmdable) *RateLimiter {
 // limit is exceeded, and (false, err) on Redis failure (fail-closed per
 // ADR-013).
 func (r *RateLimiter) CheckAndIncrement(ctx context.Context, key string, limit, windowSeconds int) (bool, error) {
+	ctx, span := tracer.Start(ctx, "redis.ratelimit.check")
+	defer span.End()
+	span.SetAttributes(
+		attribute.String("db.system", "redis"),
+		attribute.String("db.operation", "EVAL"),
+	)
+
 	count, err := r.cmd.Eval(ctx, rateLimitScript, []string{key}, windowSeconds).Int64()
 	if err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
 		return false, fmt.Errorf("rate limit check %q: %w", key, err)
 	}
 
@@ -51,8 +63,17 @@ func (r *RateLimiter) CheckAndIncrement(ctx context.Context, key string, limit, 
 // if no lockout is active, and (true, err) on Redis failure (fail-closed
 // per ADR-013: treat error as locked).
 func (r *RateLimiter) CheckLockout(ctx context.Context, key string) (bool, error) {
+	ctx, span := tracer.Start(ctx, "redis.ratelimit.check_lockout")
+	defer span.End()
+	span.SetAttributes(
+		attribute.String("db.system", "redis"),
+		attribute.String("db.operation", "EXISTS"),
+	)
+
 	result, err := r.cmd.Exists(ctx, key).Result()
 	if err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
 		return true, fmt.Errorf("lockout check %q: %w", key, err)
 	}
 
@@ -62,8 +83,17 @@ func (r *RateLimiter) CheckLockout(ctx context.Context, key string) (bool, error
 // SetLockout sets a lockout key in Redis with the given TTL.
 // The key signals that a user has been locked out for the specified duration.
 func (r *RateLimiter) SetLockout(ctx context.Context, key string, ttlSeconds int) error {
+	ctx, span := tracer.Start(ctx, "redis.ratelimit.set_lockout")
+	defer span.End()
+	span.SetAttributes(
+		attribute.String("db.system", "redis"),
+		attribute.String("db.operation", "SET"),
+	)
+
 	err := r.cmd.Set(ctx, key, "1", time.Duration(ttlSeconds)*time.Second).Err()
 	if err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
 		return fmt.Errorf("set lockout %q: %w", key, err)
 	}
 

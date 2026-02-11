@@ -6,6 +6,9 @@ import (
 	"strconv"
 	"time"
 
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
+
 	"github.com/aelexs/realtime-messaging-platform/internal/domain"
 	"github.com/aelexs/realtime-messaging-platform/internal/dynamo"
 )
@@ -76,10 +79,19 @@ func NewSessionStore(db sessionDynamoDB, tableName string, clock domain.Clock) *
 // Create writes a new session record to DynamoDB.
 // Returns domain.ErrAlreadyExists if a session with the same ID already exists.
 func (s *SessionStore) Create(ctx context.Context, session SessionRecord) error {
+	ctx, span := tracer.Start(ctx, "dynamo.sessions.create")
+	defer span.End()
+	span.SetAttributes(
+		attribute.String("db.system", "dynamodb"),
+		attribute.String("db.operation", "PutItem"),
+	)
+
 	item := sessionItem(session)
 
 	av, err := dynamo.MarshalMap(item)
 	if err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
 		return fmt.Errorf("session store: marshal session: %w", err)
 	}
 
@@ -94,6 +106,8 @@ func (s *SessionStore) Create(ctx context.Context, session SessionRecord) error 
 		if dynamo.IsConditionalCheckFailed(err) {
 			return fmt.Errorf("session store: create: %w", domain.ErrAlreadyExists)
 		}
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
 		return fmt.Errorf("session store: create: %w", err)
 	}
 
@@ -103,6 +117,13 @@ func (s *SessionStore) Create(ctx context.Context, session SessionRecord) error 
 // GetByID retrieves a session record by session ID using a strongly consistent read.
 // Returns domain.ErrNotFound when no session exists for the given ID.
 func (s *SessionStore) GetByID(ctx context.Context, sessionID string) (*SessionRecord, error) {
+	ctx, span := tracer.Start(ctx, "dynamo.sessions.get_by_id")
+	defer span.End()
+	span.SetAttributes(
+		attribute.String("db.system", "dynamodb"),
+		attribute.String("db.operation", "GetItem"),
+	)
+
 	consistentRead := true
 
 	out, err := s.db.GetItem(ctx, &dynamo.GetItemInput{
@@ -113,6 +134,8 @@ func (s *SessionStore) GetByID(ctx context.Context, sessionID string) (*SessionR
 		ConsistentRead: &consistentRead,
 	})
 	if err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
 		return nil, fmt.Errorf("session store: get by id: %w", err)
 	}
 
@@ -127,6 +150,13 @@ func (s *SessionStore) GetByID(ctx context.Context, sessionID string) (*SessionR
 // Only sessions with expires_at > now are returned (application-level filter; DDB TTL
 // is eventually consistent).
 func (s *SessionStore) ListByUser(ctx context.Context, userID string) ([]SessionRecord, error) {
+	ctx, span := tracer.Start(ctx, "dynamo.sessions.list_by_user")
+	defer span.End()
+	span.SetAttributes(
+		attribute.String("db.system", "dynamodb"),
+		attribute.String("db.operation", "Query"),
+	)
+
 	keyExpr := "user_id = :uid"
 	filterExpr := "expires_at > :now"
 	now := s.clock.Now().UTC().Format(time.RFC3339)
@@ -142,6 +172,8 @@ func (s *SessionStore) ListByUser(ctx context.Context, userID string) ([]Session
 		},
 	})
 	if err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
 		return nil, fmt.Errorf("session store: list by user: %w", err)
 	}
 
@@ -160,6 +192,13 @@ func (s *SessionStore) ListByUser(ctx context.Context, userID string) ([]Session
 // Update applies a SessionUpdate to the session identified by sessionID.
 // Used for refresh token rotation: new hash, bumped generation, prev_token_hash.
 func (s *SessionStore) Update(ctx context.Context, sessionID string, updates SessionUpdate) error {
+	ctx, span := tracer.Start(ctx, "dynamo.sessions.update")
+	defer span.End()
+	span.SetAttributes(
+		attribute.String("db.system", "dynamodb"),
+		attribute.String("db.operation", "UpdateItem"),
+	)
+
 	updateExpr := "SET refresh_token_hash = :rth, token_generation = :gen, prev_token_hash = :pth, expires_at = :ea, #ttl = :ttl"
 
 	_, err := s.db.UpdateItem(ctx, &dynamo.UpdateItemInput{
@@ -180,6 +219,8 @@ func (s *SessionStore) Update(ctx context.Context, sessionID string, updates Ses
 		},
 	})
 	if err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
 		return fmt.Errorf("session store: update: %w", err)
 	}
 
@@ -188,6 +229,13 @@ func (s *SessionStore) Update(ctx context.Context, sessionID string, updates Ses
 
 // Delete removes a session record by session ID.
 func (s *SessionStore) Delete(ctx context.Context, sessionID string) error {
+	ctx, span := tracer.Start(ctx, "dynamo.sessions.delete")
+	defer span.End()
+	span.SetAttributes(
+		attribute.String("db.system", "dynamodb"),
+		attribute.String("db.operation", "DeleteItem"),
+	)
+
 	_, err := s.db.DeleteItem(ctx, &dynamo.DeleteItemInput{
 		TableName: &s.tableName,
 		Key: map[string]dynamo.AttributeValue{
@@ -195,6 +243,8 @@ func (s *SessionStore) Delete(ctx context.Context, sessionID string) error {
 		},
 	})
 	if err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
 		return fmt.Errorf("session store: delete: %w", err)
 	}
 
