@@ -54,6 +54,12 @@ jobs:
         with:
           version: 'latest'
 
+      - name: Install protoc plugins
+        run: |
+          go install google.golang.org/protobuf/cmd/protoc-gen-go@latest
+          go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@latest
+          go install github.com/grpc-ecosystem/grpc-gateway/v2/protoc-gen-grpc-gateway@latest
+
       - name: Generate proto stubs
         run: cd proto && buf generate
 
@@ -80,6 +86,12 @@ jobs:
       - uses: bufbuild/buf-setup-action@v1
         with:
           version: 'latest'
+
+      - name: Install protoc plugins
+        run: |
+          go install google.golang.org/protobuf/cmd/protoc-gen-go@latest
+          go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@latest
+          go install github.com/grpc-ecosystem/grpc-gateway/v2/protoc-gen-grpc-gateway@latest
 
       - name: Generate proto stubs
         run: cd proto && buf generate
@@ -109,6 +121,12 @@ jobs:
         with:
           version: 'latest'
 
+      - name: Install protoc plugins
+        run: |
+          go install google.golang.org/protobuf/cmd/protoc-gen-go@latest
+          go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@latest
+          go install github.com/grpc-ecosystem/grpc-gateway/v2/protoc-gen-grpc-gateway@latest
+
       - name: Generate proto stubs
         run: cd proto && buf generate
 
@@ -125,9 +143,20 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.25'
+          cache: true
+
       - uses: bufbuild/buf-setup-action@v1
         with:
           version: 'latest'
+
+      - name: Install protoc plugins
+        run: |
+          go install google.golang.org/protobuf/cmd/protoc-gen-go@latest
+          go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@latest
+          go install github.com/grpc-ecosystem/grpc-gateway/v2/protoc-gen-grpc-gateway@latest
 
       - name: Generate proto stubs
         run: cd proto && buf generate
@@ -184,6 +213,12 @@ jobs:
       - uses: bufbuild/buf-setup-action@v1
         with:
           version: 'latest'
+
+      - name: Install protoc plugins
+        run: |
+          go install google.golang.org/protobuf/cmd/protoc-gen-go@latest
+          go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@latest
+          go install github.com/grpc-ecosystem/grpc-gateway/v2/protoc-gen-grpc-gateway@latest
 
       - name: Generate proto stubs
         run: cd proto && buf generate
