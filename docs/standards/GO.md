@@ -474,6 +474,87 @@ Use **table-driven** when many inputs share identical assertion logic. Use **nes
 - **Port layer:** Test request/response mapping, validation, and error translation. Use httptest for HTTP handlers. Review-enforced.
 - **Adapter layer:** Integration tests against real infrastructure (LocalStack, Redpanda, Redis via docker-compose). Guideline.
 
+## Observability Conventions
+
+This section codifies the tracing and observability patterns used across all services. These conventions ensure consistent instrumentation that is filterable by service and layer in trace backends.
+
+> See handbook: [Context and Lifecycle](https://github.com/ae-lexs/go-senior-level-handbook/blob/main/04_CONTEXT_AND_LIFECYCLE.md)
+
+### Tracer Initialization
+
+Each architectural layer declares a package-level tracer using the naming convention `"{service}/{layer}"`:
+
+```go
+var tracer = otel.Tracer("chatmgmt/adapter")
+```
+
+- Declared in the layer's `doc.go` or primary file
+- Naming convention enables filtering by service (`chatmgmt/*`) or layer (`*/adapter`) in trace backends
+- One tracer per package — never per-struct or per-function
+
+Code reference: `internal/chatmgmt/adapter/doc.go:5–7`, `internal/chatmgmt/app/auth_service.go:16`
+
+### Span-per-Operation
+
+Every adapter method and every app-layer flow starts a span:
+
+```go
+ctx, span := tracer.Start(ctx, "dynamo.otp.create")
+defer span.End()
+```
+
+- Naming convention: `"{component}.{operation}"` (e.g., `"dynamo.otp.create"`, `"auth.request_otp"`)
+- Always reassign `ctx` from `tracer.Start` — child spans must propagate via context
+- Always `defer span.End()` immediately after creation
+
+Code reference: `internal/chatmgmt/adapter/dynamo_otp.go:97–98`
+
+### Semantic Attributes
+
+Infrastructure calls include OpenTelemetry semantic convention attributes:
+
+```go
+span.SetAttributes(
+    attribute.String("db.system", "dynamodb"),
+    attribute.String("db.operation", "PutItem"),
+)
+```
+
+- `db.system` and `db.operation` are required for all database adapter spans
+- Additional attributes (table name, key) may be added when they aid debugging without leaking PII
+
+Code reference: `internal/chatmgmt/adapter/dynamo_otp.go:99–102`
+
+### Error Recording
+
+On infrastructure or unexpected errors, record on the span and set error status:
+
+```go
+span.RecordError(err)
+span.SetStatus(codes.Error, err.Error())
+```
+
+- **Record**: infrastructure errors, marshaling failures, unexpected SDK responses
+- **Do not record**: domain errors that are expected flow (e.g., `domain.ErrNotFound` returned by a lookup) — these are returned without span recording since they represent normal business outcomes, not failures
+
+### Context Checkpoints
+
+Multi-step adapter operations must check `ctx.Err()` between steps to respect cancellation:
+
+```go
+// After GSI query returns, check context before follow-up GetItem.
+if err := ctx.Err(); err != nil {
+    span.RecordError(err)
+    span.SetStatus(codes.Error, err.Error())
+    return nil, fmt.Errorf("user store: find by phone: %w", err)
+}
+```
+
+- Check `ctx.Err()` before expensive operations (network calls, CPU-intensive work)
+- Especially important between a GSI query and a follow-up consistent read, or between sequential DynamoDB calls
+
+Code reference: `internal/chatmgmt/adapter/dynamo_users.go:144–149`
+
 ## Quick Reference
 
 | Category | Invariant |
@@ -493,6 +574,9 @@ Use **table-driven** when many inputs share identical assertion logic. Use **nes
 | Shutdown | Reverse of startup order; bounded time |
 | Testing | Fakes over mocks; behavioral contracts over call order |
 | Packages | Name by responsibility; dependencies point inward |
+| Observability | Package-level tracer: `var tracer = otel.Tracer("service/layer")` |
+| Observability | Every adapter and app method starts a span |
+| Observability | Check `ctx.Err()` between multi-step adapter operations |
 
 ## Further Reading
 

@@ -226,11 +226,11 @@ This is not empty boilerplate — it validates ADR-014's Docker-only toolchain, 
 | PR0-INV-2 | `∀ production image I: I.base = "scratch" ∧ I.user ≠ "root"` — All production images use scratch base and non-root user | ADR-014 `scratch_base_image` | Dockerfile inspection + `docker inspect` |
 | PR0-INV-3 | `∀ service S: S.handles(SIGTERM) = true ∧ S.drain_timeout < ECS.stopTimeout` — All services handle SIGTERM within ECS bounds | ADR-014 `graceful_shutdown` | Send SIGTERM to container, verify clean exit |
 
-### TBD Notes (Resolve During Implementation)
+### TBD Notes (Resolved)
 
-- **TBD-PR0-1: Config & secrets injection parity.** Services reference Secrets Manager / SSM, but the local development parity mechanism isn't pinned. Define config precedence: `env var → config file → AWS SDK (Secrets Manager / SSM)`. In `docker-compose.dev.yaml`, secrets are injected as env vars from `.env.dev` (never committed). In production, ECS task definitions reference Secrets Manager ARNs. Ensure secrets are never logged — the structured logger must redact fields matching `*_key`, `*_secret`, `*_token`, `*_password`. **Decide before PR-1** (auth needs signing keys).
-- **TBD-PR0-2: Error taxonomy — canonical domain error → wire mapping.** `internal/domain/errors.go` defines canonical error types. Define mapping functions: `domain error → gRPC status code` (for Ingest, Chat Mgmt), `domain error → HTTP status + JSON body` (for grpc-gateway REST), `domain error → WebSocket error frame` (for Gateway). Ship golden tests that assert each mapping. **Decide during PR-0, enforce from PR-1 onward.**
-- **TBD-PR0-3: Clock semantics.** All persisted timestamps are wall clock UTC milliseconds since epoch (`time.Now().UTC().UnixMilli()`). All in-process durations and timeouts use monotonic clock (Go's default `time.Since()`). Never persist `time.Time` directly — always convert to epoch millis before DynamoDB write. Define a `domain.Now()` function that returns `time.Time` and is injectable for tests. **Decide in PR-0, used from PR-1 onward.**
+- **TBD-PR0-1: Config & secrets injection parity.** ✅ Resolved in [PR0-DECISIONS.md](tbd/PR0-DECISIONS.md). Key decisions: koanf library with env → AWS SDK → defaults precedence, 12-Factor compliant, `SecretString` wrapper type with `slog.LogValuer` for defense-in-depth redaction, `ReplaceAttr` pattern matching for sensitive fields. Required config keys cause startup failure; optional keys fall back to defaults.
+- **TBD-PR0-2: Error taxonomy — canonical domain error → wire mapping.** ✅ Resolved in [PR0-DECISIONS.md](tbd/PR0-DECISIONS.md). Key decisions: ~10 sentinel errors in `internal/domain/errors.go`, per-protocol mappers (gRPC status codes, HTTP via grpc-gateway defaults, WebSocket 4000-4999 range), golden tests for all mappings. Rule of Extension: adding a new domain error requires updating all mappers in the same PR.
+- **TBD-PR0-3: Clock semantics.** ✅ Resolved in [PR0-DECISIONS.md](tbd/PR0-DECISIONS.md). Key decisions: `int64` UTC epoch milliseconds for all persisted timestamps, injectable `Clock` interface in `internal/domain/` with `RealClock` and `MockClock`, `NowUTCMillis()` and `FromMillis()` helpers. First-persisting service is time authority — downstream services preserve, never regenerate timestamps.
 
 ---
 
@@ -306,12 +306,12 @@ internal/auth/
 |----|-----------|-----------|--------------|
 | PR1-INV-1 | `∀ security failure F: F.result = DENY` — Redis unavailable during rate limit or revocation check returns 503, never silently allows | ADR-013 `revocation_fail_secure` | Integration test: stop Redis → verify 503 on request-otp and verify-otp |
 | PR1-INV-2 | `∀ refresh R1, R2 where R1.token = R2.prev_token: replay(R1.token) after R2 ⟹ session revoked` — Refresh token reuse triggers full session revocation | ADR-015 §4 | Unit test: rotate token, replay old token, assert session deleted |
-| PR1-INV-3 | `|{services}| = 4 ∧ services = {gateway, ingest, fanout, chatmgmt}` — Auth implementation adds zero new services | ADR-015 `four_service_preserved` | docker-compose service count assertion |
+| PR1-INV-* | All 14 machine-checkable invariants in ADR-015 Appendix D are enforced by this PR. PR-1 is the primary (and sole) implementation of ADR-015; no subsequent PR implements these invariants from scratch. See ADR-015 Appendix D for formal definitions. | ADR-015 Appendix D | Unit and integration tests per ADR-015 Confirmation §1–§9 |
 
-### TBD Notes (Resolve During Implementation)
+### TBD Notes (Resolved)
 
-- **TBD-PR1-1: Key rotation workflow & dual-key validation.** ADR-015 specifies `kid` in JWT header, implying key rotation support. Pin the rotation workflow: (1) generate new key pair, store in Secrets Manager with new version, (2) publish new public key to SSM alongside old key, (3) validators accept JWTs signed by either key for `rotation_window` duration, (4) after window, remove old public key. Define `rotation_window` (recommendation: 2× max token lifetime = 2 hours). Define public key cache TTL in validators (recommendation: 5 minutes). **Decide during PR-1; PR-2 (Gateway) will import the validator.**
-- **TBD-PR1-2: TTL values for auth tables.** Define explicit TTL for: `otp_requests` (recommendation: 10 minutes — 2× OTP validity), `sessions` (recommendation: 30 days — max refresh token lifetime), revoked JTI in Redis (recommendation: equal to access token max lifetime, 1 hour). Ensure `sessions` TTL doesn't break refresh rotation detection — a revoked session record must persist long enough for reuse detection to trigger. **Decide during PR-1.**
+- **TBD-PR1-1: Key rotation workflow & dual-key validation.** ✅ Resolved in [PR1-DECISIONS.md](tbd/PR1-DECISIONS.md). Key decisions: RS256/RSA-2048, 90-day rotation with 7-day signing overlap (not 2 hours — operational safety margin), 300s validator cache TTL, unknown `kid` triggers single SSM refresh with 30s cooldown, 4-phase operational rotation checklist with explicit timing gates.
+- **TBD-PR1-2: TTL values for auth tables.** ✅ Resolved in [PR1-DECISIONS.md](tbd/PR1-DECISIONS.md). Key decisions: access token 60 min, OTP validity 5 min, OTP DynamoDB TTL `created_at + 1 hour` (not 10 min — DynamoDB TTL is GC, not security boundary), session 30 days, session DynamoDB TTL `expires_at + 24 hours`, revoked JTI Redis TTL fixed 3600s, strict refresh rotation (0s grace), Redis `noeviction` for revocation keyspace.
 
 ---
 
@@ -769,6 +769,8 @@ Client A                Gateway-1         Ingest          Kafka         Fanout  
 
 **Trigger:** Can start immediately after PR-0; blocks no implementation PRs.
 
+**TBD Decisions (Resolved):** ✅ Resolved in [TF0-DECISIONS.md](tbd/TF0-DECISIONS.md). 8 decisions (TBD-TF0-1 through TBD-TF0-8): us-east-2 with 2 AZs, VPC 10.0.0.0/16 with asymmetric subnets (/20 public, /18 private), 5 Terraform modules (~58 resources), 6 security groups per ADR-002 planes, ALB with 3600s idle timeout, 4 ECR repos with immutable tags, ECS Fargate with Service Connect (messaging.local), S3+DynamoDB state backend.
+
 ### TF-1: Auth Infrastructure
 
 **Scope:** DynamoDB tables (`users`, `sessions`, `otp_requests`), Secrets Manager secret (JWT signing key pair), SSM parameters (JWT public key, OTP pepper reference), IAM roles (Chat Mgmt task role with Secrets Manager + DynamoDB + Redis access).
@@ -776,6 +778,8 @@ Client A                Gateway-1         Ingest          Kafka         Fanout  
 **ADR coverage:** ADR-015, ADR-007 §2.7–2.8, ADR-014 §7.
 
 **Trigger:** After TF-0. Should align with PR-1 (Auth implementation).
+
+**TBD Decisions (Resolved):** ✅ Resolved in [TF1-DECISIONS.md](tbd/TF1-DECISIONS.md). 8 decisions (TBD-TF1-1 through TBD-TF1-8): two-module structure (extend networking + new auth), 3 DynamoDB tables (On-Demand, PITR, AWS-managed SSE), 2 KMS CMKs (auth-secrets + otp-encryption), Secrets Manager with recovery window 0/30 (dev/prod), SSM hierarchy under /messaging/jwt/, 3 VPC Interface Endpoints (Secrets Manager, SSM, KMS), 4 task roles + 1 execution role with least-privilege, clear Terraform/script ownership boundary.
 
 ### TF-2: Core Infrastructure
 

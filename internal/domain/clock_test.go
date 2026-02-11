@@ -1,48 +1,14 @@
 package domain_test
 
 import (
-	"sync"
 	"testing"
 	"time"
 
-	"github.com/aelexs/realtime-messaging-platform/internal/domain"
 	"github.com/stretchr/testify/assert"
+
+	"github.com/aelexs/realtime-messaging-platform/internal/domain"
+	"github.com/aelexs/realtime-messaging-platform/internal/domain/domaintest"
 )
-
-// MockClock is a Clock implementation for testing that returns deterministic times.
-type MockClock struct {
-	mu      sync.Mutex
-	current time.Time
-}
-
-// NewMockClock creates a MockClock set to the given time.
-func NewMockClock(t time.Time) *MockClock {
-	return &MockClock{current: t}
-}
-
-// Now returns the mock's current time.
-func (m *MockClock) Now() time.Time {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	return m.current
-}
-
-// Advance moves the mock clock forward by the given duration.
-func (m *MockClock) Advance(d time.Duration) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	m.current = m.current.Add(d)
-}
-
-// Set changes the mock clock to a specific time.
-func (m *MockClock) Set(t time.Time) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	m.current = t
-}
-
-// Ensure MockClock implements domain.Clock
-var _ domain.Clock = (*MockClock)(nil)
 
 func TestRealClock(t *testing.T) {
 	t.Run("returns current time", func(t *testing.T) {
@@ -56,16 +22,16 @@ func TestRealClock(t *testing.T) {
 	})
 }
 
-func TestMockClock(t *testing.T) {
+func TestFakeClock(t *testing.T) {
 	fixedTime := time.Date(2026, 2, 1, 10, 0, 0, 0, time.UTC)
 
 	t.Run("returns fixed time", func(t *testing.T) {
-		clock := NewMockClock(fixedTime)
+		clock := domaintest.NewFakeClock(fixedTime)
 		assert.True(t, clock.Now().Equal(fixedTime))
 	})
 
 	t.Run("advance moves time forward", func(t *testing.T) {
-		clock := NewMockClock(fixedTime)
+		clock := domaintest.NewFakeClock(fixedTime)
 		clock.Advance(1 * time.Hour)
 
 		expected := fixedTime.Add(1 * time.Hour)
@@ -73,7 +39,7 @@ func TestMockClock(t *testing.T) {
 	})
 
 	t.Run("set changes time", func(t *testing.T) {
-		clock := NewMockClock(fixedTime)
+		clock := domaintest.NewFakeClock(fixedTime)
 		newTime := time.Date(2026, 6, 15, 12, 0, 0, 0, time.UTC)
 		clock.Set(newTime)
 
@@ -83,7 +49,7 @@ func TestMockClock(t *testing.T) {
 
 func TestNowUTCMillis(t *testing.T) {
 	fixedTime := time.Date(2026, 2, 1, 10, 30, 45, 123456789, time.UTC)
-	clock := NewMockClock(fixedTime)
+	clock := domaintest.NewFakeClock(fixedTime)
 
 	millis := domain.NowUTCMillis(clock)
 
@@ -104,7 +70,7 @@ func TestFromMillis(t *testing.T) {
 
 	t.Run("round trip preserves value", func(t *testing.T) {
 		fixedTime := time.Date(2026, 2, 1, 10, 30, 45, 0, time.UTC)
-		clock := NewMockClock(fixedTime)
+		clock := domaintest.NewFakeClock(fixedTime)
 
 		millis := domain.NowUTCMillis(clock)
 		restored := domain.FromMillis(millis)

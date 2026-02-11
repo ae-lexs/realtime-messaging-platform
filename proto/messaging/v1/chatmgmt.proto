@@ -7,6 +7,46 @@ import "messaging/v1/common.proto";
 
 option go_package = "github.com/aelexs/realtime-messaging-platform/gen/messaging/v1;messagingv1";
 
+// AuthService handles authentication operations on the Chat Mgmt service.
+// OTP-based passwordless login, token lifecycle, and session management.
+// Exposes both gRPC and REST (via grpc-gateway) endpoints (ADR-015).
+service AuthService {
+  // RequestOTP sends a one-time password to the given phone number.
+  rpc RequestOTP(RequestOTPRequest) returns (RequestOTPResponse) {
+    option (google.api.http) = {
+      post: "/v1/auth/otp/request"
+      body: "*"
+    };
+  }
+
+  // VerifyOTP verifies an OTP and returns authentication tokens.
+  // Creates a new user if the phone number is not registered.
+  rpc VerifyOTP(VerifyOTPRequest) returns (VerifyOTPResponse) {
+    option (google.api.http) = {
+      post: "/v1/auth/otp/verify"
+      body: "*"
+    };
+  }
+
+  // RefreshTokens exchanges a refresh token for new access and refresh tokens.
+  // Requires the (potentially expired) access token in the Authorization header.
+  rpc RefreshTokens(RefreshTokensRequest) returns (RefreshTokensResponse) {
+    option (google.api.http) = {
+      post: "/v1/auth/tokens/refresh"
+      body: "*"
+    };
+  }
+
+  // Logout revokes the current session.
+  // Requires a valid access token in the Authorization header.
+  rpc Logout(LogoutRequest) returns (LogoutResponse) {
+    option (google.api.http) = {
+      post: "/v1/auth/logout"
+      body: "*"
+    };
+  }
+}
+
 // ChatMgmtService handles chat lifecycle and membership operations.
 // Exposes both gRPC and REST (via grpc-gateway) endpoints.
 service ChatMgmtService {
@@ -229,4 +269,101 @@ enum MembershipChangeType {
   MEMBERSHIP_CHANGE_TYPE_JOINED = 1;
   MEMBERSHIP_CHANGE_TYPE_LEFT = 2;
   MEMBERSHIP_CHANGE_TYPE_REMOVED = 3;
+}
+
+// ============================================================================
+// Auth messages (ADR-015)
+// ============================================================================
+
+// RequestOTPRequest contains the phone number to send an OTP to.
+message RequestOTPRequest {
+  // Phone number in E.164 format (e.g., "+14155552671").
+  string phone_number = 1;
+}
+
+// RequestOTPResponse confirms the OTP was sent.
+message RequestOTPResponse {
+  // When the OTP expires.
+  Timestamp expires_at = 1;
+
+  // Seconds before the client may request a new OTP.
+  int32 retry_after_seconds = 2;
+}
+
+// VerifyOTPRequest contains the OTP and device information.
+message VerifyOTPRequest {
+  // Phone number in E.164 format.
+  string phone_number = 1;
+
+  // The 6-digit OTP code.
+  string otp = 2;
+
+  // Client-generated device identifier (UUIDv4).
+  string device_id = 3;
+}
+
+// VerifyOTPResponse contains the authenticated user and tokens.
+message VerifyOTPResponse {
+  // The authenticated user.
+  AuthUser user = 1;
+
+  // Session identifier.
+  string session_id = 2;
+
+  // JWT access token.
+  string access_token = 3;
+
+  // Opaque refresh token.
+  string refresh_token = 4;
+
+  // True if this is a newly registered user.
+  bool is_new_user = 5;
+
+  // When the access token expires.
+  Timestamp access_token_expires_at = 6;
+}
+
+// RefreshTokensRequest contains the refresh token to exchange.
+message RefreshTokensRequest {
+  // The current refresh token.
+  string refresh_token = 1;
+}
+
+// RefreshTokensResponse contains the new tokens.
+message RefreshTokensResponse {
+  // New JWT access token.
+  string access_token = 1;
+
+  // New opaque refresh token.
+  string refresh_token = 2;
+
+  // When the new access token expires.
+  Timestamp access_token_expires_at = 3;
+}
+
+// LogoutRequest contains the refresh token to revoke.
+message LogoutRequest {
+  // The current refresh token (ensures client holds both tokens).
+  string refresh_token = 1;
+}
+
+// LogoutResponse is empty on success.
+message LogoutResponse {}
+
+// AuthUser represents an authenticated user returned by auth endpoints.
+message AuthUser {
+  // Unique user identifier.
+  string user_id = 1;
+
+  // Phone number in E.164 format.
+  string phone_number = 2;
+
+  // User display name (empty for new users).
+  string display_name = 3;
+
+  // Whether the phone number is verified.
+  bool phone_verified = 4;
+
+  // When the user was created.
+  Timestamp created_at = 5;
 }

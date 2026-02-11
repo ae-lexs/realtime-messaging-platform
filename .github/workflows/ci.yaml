@@ -50,6 +50,19 @@ jobs:
           go-version: '1.25'
           cache: true
 
+      - uses: bufbuild/buf-setup-action@v1
+        with:
+          version: 'latest'
+
+      - name: Install protoc plugins
+        run: |
+          go install google.golang.org/protobuf/cmd/protoc-gen-go@latest
+          go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@latest
+          go install github.com/grpc-ecosystem/grpc-gateway/v2/protoc-gen-grpc-gateway@latest
+
+      - name: Generate proto stubs
+        run: cd proto && buf generate
+
       # Build golangci-lint v2 from source to support Go 1.25
       # Pre-built binaries may be built with older Go versions
       - name: Install golangci-lint
@@ -69,6 +82,19 @@ jobs:
         with:
           go-version: '1.25'
           cache: true
+
+      - uses: bufbuild/buf-setup-action@v1
+        with:
+          version: 'latest'
+
+      - name: Install protoc plugins
+        run: |
+          go install google.golang.org/protobuf/cmd/protoc-gen-go@latest
+          go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@latest
+          go install github.com/grpc-ecosystem/grpc-gateway/v2/protoc-gen-grpc-gateway@latest
+
+      - name: Generate proto stubs
+        run: cd proto && buf generate
 
       - name: Run tests
         run: go test -race -coverprofile=coverage.txt -covermode=atomic ./...
@@ -91,6 +117,19 @@ jobs:
           go-version: '1.25'
           cache: true
 
+      - uses: bufbuild/buf-setup-action@v1
+        with:
+          version: 'latest'
+
+      - name: Install protoc plugins
+        run: |
+          go install google.golang.org/protobuf/cmd/protoc-gen-go@latest
+          go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@latest
+          go install github.com/grpc-ecosystem/grpc-gateway/v2/protoc-gen-grpc-gateway@latest
+
+      - name: Generate proto stubs
+        run: cd proto && buf generate
+
       - name: Build all services
         run: go build -v ./cmd/...
 
@@ -103,6 +142,24 @@ jobs:
         service: [gateway, ingest, fanout, chatmgmt]
     steps:
       - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.25'
+          cache: true
+
+      - uses: bufbuild/buf-setup-action@v1
+        with:
+          version: 'latest'
+
+      - name: Install protoc plugins
+        run: |
+          go install google.golang.org/protobuf/cmd/protoc-gen-go@latest
+          go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@latest
+          go install github.com/grpc-ecosystem/grpc-gateway/v2/protoc-gen-grpc-gateway@latest
+
+      - name: Generate proto stubs
+        run: cd proto && buf generate
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -152,6 +209,19 @@ jobs:
         with:
           go-version: '1.25'
           cache: true
+
+      - uses: bufbuild/buf-setup-action@v1
+        with:
+          version: 'latest'
+
+      - name: Install protoc plugins
+        run: |
+          go install google.golang.org/protobuf/cmd/protoc-gen-go@latest
+          go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@latest
+          go install github.com/grpc-ecosystem/grpc-gateway/v2/protoc-gen-grpc-gateway@latest
+
+      - name: Generate proto stubs
+        run: cd proto && buf generate
 
       - name: Run integration tests
         run: go test -race -tags=integration -v ./...

@@ -54,15 +54,15 @@ lint-all: lint lint-arch
 # Testing (Docker-only per PR0-INV-1)
 # ============================================================================
 
-## Run unit tests with race detection
+## Run unit tests with race detection (excludes cmd/ and gen/ from coverage)
 test:
 	docker compose -f docker-compose.yaml -f docker-compose.dev.yaml run --rm toolbox \
-		go test -race -v ./...
+		sh -c 'go test -race -v $$(go list ./... | grep -v -E "cmd/|gen/")'
 
-## Run unit tests with coverage
+## Run unit tests with coverage (excludes cmd/ and gen/ from coverage)
 test-coverage:
 	docker compose -f docker-compose.yaml -f docker-compose.dev.yaml run --rm toolbox \
-		go test -race -coverprofile=coverage.txt -covermode=atomic ./...
+		sh -c 'go test -race -coverprofile=coverage.txt -covermode=atomic $$(go list ./... | grep -v -E "cmd/|gen/")'
 
 ## Run integration tests (requires infrastructure up)
 test-integration:

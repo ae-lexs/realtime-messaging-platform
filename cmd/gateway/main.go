@@ -23,5 +23,5 @@ func run(ctx context.Context) error {
 	return server.Run(ctx, server.Params{
 		Name:           "gateway",
 		PortFromConfig: func(cfg *config.Config) int { return cfg.Gateway.HTTPPort },
-	}, nil)
+	}, server.Listeners{})
 }

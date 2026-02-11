@@ -32,6 +32,19 @@ var (
 	// Returns HTTP 200/gRPC OK with the original message; included here for mapper completeness
 	ErrDuplicateMessage = errors.New("duplicate client_message_id")
 
+	// Auth errors (ADR-015)
+	ErrInvalidOTP          = errors.New("invalid OTP")
+	ErrOTPExpired          = errors.New("OTP has expired")
+	ErrDeviceMismatch      = errors.New("device ID does not match session")
+	ErrInvalidRefreshToken = errors.New("invalid refresh token")
+	ErrRefreshTokenReuse   = errors.New("refresh token reuse detected")
+	ErrSessionExpired      = errors.New("session has expired")
+	ErrSessionRevoked      = errors.New("session has been revoked")
+	ErrMaxSessionsExceeded = errors.New("maximum concurrent sessions exceeded")
+	ErrPhoneRateLimited    = errors.New("phone number rate limit exceeded")
+	ErrIPRateLimited       = errors.New("IP address rate limit exceeded")
+	ErrInvalidPhoneNumber  = errors.New("invalid phone number format")
+
 	// Configuration errors
 	ErrConfigRequired = errors.New("required configuration key missing")
 )
@@ -39,21 +52,43 @@ var (
 // IsRetryable returns true if the error represents a transient condition
 // that may succeed on retry (ADR-009 Tier classification).
 func IsRetryable(err error) bool {
-	return errors.Is(err, ErrUnavailable) || errors.Is(err, ErrRateLimited)
+	return errors.Is(err, ErrUnavailable) ||
+		errors.Is(err, ErrRateLimited) ||
+		errors.Is(err, ErrPhoneRateLimited) ||
+		errors.Is(err, ErrIPRateLimited) ||
+		errors.Is(err, ErrMaxSessionsExceeded)
+}
+
+// clientErrors enumerates all domain errors that represent client-side issues.
+var clientErrors = []error{
+	ErrInvalidInput,
+	ErrMessageTooLarge,
+	ErrInvalidContentType,
+	ErrNotFound,
+	ErrNotMember,
+	ErrForbidden,
+	ErrUnauthorized,
+	ErrEmptyID,
+	ErrInvalidID,
+	ErrInvalidOTP,
+	ErrOTPExpired,
+	ErrDeviceMismatch,
+	ErrInvalidRefreshToken,
+	ErrRefreshTokenReuse,
+	ErrSessionExpired,
+	ErrSessionRevoked,
+	ErrInvalidPhoneNumber,
 }
 
 // IsClientError returns true if the error represents a client-side issue
 // that will not succeed on retry without client-side changes.
 func IsClientError(err error) bool {
-	return errors.Is(err, ErrInvalidInput) ||
-		errors.Is(err, ErrMessageTooLarge) ||
-		errors.Is(err, ErrInvalidContentType) ||
-		errors.Is(err, ErrNotFound) ||
-		errors.Is(err, ErrNotMember) ||
-		errors.Is(err, ErrForbidden) ||
-		errors.Is(err, ErrUnauthorized) ||
-		errors.Is(err, ErrEmptyID) ||
-		errors.Is(err, ErrInvalidID)
+	for _, target := range clientErrors {
+		if errors.Is(err, target) {
+			return true
+		}
+	}
+	return false
 }
 
 // IsPermissionDenied returns true if the error represents a permission issue.
