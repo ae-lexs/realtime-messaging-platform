@@ -9,9 +9,13 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
 
+	"github.com/aelexs/realtime-messaging-platform/internal/chatmgmt/app"
 	"github.com/aelexs/realtime-messaging-platform/internal/domain"
 	"github.com/aelexs/realtime-messaging-platform/internal/dynamo"
 )
+
+// Compile-time check: SessionStore satisfies app.SessionStore.
+var _ app.SessionStore = (*SessionStore)(nil)
 
 // sessionDynamoDB is a narrow, consumer-defined interface for DynamoDB operations
 // required by the session store. The *dynamodb.Client satisfies this interface.
@@ -36,26 +40,34 @@ type sessionItem struct {
 	TTL              int64  `dynamodbav:"ttl"`
 }
 
-// SessionRecord is the adapter-level representation of a session.
-type SessionRecord struct {
-	SessionID        string
-	UserID           string
-	DeviceID         string
-	RefreshTokenHash string
-	TokenGeneration  int64
-	PrevTokenHash    string
-	CreatedAt        string
-	ExpiresAt        string
-	TTL              int64
+// toSessionItem converts an app.SessionRecord to the DynamoDB item shape.
+func toSessionItem(r app.SessionRecord) sessionItem {
+	return sessionItem{
+		SessionID:        r.SessionID,
+		UserID:           r.UserID,
+		DeviceID:         r.DeviceID,
+		RefreshTokenHash: r.RefreshTokenHash,
+		TokenGeneration:  r.TokenGeneration,
+		PrevTokenHash:    r.PrevTokenHash,
+		CreatedAt:        r.CreatedAt,
+		ExpiresAt:        r.ExpiresAt,
+		TTL:              r.TTL,
+	}
 }
 
-// SessionUpdate holds the fields to update during refresh token rotation.
-type SessionUpdate struct {
-	RefreshTokenHash string
-	TokenGeneration  int64
-	PrevTokenHash    string
-	ExpiresAt        string
-	TTL              int64
+// fromSessionItem converts a DynamoDB item to an app.SessionRecord.
+func fromSessionItem(item sessionItem) *app.SessionRecord {
+	return &app.SessionRecord{
+		SessionID:        item.SessionID,
+		UserID:           item.UserID,
+		DeviceID:         item.DeviceID,
+		RefreshTokenHash: item.RefreshTokenHash,
+		PrevTokenHash:    item.PrevTokenHash,
+		CreatedAt:        item.CreatedAt,
+		ExpiresAt:        item.ExpiresAt,
+		TokenGeneration:  item.TokenGeneration,
+		TTL:              item.TTL,
+	}
 }
 
 // SessionStore persists session records in DynamoDB.
@@ -78,7 +90,7 @@ func NewSessionStore(db sessionDynamoDB, tableName string, clock domain.Clock) *
 
 // Create writes a new session record to DynamoDB.
 // Returns domain.ErrAlreadyExists if a session with the same ID already exists.
-func (s *SessionStore) Create(ctx context.Context, session SessionRecord) error {
+func (s *SessionStore) Create(ctx context.Context, session app.SessionRecord) error {
 	ctx, span := tracer.Start(ctx, "dynamo.sessions.create")
 	defer span.End()
 	span.SetAttributes(
@@ -86,7 +98,7 @@ func (s *SessionStore) Create(ctx context.Context, session SessionRecord) error 
 		attribute.String("db.operation", "PutItem"),
 	)
 
-	item := sessionItem(session)
+	item := toSessionItem(session)
 
 	av, err := dynamo.MarshalMap(item)
 	if err != nil {
@@ -116,7 +128,7 @@ func (s *SessionStore) Create(ctx context.Context, session SessionRecord) error 
 
 // GetByID retrieves a session record by session ID using a strongly consistent read.
 // Returns domain.ErrNotFound when no session exists for the given ID.
-func (s *SessionStore) GetByID(ctx context.Context, sessionID string) (*SessionRecord, error) {
+func (s *SessionStore) GetByID(ctx context.Context, sessionID string) (*app.SessionRecord, error) {
 	ctx, span := tracer.Start(ctx, "dynamo.sessions.get_by_id")
 	defer span.End()
 	span.SetAttributes(
@@ -149,7 +161,7 @@ func (s *SessionStore) GetByID(ctx context.Context, sessionID string) (*SessionR
 // ListByUser retrieves all active sessions for a user via the user_sessions-index GSI.
 // Only sessions with expires_at > now are returned (application-level filter; DDB TTL
 // is eventually consistent).
-func (s *SessionStore) ListByUser(ctx context.Context, userID string) ([]SessionRecord, error) {
+func (s *SessionStore) ListByUser(ctx context.Context, userID string) ([]app.SessionRecord, error) {
 	ctx, span := tracer.Start(ctx, "dynamo.sessions.list_by_user")
 	defer span.End()
 	span.SetAttributes(
@@ -177,7 +189,7 @@ func (s *SessionStore) ListByUser(ctx context.Context, userID string) ([]Session
 		return nil, fmt.Errorf("session store: list by user: %w", err)
 	}
 
-	sessions := make([]SessionRecord, 0, len(out.Items))
+	sessions := make([]app.SessionRecord, 0, len(out.Items))
 	for _, item := range out.Items {
 		rec, err := s.unmarshalSession(item)
 		if err != nil {
@@ -191,7 +203,7 @@ func (s *SessionStore) ListByUser(ctx context.Context, userID string) ([]Session
 
 // Update applies a SessionUpdate to the session identified by sessionID.
 // Used for refresh token rotation: new hash, bumped generation, prev_token_hash.
-func (s *SessionStore) Update(ctx context.Context, sessionID string, updates SessionUpdate) error {
+func (s *SessionStore) Update(ctx context.Context, sessionID string, updates app.SessionUpdate) error {
 	ctx, span := tracer.Start(ctx, "dynamo.sessions.update")
 	defer span.End()
 	span.SetAttributes(
@@ -251,22 +263,12 @@ func (s *SessionStore) Delete(ctx context.Context, sessionID string) error {
 	return nil
 }
 
-// unmarshalSession converts a DynamoDB attribute map into a SessionRecord.
-func (s *SessionStore) unmarshalSession(item map[string]dynamo.AttributeValue) (*SessionRecord, error) {
+// unmarshalSession converts a DynamoDB attribute map into an app.SessionRecord.
+func (s *SessionStore) unmarshalSession(item map[string]dynamo.AttributeValue) (*app.SessionRecord, error) {
 	var si sessionItem
 	if err := dynamo.UnmarshalMap(item, &si); err != nil {
 		return nil, fmt.Errorf("session store: unmarshal session: %w", err)
 	}
 
-	return &SessionRecord{
-		SessionID:        si.SessionID,
-		UserID:           si.UserID,
-		DeviceID:         si.DeviceID,
-		RefreshTokenHash: si.RefreshTokenHash,
-		TokenGeneration:  si.TokenGeneration,
-		PrevTokenHash:    si.PrevTokenHash,
-		CreatedAt:        si.CreatedAt,
-		ExpiresAt:        si.ExpiresAt,
-		TTL:              si.TTL,
-	}, nil
+	return fromSessionItem(si), nil
 }

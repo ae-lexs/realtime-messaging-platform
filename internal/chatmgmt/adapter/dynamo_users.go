@@ -7,9 +7,13 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
 
+	"github.com/aelexs/realtime-messaging-platform/internal/chatmgmt/app"
 	"github.com/aelexs/realtime-messaging-platform/internal/domain"
 	"github.com/aelexs/realtime-messaging-platform/internal/dynamo"
 )
+
+// Compile-time check: UserStore satisfies app.UserStore.
+var _ app.UserStore = (*UserStore)(nil)
 
 // userDynamoDB is a narrow, consumer-defined interface for DynamoDB operations
 // required by the user store. The *dynamodb.Client satisfies this interface.
@@ -27,13 +31,15 @@ type userItem struct {
 	UpdatedAt   string `dynamodbav:"updated_at"`
 }
 
-// UserRecord is the adapter-level representation of a user.
-type UserRecord struct {
-	UserID      string
-	PhoneNumber string
-	DisplayName string
-	CreatedAt   string
-	UpdatedAt   string
+// fromUserItem converts a DynamoDB item to an app.UserRecord.
+func fromUserItem(item userItem) *app.UserRecord {
+	return &app.UserRecord{
+		UserID:      item.UserID,
+		PhoneNumber: item.PhoneNumber,
+		DisplayName: item.DisplayName,
+		CreatedAt:   item.CreatedAt,
+		UpdatedAt:   item.UpdatedAt,
+	}
 }
 
 // UserStore persists user records in DynamoDB.
@@ -54,7 +60,7 @@ func NewUserStore(db userDynamoDB, tableName string) *UserStore {
 
 // GetByID retrieves a user record by user ID using a strongly consistent read.
 // Returns domain.ErrNotFound when no user exists for the given ID.
-func (s *UserStore) GetByID(ctx context.Context, userID string) (*UserRecord, error) {
+func (s *UserStore) GetByID(ctx context.Context, userID string) (*app.UserRecord, error) {
 	ctx, span := tracer.Start(ctx, "dynamo.users.get_by_id")
 	defer span.End()
 	span.SetAttributes(
@@ -88,13 +94,7 @@ func (s *UserStore) GetByID(ctx context.Context, userID string) (*UserRecord, er
 		return nil, fmt.Errorf("user store: unmarshal user: %w", err)
 	}
 
-	return &UserRecord{
-		UserID:      item.UserID,
-		PhoneNumber: item.PhoneNumber,
-		DisplayName: item.DisplayName,
-		CreatedAt:   item.CreatedAt,
-		UpdatedAt:   item.UpdatedAt,
-	}, nil
+	return fromUserItem(item), nil
 }
 
 // FindByPhone looks up a user by phone number via the phone_number-index GSI,
@@ -103,7 +103,7 @@ func (s *UserStore) GetByID(ctx context.Context, userID string) (*UserRecord, er
 //
 // Per 04_CONTEXT_AND_LIFECYCLE: checks ctx.Err() between the Query and GetItem
 // steps to honour cancellation between multi-step operations.
-func (s *UserStore) FindByPhone(ctx context.Context, phoneNumber string) (*UserRecord, error) {
+func (s *UserStore) FindByPhone(ctx context.Context, phoneNumber string) (*app.UserRecord, error) {
 	ctx, span := tracer.Start(ctx, "dynamo.users.find_by_phone")
 	defer span.End()
 	span.SetAttributes(

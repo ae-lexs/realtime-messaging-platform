@@ -8,6 +8,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/aelexs/realtime-messaging-platform/internal/chatmgmt/app"
 	"github.com/aelexs/realtime-messaging-platform/internal/domain"
 	"github.com/aelexs/realtime-messaging-platform/internal/dynamo"
 )
@@ -57,7 +58,7 @@ func TestUserStore_GetByID(t *testing.T) {
 		getItemFn func(ctx context.Context, params *dynamo.GetItemInput, optFns ...func(*dynamo.Options)) (*dynamo.GetItemOutput, error)
 		wantErr   error
 		errSubstr string
-		wantUser  *UserRecord
+		wantUser  *app.UserRecord
 	}{
 		{
 			name: "success - returns parsed user record",
@@ -71,7 +72,7 @@ func TestUserStore_GetByID(t *testing.T) {
 				require.NoError(t, err)
 				return &dynamo.GetItemOutput{Item: av}, nil
 			},
-			wantUser: &UserRecord{
+			wantUser: &app.UserRecord{
 				UserID:      "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee",
 				PhoneNumber: "+15551234567",
 				DisplayName: "Test User",

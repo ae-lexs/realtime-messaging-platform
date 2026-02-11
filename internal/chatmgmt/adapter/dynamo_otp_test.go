@@ -9,6 +9,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/aelexs/realtime-messaging-platform/internal/chatmgmt/app"
 	"github.com/aelexs/realtime-messaging-platform/internal/domain"
 	"github.com/aelexs/realtime-messaging-platform/internal/domain/domaintest"
 	"github.com/aelexs/realtime-messaging-platform/internal/dynamo"
@@ -49,8 +50,8 @@ func fixedTime() time.Time {
 	return time.Date(2026, 2, 10, 12, 0, 0, 0, time.UTC)
 }
 
-func sampleRecord() OTPRecord {
-	return OTPRecord{
+func sampleRecord() app.OTPRecord {
+	return app.OTPRecord{
 		PhoneHash:     "abc123hash",
 		OTPMAC:        "mac-value",
 		OTPCiphertext: "encrypted-otp",
@@ -150,7 +151,7 @@ func TestGetOTP(t *testing.T) {
 		getItemFn func(ctx context.Context, params *dynamo.GetItemInput, optFns ...func(*dynamo.Options)) (*dynamo.GetItemOutput, error)
 		wantErr   error
 		errSubstr string
-		wantRec   *OTPRecord
+		wantRec   *app.OTPRecord
 	}{
 		{
 			name: "success - returns parsed record with correct fields",
@@ -182,7 +183,7 @@ func TestGetOTP(t *testing.T) {
 				require.NoError(t, err)
 				return &dynamo.GetItemOutput{Item: av}, nil
 			},
-			wantRec: &OTPRecord{
+			wantRec: &app.OTPRecord{
 				PhoneHash:     "abc123hash",
 				OTPMAC:        "mac-value",
 				OTPCiphertext: "encrypted-otp",

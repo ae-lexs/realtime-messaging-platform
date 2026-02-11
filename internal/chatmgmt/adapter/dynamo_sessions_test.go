@@ -9,6 +9,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/aelexs/realtime-messaging-platform/internal/chatmgmt/app"
 	"github.com/aelexs/realtime-messaging-platform/internal/domain"
 	"github.com/aelexs/realtime-messaging-platform/internal/domain/domaintest"
 	"github.com/aelexs/realtime-messaging-platform/internal/dynamo"
@@ -72,9 +73,19 @@ func sampleSessionItem() sessionItem {
 	}
 }
 
-func sampleSessionRecord() SessionRecord {
+func sampleSessionRecord() app.SessionRecord {
 	si := sampleSessionItem()
-	return SessionRecord(si)
+	return app.SessionRecord{
+		SessionID:        si.SessionID,
+		UserID:           si.UserID,
+		DeviceID:         si.DeviceID,
+		RefreshTokenHash: si.RefreshTokenHash,
+		PrevTokenHash:    si.PrevTokenHash,
+		CreatedAt:        si.CreatedAt,
+		ExpiresAt:        si.ExpiresAt,
+		TokenGeneration:  si.TokenGeneration,
+		TTL:              si.TTL,
+	}
 }
 
 // ---------------------------------------------------------------------------
@@ -284,11 +295,11 @@ func TestSessionStore_Update(t *testing.T) {
 			},
 		}, sessionsTable, clock)
 
-		err := store.Update(context.Background(), "session-abc", SessionUpdate{
+		err := store.Update(context.Background(), "session-abc", app.SessionUpdate{
 			RefreshTokenHash: "new-hash",
-			TokenGeneration:  2,
 			PrevTokenHash:    "old-hash",
 			ExpiresAt:        "2026-03-12T12:00:00Z",
+			TokenGeneration:  2,
 			TTL:              sessionFixedTime().Add(30 * 24 * time.Hour).Unix(),
 		})
 
@@ -303,7 +314,7 @@ func TestSessionStore_Update(t *testing.T) {
 			},
 		}, sessionsTable, clock)
 
-		err := store.Update(context.Background(), "session-abc", SessionUpdate{})
+		err := store.Update(context.Background(), "session-abc", app.SessionUpdate{})
 
 		require.Error(t, err)
 		assert.Contains(t, err.Error(), "session store: update: internal error")

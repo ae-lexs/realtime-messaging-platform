@@ -9,9 +9,13 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
 
+	"github.com/aelexs/realtime-messaging-platform/internal/chatmgmt/app"
 	"github.com/aelexs/realtime-messaging-platform/internal/domain"
 	"github.com/aelexs/realtime-messaging-platform/internal/dynamo"
 )
+
+// Compile-time check: OTPStore satisfies app.OTPStore.
+var _ app.OTPStore = (*OTPStore)(nil)
 
 // otpDynamoDB is a narrow, consumer-defined interface for DynamoDB operations
 // required by the OTP store. Only the methods this adapter calls are declared.
@@ -36,18 +40,32 @@ type otpItem struct {
 	TTL           int64  `dynamodbav:"ttl"`
 }
 
-// OTPRecord is the adapter-level representation of an OTP request.
-// The app layer creates and consumes these; the adapter translates them
-// to/from DynamoDB items.
-type OTPRecord struct {
-	PhoneHash     string
-	OTPMAC        string
-	OTPCiphertext string
-	CreatedAt     string
-	ExpiresAt     string
-	AttemptCount  int
-	Status        string
-	TTL           int64
+// toOTPItem converts an app.OTPRecord to the DynamoDB item shape.
+func toOTPItem(r app.OTPRecord) otpItem {
+	return otpItem{
+		PhoneHash:     r.PhoneHash,
+		OTPMAC:        r.OTPMAC,
+		OTPCiphertext: r.OTPCiphertext,
+		CreatedAt:     r.CreatedAt,
+		ExpiresAt:     r.ExpiresAt,
+		AttemptCount:  r.AttemptCount,
+		Status:        r.Status,
+		TTL:           r.TTL,
+	}
+}
+
+// fromOTPItem converts a DynamoDB item to an app.OTPRecord.
+func fromOTPItem(item otpItem) *app.OTPRecord {
+	return &app.OTPRecord{
+		PhoneHash:     item.PhoneHash,
+		OTPMAC:        item.OTPMAC,
+		OTPCiphertext: item.OTPCiphertext,
+		CreatedAt:     item.CreatedAt,
+		ExpiresAt:     item.ExpiresAt,
+		Status:        item.Status,
+		AttemptCount:  item.AttemptCount,
+		TTL:           item.TTL,
+	}
 }
 
 // OTPStore persists OTP records in DynamoDB.
@@ -75,7 +93,7 @@ func NewOTPStore(db otpDynamoDB, tableName string, clock domain.Clock) *OTPStore
 //
 // On ConditionalCheckFailed the caller receives domain.ErrAlreadyExists,
 // signalling that an active OTP already exists for this phone hash.
-func (s *OTPStore) CreateOTP(ctx context.Context, record OTPRecord) error {
+func (s *OTPStore) CreateOTP(ctx context.Context, record app.OTPRecord) error {
 	ctx, span := tracer.Start(ctx, "dynamo.otp.create")
 	defer span.End()
 	span.SetAttributes(
@@ -83,7 +101,7 @@ func (s *OTPStore) CreateOTP(ctx context.Context, record OTPRecord) error {
 		attribute.String("db.operation", "PutItem"),
 	)
 
-	item := otpItem(record)
+	item := toOTPItem(record)
 
 	av, err := dynamo.MarshalMap(item)
 	if err != nil {
@@ -123,7 +141,7 @@ func (s *OTPStore) CreateOTP(ctx context.Context, record OTPRecord) error {
 
 // GetOTP retrieves an OTP record by phone hash using a strongly consistent read.
 // Returns domain.ErrNotFound when no record exists for the given phone hash.
-func (s *OTPStore) GetOTP(ctx context.Context, phoneHash string) (*OTPRecord, error) {
+func (s *OTPStore) GetOTP(ctx context.Context, phoneHash string) (*app.OTPRecord, error) {
 	ctx, span := tracer.Start(ctx, "dynamo.otp.get")
 	defer span.End()
 	span.SetAttributes(
@@ -157,16 +175,7 @@ func (s *OTPStore) GetOTP(ctx context.Context, phoneHash string) (*OTPRecord, er
 		return nil, fmt.Errorf("otp store: unmarshal otp: %w", err)
 	}
 
-	return &OTPRecord{
-		PhoneHash:     item.PhoneHash,
-		OTPMAC:        item.OTPMAC,
-		OTPCiphertext: item.OTPCiphertext,
-		CreatedAt:     item.CreatedAt,
-		ExpiresAt:     item.ExpiresAt,
-		AttemptCount:  item.AttemptCount,
-		Status:        item.Status,
-		TTL:           item.TTL,
-	}, nil
+	return fromOTPItem(item), nil
 }
 
 // IncrementAttempts atomically increments the attempt_count attribute for
