@@ -21,7 +21,9 @@ func main() {
 
 func run(ctx context.Context) error {
 	return server.Run(ctx, server.Params{
-		Name:           "chatmgmt",
-		PortFromConfig: func(cfg *config.Config) int { return cfg.ChatMgmt.HTTPPort },
+		Name:               "chatmgmt",
+		PortFromConfig:     func(cfg *config.Config) int { return cfg.ChatMgmt.HTTPPort },
+		GRPCPortFromConfig: func(cfg *config.Config) int { return cfg.ChatMgmt.GRPCPort },
+		Setup:              setup,
 	}, server.Listeners{})
 }

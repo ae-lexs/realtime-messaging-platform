@@ -123,10 +123,10 @@ func TestRunSetupCallbackInvoked(t *testing.T) {
 	params := server.Params{
 		Name:           "testservice",
 		PortFromConfig: func(_ *config.Config) int { return 0 },
-		Setup: func(_ context.Context, deps server.SetupDeps) error {
+		Setup: func(_ context.Context, deps server.SetupDeps) (func(context.Context) error, error) {
 			setupCalled = true
 			receivedDeps = deps
-			return nil
+			return nil, nil
 		},
 	}
 
@@ -165,8 +165,8 @@ func TestRunSetupErrorPreventsStart(t *testing.T) {
 	params := server.Params{
 		Name:           "testservice",
 		PortFromConfig: func(_ *config.Config) int { return 0 },
-		Setup: func(_ context.Context, _ server.SetupDeps) error {
-			return setupErr
+		Setup: func(_ context.Context, _ server.SetupDeps) (func(context.Context) error, error) {
+			return nil, setupErr
 		},
 	}
 
@@ -193,11 +193,11 @@ func TestRunWithGRPCServer(t *testing.T) {
 		Name:               "testservice",
 		PortFromConfig:     func(_ *config.Config) int { return 0 },
 		GRPCPortFromConfig: func(_ *config.Config) int { return 0 },
-		Setup: func(_ context.Context, deps server.SetupDeps) error {
+		Setup: func(_ context.Context, deps server.SetupDeps) (func(context.Context) error, error) {
 			grpcServerFromSetup = deps.GRPCServer
 			// Register the health service so we can probe gRPC.
 			healthpb.RegisterHealthServer(deps.GRPCServer, &stubHealthServer{})
-			return nil
+			return nil, nil
 		},
 	}
 
@@ -238,6 +238,43 @@ func TestRunWithGRPCServer(t *testing.T) {
 	case <-time.After(domain.GracefulShutdownTimeout + 5*time.Second):
 		t.Fatal("shutdown timed out")
 	}
+}
+
+func TestRunCleanupCalledDuringShutdown(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+
+	ln := newTestListener(t)
+	addr := ln.Addr().String()
+
+	cleanupCalled := make(chan struct{})
+
+	params := server.Params{
+		Name:           "testservice",
+		PortFromConfig: func(_ *config.Config) int { return 0 },
+		Setup: func(_ context.Context, _ server.SetupDeps) (func(context.Context) error, error) {
+			return func(_ context.Context) error {
+				close(cleanupCalled)
+				return nil
+			}, nil
+		},
+	}
+
+	errCh := make(chan error, 1)
+	go func() {
+		errCh <- server.Run(ctx, params, server.Listeners{HTTP: ln})
+	}()
+
+	waitForHealthy(t, addr)
+	cancel()
+
+	select {
+	case <-cleanupCalled:
+		// Cleanup was called during shutdown.
+	case <-time.After(domain.GracefulShutdownTimeout + 5*time.Second):
+		t.Fatal("cleanup function was not called during shutdown")
+	}
+
+	<-errCh
 }
 
 // stubHealthServer implements the gRPC Health service for testing.

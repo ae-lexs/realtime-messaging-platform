@@ -38,8 +38,14 @@ type Params struct {
 	// Setup is called after config, logging, and observability are initialized
 	// but before the servers start accepting connections. Use it to register
 	// gRPC services, mount grpc-gateway handlers, or perform other service-
-	// specific initialization. When nil, no setup is performed.
-	Setup func(ctx context.Context, deps SetupDeps) error
+	// specific initialization.
+	//
+	// The returned cleanup function (if non-nil) is called during graceful
+	// shutdown after HTTP and gRPC servers stop but before OTEL flush. Use
+	// it to close infrastructure clients, wait on background goroutines, etc.
+	//
+	// When Setup is nil, no setup or cleanup is performed.
+	Setup func(ctx context.Context, deps SetupDeps) (cleanup func(context.Context) error, err error)
 }
 
 // SetupDeps holds the dependencies available to a service's Setup callback.
@@ -88,13 +94,16 @@ func Run(ctx context.Context, p Params, lns Listeners) error {
 
 	grpcServer := newGRPCServerIfConfigured(p)
 
+	var cleanupFn func(context.Context) error
 	if p.Setup != nil {
-		if setupErr := p.Setup(ctx, SetupDeps{
+		var setupErr error
+		cleanupFn, setupErr = p.Setup(ctx, SetupDeps{
 			Config:     cfg,
 			Logger:     logger,
 			HTTPMux:    mux,
 			GRPCServer: grpcServer,
-		}); setupErr != nil {
+		})
+		if setupErr != nil {
 			return fmt.Errorf("setup: %w", setupErr)
 		}
 	}
@@ -118,7 +127,7 @@ func Run(ctx context.Context, p Params, lns Listeners) error {
 
 	g, ctx := errgroup.WithContext(ctx)
 	startServers(g, logger, httpSrv, httpLn, grpcServer, grpcLn, cfg.Environment)
-	g.Go(shutdownFunc(ctx, logger, &shuttingDown, httpSrv, grpcServer, tp, mp))
+	g.Go(shutdownFunc(ctx, logger, &shuttingDown, httpSrv, grpcServer, cleanupFn, tp, mp))
 
 	return g.Wait()
 }
@@ -230,10 +239,11 @@ func startServers(
 }
 
 // shutdownFunc returns the errgroup function that orchestrates graceful shutdown.
-// Shutdown order: gRPC GracefulStop -> HTTP Shutdown -> OTEL flush.
+// Shutdown order: gRPC GracefulStop -> HTTP Shutdown -> service cleanup -> OTEL flush.
 func shutdownFunc(
 	ctx context.Context, logger *slog.Logger, shuttingDown *atomic.Bool,
 	httpSrv *http.Server, grpcServer *grpc.Server,
+	cleanupFn func(context.Context) error,
 	tp *observability.TracerProvider, mp *observability.MetricsProvider,
 ) func() error {
 	return func() error {
@@ -252,6 +262,14 @@ func shutdownFunc(
 		defer httpCancel()
 		if shutdownErr := httpSrv.Shutdown(httpCtx); shutdownErr != nil {
 			logger.Error("HTTP server shutdown error", slog.String("error", shutdownErr.Error()))
+		}
+
+		if cleanupFn != nil {
+			cleanupCtx, cleanupCancel := context.WithTimeout(context.Background(), domain.ShutdownHTTPTimeout)
+			defer cleanupCancel()
+			if cleanupErr := cleanupFn(cleanupCtx); cleanupErr != nil {
+				logger.Error("service cleanup error", slog.String("error", cleanupErr.Error()))
+			}
 		}
 
 		otelCtx, otelCancel := context.WithTimeout(context.Background(), domain.ShutdownOTELTimeout)
