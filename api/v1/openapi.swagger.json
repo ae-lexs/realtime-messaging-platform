@@ -1,0 +1,869 @@
+{
+  "swagger": "2.0",
+  "info": {
+    "title": "Realtime Messaging Platform API",
+    "description": "REST API for the Realtime Messaging Platform. Covers authentication (OTP login, token lifecycle, sessions) and chat management (chat CRUD, membership, message history).",
+    "version": "1.0.0"
+  },
+  "tags": [
+    {
+      "name": "AuthService"
+    },
+    {
+      "name": "ChatMgmtService"
+    }
+  ],
+  "schemes": [
+    "https"
+  ],
+  "consumes": [
+    "application/json"
+  ],
+  "produces": [
+    "application/json"
+  ],
+  "paths": {
+    "/v1/auth/logout": {
+      "post": {
+        "summary": "Logout revokes the current session.\nRequires a valid access token in the Authorization header.",
+        "operationId": "AuthService_Logout",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/v1LogoutResponse"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "body",
+            "description": "LogoutRequest contains the refresh token to revoke.",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/v1LogoutRequest"
+            }
+          }
+        ],
+        "tags": [
+          "AuthService"
+        ]
+      }
+    },
+    "/v1/auth/otp/request": {
+      "post": {
+        "summary": "RequestOTP sends a one-time password to the given phone number.",
+        "operationId": "AuthService_RequestOTP",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/v1RequestOTPResponse"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "body",
+            "description": "RequestOTPRequest contains the phone number to send an OTP to.",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/v1RequestOTPRequest"
+            }
+          }
+        ],
+        "tags": [
+          "AuthService"
+        ]
+      }
+    },
+    "/v1/auth/otp/verify": {
+      "post": {
+        "summary": "VerifyOTP verifies an OTP and returns authentication tokens.\nCreates a new user if the phone number is not registered.",
+        "operationId": "AuthService_VerifyOTP",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/v1VerifyOTPResponse"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "body",
+            "description": "VerifyOTPRequest contains the OTP and device information.",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/v1VerifyOTPRequest"
+            }
+          }
+        ],
+        "tags": [
+          "AuthService"
+        ]
+      }
+    },
+    "/v1/auth/tokens/refresh": {
+      "post": {
+        "summary": "RefreshTokens exchanges a refresh token for new access and refresh tokens.\nRequires the (potentially expired) access token in the Authorization header.",
+        "operationId": "AuthService_RefreshTokens",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/v1RefreshTokensResponse"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "body",
+            "description": "RefreshTokensRequest contains the refresh token to exchange.",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/v1RefreshTokensRequest"
+            }
+          }
+        ],
+        "tags": [
+          "AuthService"
+        ]
+      }
+    },
+    "/v1/chats": {
+      "get": {
+        "summary": "ListChats lists chats the user is a member of.",
+        "operationId": "ChatMgmtService_ListChats",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/v1ListChatsResponse"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "page.pageSize",
+            "description": "Maximum number of items to return. Defaults to 50, max 100.",
+            "in": "query",
+            "required": false,
+            "type": "integer",
+            "format": "int32"
+          },
+          {
+            "name": "page.pageToken",
+            "description": "Cursor from a previous response for continuation.",
+            "in": "query",
+            "required": false,
+            "type": "string"
+          }
+        ],
+        "tags": [
+          "ChatMgmtService"
+        ]
+      },
+      "post": {
+        "summary": "CreateChat creates a new chat (direct or group).\nFor direct chats, returns existing chat if one already exists for the pair.",
+        "operationId": "ChatMgmtService_CreateChat",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/v1CreateChatResponse"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "body",
+            "description": "CreateChatRequest contains parameters for creating a chat.",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/v1CreateChatRequest"
+            }
+          }
+        ],
+        "tags": [
+          "ChatMgmtService"
+        ]
+      }
+    },
+    "/v1/chats/{chatId}": {
+      "get": {
+        "summary": "GetChat retrieves chat details by ID.",
+        "operationId": "ChatMgmtService_GetChat",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/v1GetChatResponse"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "chatId",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          }
+        ],
+        "tags": [
+          "ChatMgmtService"
+        ]
+      }
+    },
+    "/v1/chats/{chatId}/leave": {
+      "post": {
+        "summary": "LeaveChat removes the calling user from a group chat.\nOwner cannot leave (must transfer ownership first).",
+        "operationId": "ChatMgmtService_LeaveChat",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/v1LeaveChatResponse"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "chatId",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/ChatMgmtServiceLeaveChatBody"
+            }
+          }
+        ],
+        "tags": [
+          "ChatMgmtService"
+        ]
+      }
+    },
+    "/v1/chats/{chatId}/members": {
+      "post": {
+        "summary": "AddMember adds a user to a group chat.\nDirect chats do not allow membership changes.",
+        "operationId": "ChatMgmtService_AddMember",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/v1AddMemberResponse"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "chatId",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/ChatMgmtServiceAddMemberBody"
+            }
+          }
+        ],
+        "tags": [
+          "ChatMgmtService"
+        ]
+      }
+    },
+    "/v1/chats/{chatId}/members/{userId}": {
+      "delete": {
+        "summary": "RemoveMember removes a user from a group chat.\nOnly chat owner can remove members.",
+        "operationId": "ChatMgmtService_RemoveMember",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/v1RemoveMemberResponse"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "chatId",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "name": "userId",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          }
+        ],
+        "tags": [
+          "ChatMgmtService"
+        ]
+      }
+    },
+    "/v1/chats/{chatId}/messages": {
+      "get": {
+        "summary": "GetMessages retrieves message history for a chat.",
+        "operationId": "ChatMgmtService_GetMessages",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/v1GetMessagesResponse"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "chatId",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "name": "afterSequence",
+            "description": "Return messages with sequence \u003e after_sequence.\nUsed for sync-on-reconnect.",
+            "in": "query",
+            "required": false,
+            "type": "string",
+            "format": "uint64"
+          },
+          {
+            "name": "beforeSequence",
+            "description": "Return messages with sequence \u003c before_sequence.\nUsed for backward pagination.",
+            "in": "query",
+            "required": false,
+            "type": "string",
+            "format": "uint64"
+          },
+          {
+            "name": "page.pageSize",
+            "description": "Maximum number of items to return. Defaults to 50, max 100.",
+            "in": "query",
+            "required": false,
+            "type": "integer",
+            "format": "int32"
+          },
+          {
+            "name": "page.pageToken",
+            "description": "Cursor from a previous response for continuation.",
+            "in": "query",
+            "required": false,
+            "type": "string"
+          }
+        ],
+        "tags": [
+          "ChatMgmtService"
+        ]
+      }
+    }
+  },
+  "definitions": {
+    "ChatMgmtServiceAddMemberBody": {
+      "type": "object",
+      "properties": {
+        "userId": {
+          "type": "string"
+        }
+      },
+      "description": "AddMemberRequest specifies the member to add."
+    },
+    "ChatMgmtServiceLeaveChatBody": {
+      "type": "object",
+      "description": "LeaveChatRequest identifies the chat to leave."
+    },
+    "protobufAny": {
+      "type": "object",
+      "properties": {
+        "@type": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": {}
+    },
+    "rpcStatus": {
+      "type": "object",
+      "properties": {
+        "code": {
+          "type": "integer",
+          "format": "int32"
+        },
+        "message": {
+          "type": "string"
+        },
+        "details": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "$ref": "#/definitions/protobufAny"
+          }
+        }
+      }
+    },
+    "v1AddMemberResponse": {
+      "type": "object",
+      "properties": {
+        "memberCount": {
+          "type": "integer",
+          "format": "int32",
+          "description": "Updated member count."
+        }
+      },
+      "description": "AddMemberResponse confirms the member was added."
+    },
+    "v1AuthUser": {
+      "type": "object",
+      "properties": {
+        "userId": {
+          "type": "string",
+          "description": "Unique user identifier."
+        },
+        "phoneNumber": {
+          "type": "string",
+          "description": "Phone number in E.164 format."
+        },
+        "displayName": {
+          "type": "string",
+          "description": "User display name (empty for new users)."
+        },
+        "phoneVerified": {
+          "type": "boolean",
+          "description": "Whether the phone number is verified."
+        },
+        "createdAt": {
+          "$ref": "#/definitions/v1Timestamp",
+          "description": "When the user was created."
+        }
+      },
+      "description": "AuthUser represents an authenticated user returned by auth endpoints."
+    },
+    "v1Chat": {
+      "type": "object",
+      "properties": {
+        "chatId": {
+          "type": "string"
+        },
+        "chatType": {
+          "$ref": "#/definitions/v1ChatType"
+        },
+        "name": {
+          "type": "string"
+        },
+        "memberCount": {
+          "type": "integer",
+          "format": "int32",
+          "description": "Number of members."
+        },
+        "createdAt": {
+          "$ref": "#/definitions/v1Timestamp",
+          "description": "When the chat was created."
+        },
+        "lastSequence": {
+          "type": "string",
+          "format": "uint64",
+          "description": "Last message sequence (for sync purposes)."
+        }
+      },
+      "description": "Chat represents a chat room."
+    },
+    "v1ChatType": {
+      "type": "string",
+      "enum": [
+        "CHAT_TYPE_UNSPECIFIED",
+        "CHAT_TYPE_DIRECT",
+        "CHAT_TYPE_GROUP"
+      ],
+      "default": "CHAT_TYPE_UNSPECIFIED",
+      "description": "ChatType defines the type of chat."
+    },
+    "v1ContentType": {
+      "type": "string",
+      "enum": [
+        "CONTENT_TYPE_UNSPECIFIED",
+        "CONTENT_TYPE_TEXT"
+      ],
+      "default": "CONTENT_TYPE_UNSPECIFIED",
+      "description": "ContentType defines supported message content types."
+    },
+    "v1CreateChatRequest": {
+      "type": "object",
+      "properties": {
+        "chatType": {
+          "$ref": "#/definitions/v1ChatType",
+          "description": "Type of chat to create."
+        },
+        "name": {
+          "type": "string",
+          "description": "Display name for group chats. Ignored for direct chats."
+        },
+        "memberIds": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Initial members. For direct chats, must contain exactly 2 user IDs.\nFor group chats, must contain at least 2 and at most 100 user IDs."
+        }
+      },
+      "description": "CreateChatRequest contains parameters for creating a chat."
+    },
+    "v1CreateChatResponse": {
+      "type": "object",
+      "properties": {
+        "chat": {
+          "$ref": "#/definitions/v1Chat",
+          "description": "The chat."
+        },
+        "isExisting": {
+          "type": "boolean",
+          "description": "True if this is an existing direct chat (idempotent creation)."
+        }
+      },
+      "description": "CreateChatResponse contains the created or existing chat."
+    },
+    "v1GetChatResponse": {
+      "type": "object",
+      "properties": {
+        "chat": {
+          "$ref": "#/definitions/v1Chat"
+        }
+      },
+      "description": "GetChatResponse contains the requested chat."
+    },
+    "v1GetMessagesResponse": {
+      "type": "object",
+      "properties": {
+        "messages": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "$ref": "#/definitions/v1Message"
+          },
+          "description": "Messages in ascending sequence order."
+        },
+        "page": {
+          "$ref": "#/definitions/v1PageResponse",
+          "description": "Pagination metadata."
+        }
+      },
+      "description": "GetMessagesResponse contains message history."
+    },
+    "v1LeaveChatResponse": {
+      "type": "object",
+      "description": "LeaveChatResponse confirms the user left."
+    },
+    "v1ListChatsResponse": {
+      "type": "object",
+      "properties": {
+        "chats": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "$ref": "#/definitions/v1Chat"
+          },
+          "description": "Chats the user is a member of."
+        },
+        "page": {
+          "$ref": "#/definitions/v1PageResponse",
+          "description": "Pagination metadata."
+        }
+      },
+      "description": "ListChatsResponse contains the user's chats."
+    },
+    "v1LogoutRequest": {
+      "type": "object",
+      "properties": {
+        "refreshToken": {
+          "type": "string",
+          "description": "The current refresh token (ensures client holds both tokens)."
+        }
+      },
+      "description": "LogoutRequest contains the refresh token to revoke."
+    },
+    "v1LogoutResponse": {
+      "type": "object",
+      "description": "LogoutResponse is empty on success."
+    },
+    "v1Message": {
+      "type": "object",
+      "properties": {
+        "messageId": {
+          "type": "string",
+          "description": "Unique message identifier."
+        },
+        "chatId": {
+          "type": "string",
+          "description": "Chat this message belongs to."
+        },
+        "senderId": {
+          "type": "string",
+          "description": "User who sent the message."
+        },
+        "clientMessageId": {
+          "type": "string",
+          "description": "Client-generated message ID for deduplication (ADR-001)."
+        },
+        "sequence": {
+          "type": "string",
+          "format": "uint64",
+          "description": "Server-assigned monotonic sequence number (ADR-001, ADR-004)."
+        },
+        "contentType": {
+          "$ref": "#/definitions/v1ContentType",
+          "description": "Message content type."
+        },
+        "content": {
+          "type": "string",
+          "description": "Message body."
+        },
+        "createdAt": {
+          "$ref": "#/definitions/v1Timestamp",
+          "description": "When the message was persisted (server time)."
+        }
+      },
+      "description": "Message represents a chat message."
+    },
+    "v1PageRequest": {
+      "type": "object",
+      "properties": {
+        "pageSize": {
+          "type": "integer",
+          "format": "int32",
+          "description": "Maximum number of items to return. Defaults to 50, max 100."
+        },
+        "pageToken": {
+          "type": "string",
+          "description": "Cursor from a previous response for continuation."
+        }
+      },
+      "description": "PageRequest contains pagination parameters."
+    },
+    "v1PageResponse": {
+      "type": "object",
+      "properties": {
+        "nextPageToken": {
+          "type": "string",
+          "description": "Cursor for the next page. Empty if no more results."
+        },
+        "totalCount": {
+          "type": "string",
+          "format": "int64",
+          "description": "Total count of items (if available)."
+        }
+      },
+      "description": "PageResponse contains pagination metadata."
+    },
+    "v1RefreshTokensRequest": {
+      "type": "object",
+      "properties": {
+        "refreshToken": {
+          "type": "string",
+          "description": "The current refresh token."
+        }
+      },
+      "description": "RefreshTokensRequest contains the refresh token to exchange."
+    },
+    "v1RefreshTokensResponse": {
+      "type": "object",
+      "properties": {
+        "accessToken": {
+          "type": "string",
+          "description": "New JWT access token."
+        },
+        "refreshToken": {
+          "type": "string",
+          "description": "New opaque refresh token."
+        },
+        "accessTokenExpiresAt": {
+          "$ref": "#/definitions/v1Timestamp",
+          "description": "When the new access token expires."
+        }
+      },
+      "description": "RefreshTokensResponse contains the new tokens."
+    },
+    "v1RemoveMemberResponse": {
+      "type": "object",
+      "properties": {
+        "memberCount": {
+          "type": "integer",
+          "format": "int32",
+          "description": "Updated member count."
+        }
+      },
+      "description": "RemoveMemberResponse confirms the member was removed."
+    },
+    "v1RequestOTPRequest": {
+      "type": "object",
+      "properties": {
+        "phoneNumber": {
+          "type": "string",
+          "description": "Phone number in E.164 format (e.g., \"+14155552671\")."
+        }
+      },
+      "description": "RequestOTPRequest contains the phone number to send an OTP to."
+    },
+    "v1RequestOTPResponse": {
+      "type": "object",
+      "properties": {
+        "expiresAt": {
+          "$ref": "#/definitions/v1Timestamp",
+          "description": "When the OTP expires."
+        },
+        "retryAfterSeconds": {
+          "type": "integer",
+          "format": "int32",
+          "description": "Seconds before the client may request a new OTP."
+        }
+      },
+      "description": "RequestOTPResponse confirms the OTP was sent."
+    },
+    "v1Timestamp": {
+      "type": "object",
+      "properties": {
+        "millis": {
+          "type": "string",
+          "format": "int64",
+          "description": "UTC milliseconds since Unix epoch (1970-01-01T00:00:00Z)."
+        }
+      },
+      "description": "Timestamp represents a point in time as UTC milliseconds since epoch.\nAll persisted timestamps use this format per TBD-PR0-3."
+    },
+    "v1VerifyOTPRequest": {
+      "type": "object",
+      "properties": {
+        "phoneNumber": {
+          "type": "string",
+          "description": "Phone number in E.164 format."
+        },
+        "otp": {
+          "type": "string",
+          "description": "The 6-digit OTP code."
+        },
+        "deviceId": {
+          "type": "string",
+          "description": "Client-generated device identifier (UUIDv4)."
+        }
+      },
+      "description": "VerifyOTPRequest contains the OTP and device information."
+    },
+    "v1VerifyOTPResponse": {
+      "type": "object",
+      "properties": {
+        "user": {
+          "$ref": "#/definitions/v1AuthUser",
+          "description": "The authenticated user."
+        },
+        "sessionId": {
+          "type": "string",
+          "description": "Session identifier."
+        },
+        "accessToken": {
+          "type": "string",
+          "description": "JWT access token."
+        },
+        "refreshToken": {
+          "type": "string",
+          "description": "Opaque refresh token."
+        },
+        "isNewUser": {
+          "type": "boolean",
+          "description": "True if this is a newly registered user."
+        },
+        "accessTokenExpiresAt": {
+          "$ref": "#/definitions/v1Timestamp",
+          "description": "When the access token expires."
+        }
+      },
+      "description": "VerifyOTPResponse contains the authenticated user and tokens."
+    }
+  },
+  "securityDefinitions": {
+    "Bearer": {
+      "type": "apiKey",
+      "description": "JWT access token. Format: Bearer \u003ctoken\u003e",
+      "name": "Authorization",
+      "in": "header"
+    }
+  }
+}

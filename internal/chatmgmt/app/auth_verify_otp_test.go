@@ -461,7 +461,7 @@ func TestVerifyOTP(t *testing.T) {
 		assert.ErrorIs(t, err, domain.ErrInvalidPhoneNumber)
 	})
 
-	t.Run("CheckAndIncrement Redis error: returns wrapped error (fail-closed)", func(t *testing.T) {
+	t.Run("CheckAndIncrement Redis error: returns ErrUnavailable (fail-closed → 503)", func(t *testing.T) {
 		h := newTestHarness(t)
 		errRedis := errors.New("redis connection refused")
 
@@ -474,10 +474,11 @@ func TestVerifyOTP(t *testing.T) {
 
 		_, err := h.svc.VerifyOTP(context.Background(), testPhone, testOTP, testDeviceID)
 		require.Error(t, err)
+		assert.ErrorIs(t, err, domain.ErrUnavailable)
 		assert.ErrorIs(t, err, errRedis)
 	})
 
-	t.Run("CheckLockout Redis error: returns wrapped error (fail-closed)", func(t *testing.T) {
+	t.Run("CheckLockout Redis error: returns ErrUnavailable (fail-closed → 503)", func(t *testing.T) {
 		h := newTestHarness(t)
 		errRedis := errors.New("redis connection refused")
 
@@ -487,6 +488,7 @@ func TestVerifyOTP(t *testing.T) {
 
 		_, err := h.svc.VerifyOTP(context.Background(), testPhone, testOTP, testDeviceID)
 		require.Error(t, err)
+		assert.ErrorIs(t, err, domain.ErrUnavailable)
 		assert.ErrorIs(t, err, errRedis)
 	})
 

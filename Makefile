@@ -3,7 +3,8 @@
 # No Go, buf, or lint tools are invoked directly on the host.
 
 .PHONY: all dev up down logs lint fmt test test-integration proto proto-lint proto-breaking build docker ci-local clean help \
-	terraform-fmt terraform-fmt-fix terraform-validate terraform-lint terraform-security
+	terraform-fmt terraform-fmt-fix terraform-validate terraform-lint terraform-security \
+	dynamo-tables dynamo-scan
 
 # Default target
 all: ci-local
@@ -73,10 +74,10 @@ test-integration:
 # Proto (Docker-only per PR0-INV-1)
 # ============================================================================
 
-## Generate Go code from proto files
+## Generate Go code and OpenAPI spec from proto files
 proto:
 	docker compose -f docker-compose.yaml -f docker-compose.dev.yaml run --rm toolbox \
-		sh -c "cd proto && buf dep update && buf generate"
+		sh -c "cd proto && buf dep update && buf generate && buf generate --template buf.gen.openapi.yaml --path messaging/v1/chatmgmt.proto"
 
 ## Lint proto files
 proto-lint:
@@ -155,6 +156,24 @@ terraform-security:
 # Utilities
 # ============================================================================
 
+# ============================================================================
+# DynamoDB (LocalStack)
+# ============================================================================
+
+## List DynamoDB tables in LocalStack
+dynamo-tables:
+	docker compose -f docker-compose.yaml -f docker-compose.dev.yaml exec localstack \
+		awslocal dynamodb list-tables
+
+## Scan a DynamoDB table (use TABLE=name, default: otp_requests)
+dynamo-scan:
+	docker compose -f docker-compose.yaml -f docker-compose.dev.yaml exec localstack \
+		awslocal dynamodb scan --table-name $(or $(TABLE),otp_requests)
+
+# ============================================================================
+# Utilities
+# ============================================================================
+
 ## Run a command in the toolbox container
 toolbox:
 	docker compose -f docker-compose.yaml -f docker-compose.dev.yaml run --rm toolbox $(CMD)
@@ -214,6 +233,10 @@ help:
 	@echo "  make terraform-validate Validate Terraform configurations"
 	@echo "  make terraform-lint     Lint with tflint"
 	@echo "  make terraform-security Security scan with trivy"
+	@echo ""
+	@echo "DynamoDB:"
+	@echo "  make dynamo-tables    List DynamoDB tables in LocalStack"
+	@echo "  make dynamo-scan      Scan a table (TABLE=name, default: otp_requests)"
 	@echo ""
 	@echo "Utilities:"
 	@echo "  make toolbox CMD=...  Run command in toolbox"
