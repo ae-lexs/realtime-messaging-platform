@@ -287,18 +287,18 @@ internal/auth/
 
 ### Acceptance Criteria
 
-- [ ] `POST /auth/request-otp` rate-limited (3/phone/15min, 10/IP/15min)
-- [ ] OTP stored as HMAC-SHA256 — no plaintext in DynamoDB
-- [ ] `POST /auth/verify-otp` returns JWT access + refresh tokens
-- [ ] New user: 201 Created with `is_new_user: true`; existing user: 200 OK
-- [ ] Device binding: `device_id` in header must match body
-- [ ] `POST /auth/refresh` rotates tokens; reuse detection revokes session
-- [ ] `POST /auth/logout` revokes session and blacklists JTI in Redis
-- [ ] Redis failure on rate limit check → 503 (fail-closed)
-- [ ] Max 5 concurrent sessions per user enforced
-- [ ] OTel metrics: `auth_otp_requests_total`, `auth_token_minted_total`, `auth_session_created_total`
-- [ ] Structured logging with trace_id correlation
-- [ ] Unit tests for OTP generation, HMAC verification, token minting, refresh rotation
+- [x] `POST /auth/request-otp` rate-limited (3/phone/15min, 10/IP/15min)
+- [x] OTP stored as HMAC-SHA256 — no plaintext in DynamoDB
+- [x] `POST /auth/verify-otp` returns JWT access + refresh tokens
+- [x] New user: 201 Created with `is_new_user: true`; existing user: 200 OK
+- [x] Device binding: `device_id` in header must match body
+- [x] `POST /auth/refresh` rotates tokens; reuse detection revokes session
+- [x] `POST /auth/logout` revokes session and blacklists JTI in Redis
+- [x] Redis failure on rate limit check → 503 (fail-closed)
+- [x] Max 5 concurrent sessions per user enforced
+- [x] OTel metrics: `auth_otp_requests_total`, `auth_token_minted_total`, `auth_session_created_total`
+- [x] Structured logging with trace_id correlation
+- [x] Unit tests for OTP generation, HMAC verification, token minting, refresh rotation
 
 ### Correctness Invariants
 
