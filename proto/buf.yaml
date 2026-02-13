@@ -4,6 +4,7 @@ modules:
     name: buf.build/aelexs/realtime-messaging-platform
 deps:
   - buf.build/googleapis/googleapis
+  - buf.build/grpc-ecosystem/grpc-gateway
 lint:
   use:
     - STANDARD

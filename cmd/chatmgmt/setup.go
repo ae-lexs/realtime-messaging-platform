@@ -6,9 +6,12 @@ import (
 	"crypto/rsa"
 	"fmt"
 	"log/slog"
+	"net/http"
+	"strings"
 
 	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
 
+	apiv1 "github.com/aelexs/realtime-messaging-platform/api/v1"
 	messagingv1 "github.com/aelexs/realtime-messaging-platform/gen/messaging/v1"
 	"github.com/aelexs/realtime-messaging-platform/internal/auth"
 	"github.com/aelexs/realtime-messaging-platform/internal/chatmgmt/adapter"
@@ -114,10 +117,18 @@ func setup(ctx context.Context, deps server.SetupDeps) (func(context.Context) er
 	handler := port.NewAuthHandler(authSvc)
 	messagingv1.RegisterAuthServiceServer(deps.GRPCServer, handler)
 
-	gwMux := runtime.NewServeMux()
+	gwMux := runtime.NewServeMux(
+		runtime.WithIncomingHeaderMatcher(customHeaderMatcher),
+	)
 	if err := messagingv1.RegisterAuthServiceHandlerServer(ctx, gwMux, handler); err != nil {
 		return nil, fmt.Errorf("chatmgmt setup: register grpc-gateway: %w", err)
 	}
+	deps.HTTPMux.Handle("GET /v1/openapi.json", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		if _, err := w.Write(apiv1.Spec); err != nil {
+			logger.ErrorContext(r.Context(), "write openapi spec", slog.String("error", err.Error()))
+		}
+	}))
 	deps.HTTPMux.Handle("/", gwMux)
 
 	logger.InfoContext(ctx, "chatmgmt auth service initialized")
@@ -145,6 +156,18 @@ func createKeyStore(cfg *config.Config, logger *slog.Logger) (auth.KeyStore, err
 
 	// TODO(TF-1): Wire AWSKeyStore for production.
 	return nil, fmt.Errorf("production key store not yet implemented (TF-1)")
+}
+
+// customHeaderMatcher forwards application-specific HTTP headers as gRPC metadata.
+// Headers not matched here fall through to grpc-gateway's default matcher, which
+// handles standard headers like Authorization.
+func customHeaderMatcher(key string) (string, bool) {
+	switch strings.ToLower(key) {
+	case "x-device-id", "x-forwarded-for":
+		return key, true
+	default:
+		return runtime.DefaultHeaderMatcher(key)
+	}
 }
 
 // createSMSProvider returns the appropriate SMS provider for the environment.

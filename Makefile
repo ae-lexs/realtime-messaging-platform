@@ -74,10 +74,10 @@ test-integration:
 # Proto (Docker-only per PR0-INV-1)
 # ============================================================================
 
-## Generate Go code from proto files
+## Generate Go code and OpenAPI spec from proto files
 proto:
 	docker compose -f docker-compose.yaml -f docker-compose.dev.yaml run --rm toolbox \
-		sh -c "cd proto && buf dep update && buf generate"
+		sh -c "cd proto && buf dep update && buf generate && buf generate --template buf.gen.openapi.yaml --path messaging/v1/chatmgmt.proto"
 
 ## Lint proto files
 proto-lint:
