@@ -45,7 +45,7 @@ func (s *AuthService) RequestOTP(ctx context.Context, phone, clientIP string) (*
 	if err != nil {
 		span.RecordError(err)
 		span.SetStatus(codes.Error, err.Error())
-		return nil, fmt.Errorf("check phone rate limit: %w", err)
+		return nil, fmt.Errorf("check phone rate limit: %w", errors.Join(err, domain.ErrUnavailable))
 	}
 	if !allowed {
 		rateLimitsTotal.Add(ctx, 1, metric.WithAttributes(

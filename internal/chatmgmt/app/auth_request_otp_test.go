@@ -146,17 +146,20 @@ func TestRequestOTP(t *testing.T) {
 		assert.Equal(t, 60, result.RetryAfterSeconds)
 	})
 
-	t.Run("phone rate limit Redis failure: returns error (fail-closed)", func(t *testing.T) {
+	t.Run("phone rate limit Redis failure: returns ErrUnavailable (fail-closed → 503)", func(t *testing.T) {
 		h := newTestHarness(t)
+		errRedis := errors.New("redis connection refused")
 		h.rateLimiter.checkAndIncrementFn = func(_ context.Context, key string, _, _ int) (bool, error) {
 			if key == "otp_req:phone:"+validPhoneHash {
-				return false, errors.New("redis connection refused")
+				return false, errRedis
 			}
 			return true, nil
 		}
 
 		_, err := h.svc.RequestOTP(context.Background(), validPhone, clientIP)
 		require.Error(t, err)
+		assert.ErrorIs(t, err, domain.ErrUnavailable)
+		assert.ErrorIs(t, err, errRedis)
 		assert.Contains(t, err.Error(), "check phone rate limit")
 	})
 

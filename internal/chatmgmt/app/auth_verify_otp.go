@@ -91,7 +91,7 @@ func (s *AuthService) checkVerifyRateLimits(ctx context.Context, phoneHash strin
 		int(domain.OTPRateLimitWindow.Seconds()),
 	)
 	if err != nil {
-		return fmt.Errorf("check verify rate limit: %w", err)
+		return fmt.Errorf("check verify rate limit: %w", errors.Join(err, domain.ErrUnavailable))
 	}
 	if !allowed {
 		rateLimitsTotal.Add(ctx, 1, metric.WithAttributes(
@@ -103,7 +103,7 @@ func (s *AuthService) checkVerifyRateLimits(ctx context.Context, phoneHash strin
 
 	locked, err := s.rateLimiter.CheckLockout(ctx, "otp_lockout:phone:"+phoneHash)
 	if err != nil {
-		return fmt.Errorf("check lockout: %w", err)
+		return fmt.Errorf("check lockout: %w", errors.Join(err, domain.ErrUnavailable))
 	}
 	if locked {
 		rateLimitsTotal.Add(ctx, 1, metric.WithAttributes(
