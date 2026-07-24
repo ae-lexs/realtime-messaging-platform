@@ -1,11 +1,15 @@
 # CD Pipeline - Deploy to Dev Environment
-# Triggered on merge to main branch.
+#
+# PAUSED 2026-07-24 (ADR-021): this pipeline builds/pushes to AWS ECR and deploys
+# to AWS ECS. Its AWS credentials/secrets were removed, so it failed on every push
+# to main ("Could not load credentials from any providers"). The project is
+# migrating to GCP (ADR-021: GKE Autopilot, Artifact Registry, Cloud SQL, Managed
+# Kafka); a GCP CD pipeline will replace this. Until then it is manual-dispatch
+# only, so pushes to main no longer trigger a failing AWS deploy.
 
 name: CD Dev
 
 on:
-  push:
-    branches: [main]
   workflow_dispatch:
 
 concurrency:
