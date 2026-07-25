@@ -51,7 +51,7 @@ module "artifact_registry" {
 
 module "budget" {
   source             = "../../modules/budget"
-  project_id         = var.project_id
+  project_number     = data.google_project.this.number
   billing_account_id = var.billing_account_id
   name_prefix        = local.name_prefix
   amount_units       = var.budget_amount_units

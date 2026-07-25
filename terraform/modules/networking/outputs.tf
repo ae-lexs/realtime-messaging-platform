@@ -18,6 +18,16 @@ output "subnet_name" {
   value       = google_compute_subnetwork.main.name
 }
 
+output "router_name" {
+  description = "The Cloud Router name backing egress NAT."
+  value       = google_compute_router.main.name
+}
+
+output "nat_name" {
+  description = "The Cloud NAT name providing pod egress."
+  value       = google_compute_router_nat.main.name
+}
+
 # The secondary_ip_range block is a set (no stable ordering), so these expose
 # the configured names directly. The GKE module still gets an implicit
 # dependency on the subnet via subnet_id, so ordering is preserved.

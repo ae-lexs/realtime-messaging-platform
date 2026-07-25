@@ -5,11 +5,21 @@
 variable "project_id" {
   description = "GCP project ID that owns all dev resources (pre-existing)."
   type        = string
+
+  validation {
+    condition     = can(regex("^[a-z][a-z0-9-]{4,28}[a-z0-9]$", var.project_id))
+    error_message = "project_id must be 6-30 chars: lowercase letter first, then lowercase letters, digits, or hyphens."
+  }
 }
 
 variable "billing_account_id" {
   description = "Billing account ID (XXXXXX-XXXXXX-XXXXXX) for the budget alert."
   type        = string
+
+  validation {
+    condition     = can(regex("^[0-9A-Fa-f]{6}-[0-9A-Fa-f]{6}-[0-9A-Fa-f]{6}$", var.billing_account_id))
+    error_message = "billing_account_id must look like XXXXXX-XXXXXX-XXXXXX (three 6-char hex groups)."
+  }
 }
 
 # ─────────────────────────────────────────────

@@ -7,8 +7,8 @@ variable "billing_account_id" {
   type        = string
 }
 
-variable "project_id" {
-  description = "GCP project ID the budget is scoped to."
+variable "project_number" {
+  description = "GCP project number the budget filter is scoped to (projects/{number})."
   type        = string
 }
 
