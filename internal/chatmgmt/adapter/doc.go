@@ -1,5 +1,7 @@
 // Package adapter contains implementations of interfaces defined in app.
-// DynamoDB and Kafka event adapters live here.
+// Substrate-neutral adapters (Redis rate limiting / revocation, log-only SMS)
+// live here; the persistence adapters (Firestore) arrive with the auth
+// re-home in M1.2.
 package adapter
 
 import "go.opentelemetry.io/otel"

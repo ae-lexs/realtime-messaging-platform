@@ -31,7 +31,6 @@ const (
 	ConnectionTTL     = 60 * time.Second // Redis key TTL = 2x heartbeat interval
 
 	// Timeout contracts (ADR-009 §1)
-	DynamoDBTimeout     = 5 * time.Second  // Max time for DynamoDB operations
 	KafkaProduceTimeout = 10 * time.Second // Max time for Kafka produce
 	RedisTimeout        = 2 * time.Second  // Max time for Redis operations
 	GRPCCallTimeout     = 10 * time.Second // Max time for inter-service gRPC calls

@@ -28,12 +28,10 @@ func TestDefaults(t *testing.T) {
 	assert.Equal(t, 9093, cfg.ChatMgmt.GRPCPort)
 
 	// Infrastructure defaults
-	assert.Equal(t, domain.DynamoDBTimeout, cfg.DynamoDB.Timeout)
 	assert.Equal(t, "localhost:6379", cfg.Redis.Addr)
 	assert.Equal(t, 0, cfg.Redis.DB)
 	assert.Equal(t, domain.RedisTimeout, cfg.Redis.Timeout)
 	assert.Equal(t, "messaging-platform", cfg.Kafka.ClientID)
-	assert.Equal(t, "us-east-1", cfg.AWS.Region)
 }
 
 func TestIsLocal(t *testing.T) {
