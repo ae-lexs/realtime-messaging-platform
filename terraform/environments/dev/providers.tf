@@ -1,13 +1,12 @@
-# Provider configuration with default_tags per TERRAFORM.md tagging strategy.
+# Provider configured only in the root module (never in child modules), with
+# default_labels as the GCP analogue of the AWS provider's default_tags.
+provider "google" {
+  project = var.project_id
+  region  = var.region
 
-provider "aws" {
-  region = var.aws_region
-
-  default_tags {
-    tags = {
-      Project     = var.project_name
-      Environment = var.environment
-      ManagedBy   = "terraform"
-    }
+  default_labels = {
+    project     = var.project_name
+    environment = var.environment
+    managed-by  = "terraform"
   }
 }

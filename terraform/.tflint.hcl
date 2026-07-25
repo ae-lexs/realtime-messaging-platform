@@ -30,9 +30,9 @@ rule "terraform_typed_variables" {
   enabled = true
 }
 
-# AWS plugin for AWS-specific best practices
-plugin "aws" {
+# Google plugin for GCP-specific best practices
+plugin "google" {
   enabled = true
-  version = "0.39.0"
-  source  = "github.com/terraform-linters/tflint-ruleset-aws"
+  version = "0.31.0"
+  source  = "github.com/terraform-linters/tflint-ruleset-google"
 }

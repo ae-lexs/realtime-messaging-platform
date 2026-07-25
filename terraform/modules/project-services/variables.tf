@@ -2,8 +2,8 @@
 # REQUIRED VARIABLES (no defaults)
 # ─────────────────────────────────────────────
 
-variable "domain_name" {
-  description = "Domain name for Route 53 zone and ACM certificate"
+variable "project_id" {
+  description = "GCP project ID in which to enable the APIs."
   type        = string
 }
 
@@ -11,20 +11,17 @@ variable "domain_name" {
 # OPTIONAL VARIABLES (have defaults)
 # ─────────────────────────────────────────────
 
-variable "project_name" {
-  description = "Project name used for resource naming and tagging"
-  type        = string
-  default     = "messaging-platform"
-}
-
-variable "environment" {
-  description = "Deployment environment"
-  type        = string
-  default     = "prod"
-}
-
-variable "aws_region" {
-  description = "AWS region for all resources"
-  type        = string
-  default     = "us-east-2"
+variable "services" {
+  description = "Google Cloud APIs to enable for the platform."
+  type        = list(string)
+  default = [
+    "compute.googleapis.com",
+    "container.googleapis.com",
+    "artifactregistry.googleapis.com",
+    "cloudresourcemanager.googleapis.com",
+    "billingbudgets.googleapis.com",
+    "iam.googleapis.com",
+    "logging.googleapis.com",
+    "monitoring.googleapis.com",
+  ]
 }

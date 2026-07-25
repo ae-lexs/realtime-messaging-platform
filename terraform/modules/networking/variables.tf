@@ -2,62 +2,51 @@
 # REQUIRED VARIABLES (no defaults)
 # ─────────────────────────────────────────────
 
-variable "project_name" {
-  description = "Project name used for resource naming"
+variable "project_id" {
+  description = "GCP project ID that owns the network resources."
   type        = string
 }
 
-variable "environment" {
-  description = "Deployment environment (dev, staging, prod)"
+variable "region" {
+  description = "Region for the subnet, Cloud Router, and Cloud NAT."
   type        = string
+}
 
-  validation {
-    condition     = contains(["dev", "staging", "prod"], var.environment)
-    error_message = "Environment must be dev, staging, or prod."
-  }
+variable "name_prefix" {
+  description = "Prefix for cloud resource names (e.g. messaging-dev)."
+  type        = string
 }
 
 # ─────────────────────────────────────────────
 # OPTIONAL VARIABLES (have defaults)
 # ─────────────────────────────────────────────
 
-variable "vpc_cidr" {
-  description = "CIDR block for the VPC"
+variable "subnet_cidr" {
+  description = "Primary IPv4 CIDR range for the GKE node subnet."
   type        = string
-  default     = "10.0.0.0/16"
+  default     = "10.10.0.0/20"
 }
 
-variable "az_count" {
-  description = "Number of availability zones to use"
-  type        = number
-  default     = 2
-
-  validation {
-    condition     = var.az_count >= 2 && var.az_count <= 3
-    error_message = "AZ count must be 2 or 3."
-  }
+variable "pods_range_name" {
+  description = "Name of the secondary range used for GKE pod IPs (VPC-native)."
+  type        = string
+  default     = "pods"
 }
 
-variable "public_subnet_cidrs" {
-  description = "CIDR blocks for public subnets (one per AZ). Must match az_count length."
-  type        = list(string)
-  default     = ["10.0.0.0/20", "10.0.16.0/20"]
+variable "pods_cidr" {
+  description = "Secondary IPv4 CIDR range for GKE pod IPs."
+  type        = string
+  default     = "10.20.0.0/16"
 }
 
-variable "private_subnet_cidrs" {
-  description = "CIDR blocks for private subnets (one per AZ). Must match az_count length."
-  type        = list(string)
-  default     = ["10.0.128.0/18", "10.0.192.0/18"]
+variable "services_range_name" {
+  description = "Name of the secondary range used for GKE service (ClusterIP) IPs."
+  type        = string
+  default     = "services"
 }
 
-variable "single_nat_gateway" {
-  description = "Use a single NAT Gateway (true for dev, false for prod per-AZ NAT)"
-  type        = bool
-  default     = true
-}
-
-variable "enable_vpc_interface_endpoints" {
-  description = "Enable VPC Interface Endpoints for auth services (Secrets Manager, SSM, KMS)"
-  type        = bool
-  default     = false
+variable "services_cidr" {
+  description = "Secondary IPv4 CIDR range for GKE service (ClusterIP) IPs."
+  type        = string
+  default     = "10.30.0.0/20"
 }

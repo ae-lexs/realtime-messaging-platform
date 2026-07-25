@@ -1,86 +1,52 @@
-# Dev environment root module — composes TF-0 foundation modules.
-#
-# Dev-specific settings:
-# - Single NAT Gateway (cost savings)
-# - Fargate Spot enabled (70% savings, acceptable interruptions)
-# - ECS Exec enabled (debugging)
-# - Deletion protection off
-# - 30-day log retention
+locals {
+  # Cloud resource name prefix: {project}-{environment} (TERRAFORM.md naming).
+  name_prefix = "messaging-${var.environment}"
+}
 
-# -----------------------------------------------------------------------------
-# Networking
-# -----------------------------------------------------------------------------
+# Enable required APIs first; every other module depends on this.
+module "project_services" {
+  source     = "../../modules/project-services"
+  project_id = var.project_id
+}
 
 module "networking" {
-  source = "../../modules/networking"
+  source      = "../../modules/networking"
+  project_id  = var.project_id
+  region      = var.region
+  name_prefix = local.name_prefix
 
-  project_name                   = var.project_name
-  environment                    = var.environment
-  single_nat_gateway             = true
-  enable_vpc_interface_endpoints = true
+  depends_on = [module.project_services]
 }
 
-# -----------------------------------------------------------------------------
-# DNS
-# -----------------------------------------------------------------------------
+module "gke" {
+  source                        = "../../modules/gke"
+  project_id                    = var.project_id
+  region                        = var.region
+  name_prefix                   = local.name_prefix
+  network_id                    = module.networking.network_id
+  subnet_id                     = module.networking.subnet_id
+  pods_range_name               = module.networking.pods_range_name
+  services_range_name           = module.networking.services_range_name
+  master_authorized_cidr_blocks = var.master_authorized_cidr_blocks
 
-module "dns" {
-  source = "../../modules/dns"
-
-  project_name = var.project_name
-  environment  = var.environment
-  domain_name  = var.domain_name
+  depends_on = [module.project_services]
 }
 
-# -----------------------------------------------------------------------------
-# ECR
-# -----------------------------------------------------------------------------
+module "artifact_registry" {
+  source        = "../../modules/artifact-registry"
+  project_id    = var.project_id
+  region        = var.region
+  repository_id = var.artifact_repository_id
 
-module "ecr" {
-  source = "../../modules/ecr"
-
-  project_name = var.project_name
+  depends_on = [module.project_services]
 }
 
-# -----------------------------------------------------------------------------
-# ECS Cluster
-# -----------------------------------------------------------------------------
+module "budget" {
+  source             = "../../modules/budget"
+  project_id         = var.project_id
+  billing_account_id = var.billing_account_id
+  name_prefix        = local.name_prefix
+  amount_units       = var.budget_amount_units
 
-module "ecs_cluster" {
-  source = "../../modules/ecs-cluster"
-
-  project_name        = var.project_name
-  environment         = var.environment
-  enable_fargate_spot = true
-  log_retention_days  = 30
-}
-
-# -----------------------------------------------------------------------------
-# Auth
-# -----------------------------------------------------------------------------
-
-module "auth" {
-  source = "../../modules/auth"
-
-  project_name                = var.project_name
-  environment                 = var.environment
-  enable_deletion_protection  = false
-  secret_recovery_window_days = 0
-}
-
-# -----------------------------------------------------------------------------
-# ALB
-# -----------------------------------------------------------------------------
-
-module "alb" {
-  source = "../../modules/alb"
-
-  project_name          = var.project_name
-  environment           = var.environment
-  vpc_id                = module.networking.vpc_id
-  public_subnet_ids     = module.networking.public_subnet_ids
-  alb_security_group_id = module.networking.alb_security_group_id
-  certificate_arn       = module.dns.certificate_arn
-
-  enable_deletion_protection = false
+  depends_on = [module.project_services]
 }

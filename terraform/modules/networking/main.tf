@@ -1,222 +1,54 @@
-# Networking module — VPC, subnets, NAT, IGW, VPC endpoints
-#
-# Implements TBD-TF0-1 (Region & AZs) and TBD-TF0-2 (VPC & Network Topology).
-# Private subnets have no IGW routes — only NAT and VPC endpoint routes.
-
-# -----------------------------------------------------------------------------
-# Data sources
-# -----------------------------------------------------------------------------
-
-data "aws_availability_zones" "available" {
-  state = "available"
+# Custom-mode VPC for the platform. Auto-created subnets are disabled so the
+# single regional subnet below is the only one, with explicit secondary ranges
+# for VPC-native GKE (pods + services).
+resource "google_compute_network" "main" {
+  name                    = "${var.name_prefix}-vpc"
+  project                 = var.project_id
+  auto_create_subnetworks = false
+  routing_mode            = "REGIONAL"
 }
 
-data "aws_region" "current" {}
+resource "google_compute_subnetwork" "main" {
+  name          = "${var.name_prefix}-subnet"
+  project       = var.project_id
+  region        = var.region
+  network       = google_compute_network.main.id
+  ip_cidr_range = var.subnet_cidr
 
-locals {
-  azs       = slice(data.aws_availability_zones.available.names, 0, var.az_count)
-  name      = "${var.project_name}-${var.environment}"
-  nat_count = var.single_nat_gateway ? 1 : var.az_count
-}
-
-# -----------------------------------------------------------------------------
-# VPC
-# -----------------------------------------------------------------------------
-
-resource "aws_vpc" "main" {
-  cidr_block           = var.vpc_cidr
-  enable_dns_hostnames = true
-  enable_dns_support   = true
-
-  tags = {
-    Name = "${local.name}-vpc"
-  }
-}
-
-# -----------------------------------------------------------------------------
-# Internet Gateway
-# -----------------------------------------------------------------------------
-
-resource "aws_internet_gateway" "main" {
-  vpc_id = aws_vpc.main.id
-
-  tags = {
-    Name = "${local.name}-igw"
-  }
-}
-
-# -----------------------------------------------------------------------------
-# Public Subnets
-# -----------------------------------------------------------------------------
-
-resource "aws_subnet" "public" {
-  for_each = { for i, az in local.azs : az => {
-    cidr = var.public_subnet_cidrs[i]
-    az   = az
-  } }
-
-  vpc_id                  = aws_vpc.main.id
-  cidr_block              = each.value.cidr
-  availability_zone       = each.value.az
-  map_public_ip_on_launch = false
-
-  tags = {
-    Name = "${local.name}-public-${each.key}"
-    Tier = "public"
-  }
-}
-
-resource "aws_route_table" "public" {
-  vpc_id = aws_vpc.main.id
-
-  tags = {
-    Name = "${local.name}-public-rt"
-  }
-}
-
-resource "aws_route" "public_internet" {
-  route_table_id         = aws_route_table.public.id
-  destination_cidr_block = "0.0.0.0/0"
-  gateway_id             = aws_internet_gateway.main.id
-}
-
-resource "aws_route_table_association" "public" {
-  for_each = aws_subnet.public
-
-  subnet_id      = each.value.id
-  route_table_id = aws_route_table.public.id
-}
-
-# -----------------------------------------------------------------------------
-# Private Subnets
-# -----------------------------------------------------------------------------
-
-resource "aws_subnet" "private" {
-  for_each = { for i, az in local.azs : az => {
-    cidr = var.private_subnet_cidrs[i]
-    az   = az
-  } }
-
-  vpc_id            = aws_vpc.main.id
-  cidr_block        = each.value.cidr
-  availability_zone = each.value.az
-
-  tags = {
-    Name = "${local.name}-private-${each.key}"
-    Tier = "private"
-  }
-}
-
-# One route table per AZ for private subnets (each points to its own NAT GW,
-# or all share a single NAT GW when single_nat_gateway = true).
-resource "aws_route_table" "private" {
-  for_each = { for i, az in local.azs : az => az }
-
-  vpc_id = aws_vpc.main.id
-
-  tags = {
-    Name = "${local.name}-private-rt-${each.key}"
-  }
-}
-
-resource "aws_route" "private_nat" {
-  for_each = { for i, az in local.azs : az => i }
-
-  route_table_id         = aws_route_table.private[each.key].id
-  destination_cidr_block = "0.0.0.0/0"
-  nat_gateway_id         = aws_nat_gateway.main[local.azs[var.single_nat_gateway ? 0 : each.value]].id
-}
-
-resource "aws_route_table_association" "private" {
-  for_each = aws_subnet.private
-
-  subnet_id      = each.value.id
-  route_table_id = aws_route_table.private[each.key].id
-}
-
-# -----------------------------------------------------------------------------
-# NAT Gateway(s) + EIPs
-# -----------------------------------------------------------------------------
-
-resource "aws_eip" "nat" {
-  for_each = { for i, az in local.azs : az => az if i < local.nat_count }
-
-  domain = "vpc"
-
-  tags = {
-    Name = "${local.name}-nat-eip-${each.key}"
-  }
-}
-
-resource "aws_nat_gateway" "main" {
-  for_each = aws_eip.nat
-
-  allocation_id = each.value.id
-  subnet_id     = aws_subnet.public[each.key].id
-
-  tags = {
-    Name = "${local.name}-nat-${each.key}"
+  # Secondary ranges consumed by the Autopilot cluster (ip_allocation_policy).
+  secondary_ip_range {
+    range_name    = var.pods_range_name
+    ip_cidr_range = var.pods_cidr
   }
 
-  depends_on = [aws_internet_gateway.main]
-}
-
-# -----------------------------------------------------------------------------
-# VPC Gateway Endpoints (free — reduces NAT charges)
-# TBD-TF0-2: S3 and DynamoDB Gateway Endpoints are mandatory.
-# -----------------------------------------------------------------------------
-
-resource "aws_vpc_endpoint" "s3" {
-  vpc_id       = aws_vpc.main.id
-  service_name = "com.amazonaws.${data.aws_region.current.region}.s3"
-
-  vpc_endpoint_type = "Gateway"
-  route_table_ids   = [for rt in aws_route_table.private : rt.id]
-
-  tags = {
-    Name = "${local.name}-s3-endpoint"
+  secondary_ip_range {
+    range_name    = var.services_range_name
+    ip_cidr_range = var.services_cidr
   }
+
+  # Lets nodes reach Google APIs over internal IPs without external addresses.
+  private_ip_google_access = true
 }
 
-resource "aws_vpc_endpoint" "dynamodb" {
-  vpc_id       = aws_vpc.main.id
-  service_name = "com.amazonaws.${data.aws_region.current.region}.dynamodb"
-
-  vpc_endpoint_type = "Gateway"
-  route_table_ids   = [for rt in aws_route_table.private : rt.id]
-
-  tags = {
-    Name = "${local.name}-dynamodb-endpoint"
-  }
+# Cloud Router + NAT give pods egress to the internet (image pulls, module
+# downloads) without assigning external IPs to nodes.
+resource "google_compute_router" "main" {
+  name    = "${var.name_prefix}-router"
+  project = var.project_id
+  region  = var.region
+  network = google_compute_network.main.id
 }
 
-# -----------------------------------------------------------------------------
-# VPC Interface Endpoints (TBD-TF1-6: Auth services)
-# Secrets Manager, SSM, and KMS — required for ECS tasks in private subnets.
-# Controlled by enable_vpc_interface_endpoints toggle.
-# -----------------------------------------------------------------------------
+resource "google_compute_router_nat" "main" {
+  name                               = "${var.name_prefix}-nat"
+  project                            = var.project_id
+  region                             = var.region
+  router                             = google_compute_router.main.name
+  nat_ip_allocate_option             = "AUTO_ONLY"
+  source_subnetwork_ip_ranges_to_nat = "ALL_SUBNETWORKS_ALL_IP_RANGES"
 
-locals {
-  interface_endpoint_services = var.enable_vpc_interface_endpoints ? {
-    secretsmanager = "com.amazonaws.${data.aws_region.current.region}.secretsmanager"
-    ssm            = "com.amazonaws.${data.aws_region.current.region}.ssm"
-    kms            = "com.amazonaws.${data.aws_region.current.region}.kms"
-  } : {}
-}
-
-resource "aws_vpc_endpoint" "interface" {
-  for_each = local.interface_endpoint_services
-
-  vpc_id            = aws_vpc.main.id
-  service_name      = each.value
-  vpc_endpoint_type = "Interface"
-
-  subnet_ids         = [for s in aws_subnet.private : s.id]
-  security_group_ids = [aws_security_group.vpc_endpoints[0].id]
-
-  private_dns_enabled = true
-
-  tags = {
-    Name = "${local.name}-${each.key}-endpoint"
+  log_config {
+    enable = false
+    filter = "ERRORS_ONLY"
   }
 }
