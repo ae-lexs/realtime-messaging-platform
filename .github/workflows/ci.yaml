@@ -254,7 +254,7 @@ jobs:
         if: steps.changes.outputs.terraform == 'true'
         uses: hashicorp/setup-terraform@v4
         with:
-          terraform_version: '1.14.0'
+          terraform_version: '1.15.8'
 
       - name: Terraform fmt check
         if: steps.changes.outputs.terraform == 'true'
@@ -264,7 +264,7 @@ jobs:
         if: steps.changes.outputs.terraform == 'true'
         uses: terraform-linters/setup-tflint@v6
         with:
-          tflint_version: 'v0.55.1'
+          tflint_version: 'v0.63.1'
 
       - name: Init tflint plugins
         if: steps.changes.outputs.terraform == 'true'
