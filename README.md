@@ -2,47 +2,49 @@
 
 A **Distributed Systems Lab** designed to demonstrate senior/staff-level decision making in the design and implementation of a real-time messaging system. The primary goal is to explore correctness, ordering, delivery semantics, scalability, and failure modes under realistic constraints — not to ship a production chat application.
 
-This repository is intended to be read, reviewed, and reasoned about — not just run.
+This repository is intended to be **read, reviewed, and reasoned about** — not just run. The design lives in 23 Architecture Decision Records; the code is a faithful implementation of those decisions.
+
+> [!NOTE]
+> **Status — design complete, implementation in progress.** All architectural decisions (ADR-001 … ADR-023) are accepted. The substrate was migrated **AWS → GCP** (see [Substrate](#substrate)); implementation proceeds per [EXECUTION_PLAN v2.2](docs/EXECUTION_PLAN.md) as granular per-module PRs, currently at **Module 0** (toolchain reset). The v1 skeleton and authentication were built on the AWS substrate and are being re-homed to GCP.
 
 ## Architecture Overview
 
-The system implements a **three-plane architecture** (ADR-002) with four services:
+The system implements a **three-plane architecture** (ADR-002) with four services over a **polyglot datastore** (ADR-021, ADR-023):
 
 ```mermaid
 flowchart TB
     subgraph CP["CONNECTION PLANE"]
         GW["Gateway Service<br/><i>WebSocket termination, auth, backpressure</i>"]
     end
-
     subgraph DP["DURABILITY PLANE"]
-        IS["Ingest Service<br/><i>Persist messages, allocate sequences</i>"]
+        IS["Ingest Service<br/><i>Persist messages, allocate sequences, outbox</i>"]
     end
-
     subgraph FP["FANOUT PLANE"]
         FW["Fanout Service<br/><i>Deliver to online users, membership resolution</i>"]
     end
-
     subgraph CM["CHAT MANAGEMENT"]
         CMS["Chat Mgmt Service<br/><i>REST + gRPC (grpc-gateway)</i>"]
     end
-
     subgraph DATA["DATA STORES"]
-        DDB[("DynamoDB<br/><i>Authoritative</i>")]
-        KAFKA["Kafka<br/><i>Event Log</i>"]
-        REDIS[("Redis<br/><i>Ephemeral</i>")]
+        PG[("Cloud SQL Postgres<br/><i>Message and delivery write path</i>")]
+        FS[("Firestore<br/><i>Identity and membership</i>")]
+        KAFKA["Managed Kafka<br/><i>Event log</i>"]
+        REDIS[("Memorystore<br/><i>Ephemeral</i>")]
+        BQ[("BigQuery<br/><i>Analytics data lake</i>")]
     end
-
     CLIENT((Client)) -->|WebSocket| GW
     CLIENT -->|REST| CMS
     GW -->|"sync gRPC"| IS
-    IS --> DDB
-    IS -->|"async"| KAFKA
+    IS -->|"one transaction"| PG
+    IS -->|"outbox relay"| KAFKA
     KAFKA --> FW
     FW --> REDIS
+    FW -->|"watermark"| PG
     FW -->|"push"| GW
-    CMS --> DDB
+    CMS --> FS
     CMS --> KAFKA
     GW --> REDIS
+    KAFKA -->|"BigQuery Sink"| BQ
 
     style CP fill:#e3f2fd,stroke:#1565c0
     style DP fill:#e8f5e9,stroke:#2e7d32
@@ -57,214 +59,130 @@ flowchart TB
 
 | Component | Technology | Role |
 |-----------|-----------|------|
-| Language | Go 1.25+ | All four services |
-| Database | DynamoDB | Authoritative source of truth (ADR-003) |
-| Event log | Kafka (MSK Serverless / Redpanda locally) | Durable event stream for fanout (ADR-011) |
-| Cache | Redis (ElastiCache / Redis 7 locally) | Ephemeral presence and connection routing (ADR-010) |
+| Language | Go 1.26+ | All four services |
+| Write-path store | Cloud SQL for PostgreSQL | Authoritative message/delivery path — sequences, messages, idempotency, watermarks, outbox (ADR-023) |
+| Entity store | Firestore (native mode) | Identity & membership — users, chats, memberships, sessions (ADR-023) |
+| Event log | Managed Service for Apache Kafka | Durable event stream for fanout, Protobuf via Schema Registry (ADR-011, ADR-022) |
+| Cache | Memorystore for Redis | Ephemeral presence and connection routing (ADR-010) |
+| Analytics | BigQuery | Metadata-only data lake via Kafka → BigQuery Sink (ADR-022) |
 | WebSocket | `coder/websocket` | Real-time client protocol (ADR-005) |
 | Inter-service | gRPC + `grpc-gateway` | Proto-first API design (ADR-006) |
-| Observability | OpenTelemetry → CloudWatch / X-Ray | Traces, metrics, SLOs (ADR-012) |
-| Infrastructure | Terraform + ECS Fargate | Infrastructure as code (ADR-014) |
+| Observability | OpenTelemetry → Managed Prometheus / Cloud Trace | Traces, metrics, SLOs (ADR-012) |
+| Compute | GKE Autopilot | Container orchestration; long-lived WebSockets (ADR-021) |
+| Infrastructure | Terraform | Infrastructure as code, deploy-and-destroy (ADR-021) |
 
 ### Key Design Decisions
 
 | Guarantee | Implementation |
 |-----------|---------------|
-| Per-chat total ordering | Server-assigned monotonic `sequence` via DynamoDB atomic counters (ADR-001, ADR-004) |
-| Effectively-once persistence | `client_message_id` deduplication on the write path (ADR-001) |
-| At-least-once transport | Retry-safe protocol with idempotent server (ADR-005) |
+| Per-chat total ordering | Server-assigned monotonic `sequence` via a Postgres counter row, allocated in the same transaction as the write (ADR-001, ADR-004, ADR-023) |
+| Effectively-once persistence | Check-before-allocate `client_message_id` idempotency (ADR-001, ADR-023) |
+| At-least-once transport | Retry-safe protocol with an idempotent server (ADR-005) |
+| Reliable event production | Transactional outbox + single-owner relay: an event exists iff its message committed (ADR-022, ADR-023) |
+| Effectively-once analytics | Kafka → BigQuery Sink UPSERT keyed on `event_id` (ADR-022) |
 | Offline delivery | Store-and-forward; sync-on-reconnect, not push (MVP Definition) |
 | Failure isolation | Each plane fails independently; fanout failures never block persistence (ADR-002) |
-| Defense-in-depth security | Distributed controls across all planes; Gateway authenticates, Durability authorizes (ADR-013) |
+| Defense-in-depth security | Distributed controls across planes; Gateway authenticates, Durability authorizes (ADR-013) |
 
-## Prerequisites
+## Substrate
 
-**Required:**
+The platform was migrated from AWS to GCP. The decision record is the interesting artifact:
 
-- Docker 24.0+ (includes Docker Compose v2)
-- Make
+- **[ADR-021](docs/adr/ADR-021.md)** — GCP substrate: polyglot Cloud SQL Postgres + Firestore, GKE Autopilot, Managed Kafka, Memorystore, Managed Prometheus/Cloud Trace. No local cloud-emulation (Docker toolchain retained); no push-triggered CD (manual `terraform apply`/`destroy`).
+- **[ADR-022](docs/adr/ADR-022.md)** — analytics data lake: Protobuf events via the managed Schema Registry, BigQuery Sink, metadata-only, transactional outbox.
+- **[ADR-023](docs/adr/ADR-023.md)** — two-store data model superseding the single-table ADR-007.
 
-**Optional (IDE support only):**
+The headline finding, verifiable row-by-row in ADR-021's impact table: **13 of 20 prior ADR contracts survived a full cloud migration untouched** — they are about ordering, delivery, protocol, and service internals, not cloud primitives. Superseded/amended ADRs carry a banner linking to ADR-021; the originals are retained unchanged.
 
-- Go 1.25+ — enables `gopls` for autocomplete and jump-to-definition
-- Not required to build, test, lint, or run any part of the project
+## Development
 
-All build, test, lint, and code generation commands run inside Docker containers. The Makefile is the single interface — no local Go toolchain, `buf`, `golangci-lint`, or `terraform` installation is needed.
+Nothing is installed on the host. The **Docker toolchain is the single interface** — `go`, `buf`, `golangci-lint`, `terraform`, `kubectl`, and `gcloud` all run inside containers, so the project is buildable and operable on any machine with only Docker present (ADR-021).
 
-## Getting Started
+**Required:** Docker 24.0+ (includes Compose v2) and Make.
+**Optional (IDE support only):** Go 1.26+ for `gopls` — not required to build, test, lint, or generate.
+
+Unit tests, linting, proto generation, and builds are hermetic and run in-container with no cloud dependency:
 
 ```bash
-git clone <repo-url>
-cd messaging
-
-# Start infrastructure (LocalStack, Redpanda, Redis)
-make up
-
-# Start all 4 services with hot reload
-make dev
-
-# Run the full CI check locally
-make ci-local
+make ci-local     # lint + test + build + proto checks — if it passes, CI passes
+make test         # unit tests with race detection
+make proto        # generate Go from proto definitions
+make build        # compile all four service binaries
 ```
 
-`make dev` starts LocalStack (DynamoDB), Redpanda (Kafka-compatible), Redis, and all four services with Air hot reload. Edit code, save, and see changes rebuilt in ~1 second.
-
-### Local Infrastructure
-
-| Production Component | Local Substitute | Port |
-|---------------------|-----------------|------|
-| DynamoDB | LocalStack | 4566 |
-| MSK Serverless | Redpanda | 9092 |
-| ElastiCache Redis | Redis 7 | 6379 |
-| Secrets Manager | Environment vars | — |
-| CloudWatch / X-Ray | Console exporter | — |
-
-See ADR-014 §9.3 for documented parity gaps between local and production.
+Integration, end-to-end, and chaos tests run against a **Terraform-provisioned GCP dev project**, deployed and destroyed per session (there is no local cloud emulation). The provisioning workflow is stood up in Module 0; see [EXECUTION_PLAN v2.2](docs/EXECUTION_PLAN.md) for the module roadmap and [CONTRIBUTING.md](CONTRIBUTING.md) for the development workflow, code standards, and commit conventions.
 
 ## Repository Structure
 
-The project is a Go monorepo with a single `go.mod` (ADR-014 §3). Four services map to the three-plane architecture (ADR-002):
+A Go monorepo with a single `go.mod` (ADR-014). Four services map to the three-plane architecture (ADR-002):
 
 ```
-cmd/
-├── gateway/              # Connection Plane — WebSocket handling
-├── ingest/               # Durability Plane — persist + sequence allocation
-├── fanout/               # Fanout Plane — Kafka consumer, delivery dispatch
-└── chatmgmt/             # Chat Management — REST + gRPC via grpc-gateway
+cmd/                     # Service entry points: gateway, ingest, fanout, chatmgmt
 internal/
-├── gateway/
-│   ├── port/             # WebSocket handlers, gRPC server (entry points)
-│   ├── app/              # Use cases, orchestration logic
-│   └── adapter/          # Redis presence, gRPC client to Ingest
-├── ingest/
-│   ├── port/             # gRPC server (PersistMessage RPC)
-│   ├── app/              # Persist flow, sequence allocation logic
-│   └── adapter/          # DynamoDB writer, Kafka producer
-├── fanout/
-│   ├── port/             # Kafka consumer handler, gRPC server
-│   ├── app/              # Delivery dispatch logic
-│   └── adapter/          # Redis lookup, gRPC client to Gateway
-├── chatmgmt/
-│   ├── port/             # REST + gRPC handlers (grpc-gateway)
-│   ├── app/              # Chat CRUD, membership management
-│   └── adapter/          # DynamoDB client, Kafka producer
-├── domain/               # Shared: value objects, error types, constants
-├── dynamo/               # Shared adapter: DynamoDB table operations
-├── kafka/                # Shared adapter: franz-go producer/consumer
-├── redis/                # Shared adapter: go-redis presence operations
-├── auth/                 # Shared: JWT validation, token parsing
-└── observability/        # Shared: OTel setup, trace propagation, metrics
-pkg/
-└── protocol/             # Public: WebSocket protocol types (ADR-005 schemas)
+├── gateway/             # Connection Plane — WebSocket, presence (port/app/adapter)
+├── ingest/              # Durability Plane — persist + sequence + outbox
+├── fanout/              # Fanout Plane — Kafka consumer, delivery dispatch, watermarks
+├── chatmgmt/            # Chat Management — REST + gRPC (grpc-gateway)
+├── domain/              # Shared: value objects, error types, constants
+├── postgres/            # Shared adapter: Cloud SQL write path (ADR-023) — re-homing from internal/dynamo
+├── firestore/           # Shared adapter: identity/membership documents (ADR-023)
+├── kafka/               # Shared adapter: Managed Kafka producer/consumer + Schema Registry
+├── redis/               # Shared adapter: Memorystore presence operations
+├── auth/                # Shared: JWT validation, token parsing
+├── server/              # Shared: service lifecycle, graceful shutdown (ADR-018)
+└── observability/       # Shared: OTel setup, trace propagation, metrics
+pkg/protocol/            # Public: WebSocket protocol types (ADR-005)
 proto/
-├── buf.yaml
-├── buf.gen.yaml
-└── messaging/v1/         # Versioned proto definitions
-gen/                      # Generated code (git-ignored)
-test/
-├── harness/              # Reference client + test infrastructure (ADR-017)
-├── conformance/          # L1: Protocol conformance tests
-├── contract/             # L2: Inter-service contract tests
-├── e2e/                  # L3: End-to-end scenario tests
-└── chaos/                # L4: Failure injection tests
-terraform/
-├── modules/              # Reusable: ecs-service, msk-serverless, dynamodb, etc.
-└── environments/
-    ├── dev/
-    └── prod/
-docker/
-├── dev.Dockerfile        # Multi-stage: base → dev (tools + Air) → build → prod
-├── gateway.Dockerfile    # Production: builder → scratch
-├── ingest.Dockerfile
-├── fanout.Dockerfile
-└── chatmgmt.Dockerfile
-docker-compose.yaml       # Infrastructure: LocalStack, Redpanda, Redis
-docker-compose.dev.yaml   # Override: 4 services with Air + toolbox
-.air/                     # Per-service Air hot-reload configs
-.golangci.yml             # golangci-lint v2 configuration
-.arch-go.yml              # Architectural boundary rules
+├── messaging/v1/        # Service contracts (gRPC)
+└── events/v1/           # Event envelopes for Kafka + BigQuery (ADR-022)
+test/                    # harness / conformance (L1) / contract (L2) / e2e (L3) / chaos (L4) — ADR-017
+terraform/               # GCP modules + dev/prod environments (ADR-021)
+docker/                  # dev.Dockerfile (toolchain) + per-service production Dockerfiles (scratch)
 ```
 
-## Makefile Reference
-
-All targets delegate to Docker. This is the complete interface for development:
-
-| Target | Description |
-|--------|-------------|
-| `make help` | Show all available targets |
-| **Infrastructure** | |
-| `make up` | Start infrastructure (LocalStack, Redpanda, Redis) |
-| `make down` | Stop infrastructure and remove volumes |
-| **Development** | |
-| `make dev` | Start infra + all 4 services with hot reload |
-| `make dev-down` | Stop the full dev stack |
-| **Proto** | |
-| `make proto` | Generate Go code from proto definitions |
-| `make proto-lint` | Lint proto files with buf |
-| `make proto-breaking` | Check proto backward compatibility against `main` |
-| **Go tooling** | |
-| `make lint` | Run golangci-lint |
-| `make lint-fix` | Run golangci-lint with auto-fix |
-| `make fmt` | Format Go code |
-| `make tidy` | Run `go mod tidy` |
-| `make arch-lint` | Check Clean Architecture boundary violations |
-| **Testing** | |
-| `make test` | Run unit tests with race detection |
-| `make test-integration` | Run integration tests (requires `make up`) |
-| `make test-coverage` | Generate HTML coverage report |
-| **Build** | |
-| `make build` | Compile all 4 service binaries |
-| `make docker` | Build production Docker images |
-| **Terraform** | |
-| `make terraform-fmt` | Format Terraform files |
-| `make terraform-validate` | Validate Terraform configuration |
-| **CI** | |
-| `make ci-local` | Run full CI pipeline locally |
-
-`make ci-local` runs the same checks as the GitHub Actions CI workflow (ADR-014 §8.2). If it passes locally, CI will pass.
+> The `internal/postgres` and `internal/firestore` adapters replace the AWS-era `internal/dynamo` per ADR-023; this re-homing is tracked in EXECUTION_PLAN Module 1–2.
 
 ## Architecture Decision Records
 
-Every non-trivial design decision is documented as an Architecture Decision Record. The project currently has 18 ADRs plus a Client Protocol Contract and MVP Definition.
+Every non-trivial decision is an ADR (`docs/adr/`). Read the relevant ADRs before proposing changes to architecture, data flow, or consistency guarantees.
 
-| ADR | Topic | Key Decisions |
-|-----|-------|---------------|
-| ADR-001 | Ordering & Idempotency | Per-chat total ordering, server-assigned sequences, `client_message_id` dedup |
-| ADR-002 | Three-Plane Architecture | Connection / Durability / Fanout separation, "ACK = Durability" |
-| ADR-003 | Source of Truth | DynamoDB (authoritative) → Kafka (event log) → Redis (ephemeral) |
-| ADR-004 | Sequence Allocation | DynamoDB atomic counters, two-phase allocation |
-| ADR-005 | WebSocket Protocol | Custom JSON protocol, client/server frame types |
-| ADR-006 | REST API | Device binding, idempotency, authentication flows |
-| ADR-007 | Data Model | 8-table DynamoDB design by velocity characteristics |
-| ADR-008 | Delivery Acknowledgments | Delivery state semantics, per-user-per-chat tracking |
-| ADR-009 | Failure Handling | Tier 1/2/3 failure classification, timeout contracts |
-| ADR-010 | Presence & Routing | Redis-backed connection registry, Lua-scripted atomic ops |
-| ADR-011 | Kafka Consumers | Consumer group strategy, offset management, topic design |
-| ADR-012 | Observability | OTel traces, metrics, SLOs, console exporter for local |
-| ADR-013 | Security | Defense-in-depth, JWT validation, device binding, abuse controls |
-| ADR-014 | Dev Environment | Docker-only toolchain, CI pipeline, monorepo layout |
-| ADR-015 | Authentication & OTP | OTP lifecycle, token minting, refresh rotation, session management |
-| ADR-016 | Chat Lifecycle | Chat CRUD, direct chat dedup, membership orchestration |
-| ADR-017 | Client Contract & Test Harness | L1–L4 test layers, reference client, chaos testing |
-| ADR-018 | Service Lifecycle Extraction | `internal/server` package, shared graceful shutdown |
+| ADR | Topic | Status |
+|-----|-------|--------|
+| ADR-001 | Ordering & idempotency | Accepted |
+| ADR-002 | Three-plane architecture | Accepted |
+| ADR-003 | Source of truth & dataflow | Amended by ADR-021 |
+| ADR-004 | Sequence allocation | Superseded by ADR-021/023 (Postgres) |
+| ADR-005 | WebSocket protocol | Accepted |
+| ADR-006 | REST API | Accepted |
+| ADR-007 | Data model | Superseded by ADR-023 |
+| ADR-008 | Delivery acknowledgments | Accepted |
+| ADR-009 | Failure handling | Accepted |
+| ADR-010 | Presence & routing | Amended by ADR-021 (Memorystore) |
+| ADR-011 | Kafka topics | Amended by ADR-021/022 (Managed Kafka, Protobuf) |
+| ADR-012 | Observability | Amended by ADR-021 (Managed Prometheus) |
+| ADR-013 | Security & abuse controls | Accepted |
+| ADR-014 | Tech stack & deployment | Superseded by ADR-021 |
+| ADR-015 | Authentication & OTP | Accepted |
+| ADR-016 | Chat lifecycle & membership | Accepted |
+| ADR-017 | Client contract & test harness | Accepted |
+| ADR-018 | Service lifecycle extraction | Accepted |
+| ADR-019 | Interface contracts & type ownership | Accepted |
+| ADR-020 | Service lifecycle conventions | Accepted |
+| **ADR-021** | **Cloud substrate migration (AWS → GCP)** | **Accepted** |
+| **ADR-022** | **Analytics data lake** | **Accepted** |
+| **ADR-023** | **Two-store data model** | **Accepted** |
 
-Read ADRs before proposing changes to architecture, data flow, or consistency guarantees.
-
-### TBD Decision Documents
-
-Implementation specifications that pin concrete values within the bounds established by the ADRs. Each resolves TBD notes from the [Execution Plan](docs/EXECUTION_PLAN.md).
-
-| Document | Scope | Key Decisions |
-|----------|-------|---------------|
-| [PR0-DECISIONS](docs/tbd/PR0-DECISIONS.md) | Configuration, Error Taxonomy & Clock | koanf config precedence, `SecretString` redaction, sentinel error → wire mappers, injectable `Clock` interface |
-| [PR1-DECISIONS](docs/tbd/PR1-DECISIONS.md) | Key Rotation & Auth TTLs | RS256/RSA-2048, 7-day overlap, 300s cache TTL, 60-min access token, 30-day session, 3600s revoked JTI, strict refresh rotation |
-| [TF0-DECISIONS](docs/tbd/TF0-DECISIONS.md) | Infrastructure Foundation | us-east-2, 2 AZs, VPC 10.0.0.0/16, 6 security groups, ALB 3600s idle, ECS Fargate + Service Connect, S3 state backend |
-| [TF1-DECISIONS](docs/tbd/TF1-DECISIONS.md) | Auth Infrastructure | 3 DynamoDB tables, 2 KMS CMKs, Secrets Manager + SSM hierarchy, 3 VPC Interface Endpoints, 4 task roles with least-privilege |
+The [Client Protocol Contract](docs/CLIENT_PROTOCOL_CONTRACT.md), [MVP Definition](docs/MVP-DEFINITION.md), and the [Execution Plan](docs/EXECUTION_PLAN.md) complete the design corpus.
 
 ## Contributing
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for code standards, development workflow, architectural conventions, and the ADR process.
+See [CONTRIBUTING.md](CONTRIBUTING.md) for code standards, development workflow, architectural conventions, commit conventions (Conventional Commits), and the ADR process.
 
 ## License
 
-TBD
+This repository is dual-licensed:
+
+- **Code** — [Apache License 2.0](LICENSE). You may use, modify, and distribute it, including commercially, with attribution and the license notice (see [NOTICE](NOTICE)).
+- **Documentation** (everything under [`docs/`](docs/), including the ADRs) — [Creative Commons Attribution 4.0 International (CC BY 4.0)](docs/LICENSE). You may share and adapt the writing, including commercially, as long as you credit **Alexis Nava**.
+
+Copyright 2026 Alexis Nava.
