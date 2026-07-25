@@ -27,10 +27,10 @@ jobs:
         if: github.event_name == 'pull_request'
         run: git fetch origin main:refs/heads/main
 
-      - uses: bufbuild/buf-setup-action@v1
+      - uses: bufbuild/buf-action@v1
         with:
+          setup_only: true
           github_token: ${{ secrets.GITHUB_TOKEN }}
-          version: 'latest'
 
       - name: Buf lint
         run: cd proto && buf lint
@@ -51,10 +51,10 @@ jobs:
           go-version: '1.26'
           cache: true
 
-      - uses: bufbuild/buf-setup-action@v1
+      - uses: bufbuild/buf-action@v1
         with:
+          setup_only: true
           github_token: ${{ secrets.GITHUB_TOKEN }}
-          version: 'latest'
 
       - name: Install protoc plugins
         run: |
@@ -85,10 +85,10 @@ jobs:
           go-version: '1.26'
           cache: true
 
-      - uses: bufbuild/buf-setup-action@v1
+      - uses: bufbuild/buf-action@v1
         with:
+          setup_only: true
           github_token: ${{ secrets.GITHUB_TOKEN }}
-          version: 'latest'
 
       - name: Install protoc plugins
         run: |
@@ -120,10 +120,10 @@ jobs:
           go-version: '1.26'
           cache: true
 
-      - uses: bufbuild/buf-setup-action@v1
+      - uses: bufbuild/buf-action@v1
         with:
+          setup_only: true
           github_token: ${{ secrets.GITHUB_TOKEN }}
-          version: 'latest'
 
       - name: Install protoc plugins
         run: |
@@ -152,10 +152,10 @@ jobs:
           go-version: '1.26'
           cache: true
 
-      - uses: bufbuild/buf-setup-action@v1
+      - uses: bufbuild/buf-action@v1
         with:
+          setup_only: true
           github_token: ${{ secrets.GITHUB_TOKEN }}
-          version: 'latest'
 
       - name: Install protoc plugins
         run: |
@@ -215,10 +215,10 @@ jobs:
           go-version: '1.26'
           cache: true
 
-      - uses: bufbuild/buf-setup-action@v1
+      - uses: bufbuild/buf-action@v1
         with:
+          setup_only: true
           github_token: ${{ secrets.GITHUB_TOKEN }}
-          version: 'latest'
 
       - name: Install protoc plugins
         run: |
