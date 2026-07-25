@@ -1,7 +1,7 @@
 # Development Dockerfile with Go, tools, Air for hot reload, and Delve for debugging.
 # Used by docker-compose.dev.yaml for local development.
 
-FROM golang:1.25-alpine AS base
+FROM golang:1.26-alpine AS base
 
 # Install build dependencies (build-base + binutils provide gcc/ld for CGO/race detector)
 RUN apk add --no-cache git make curl build-base binutils-gold
@@ -12,7 +12,7 @@ RUN go install github.com/air-verse/air@latest
 # Install Delve for debugging
 RUN go install github.com/go-delve/delve/cmd/dlv@latest
 
-# Install golangci-lint v2 (built from source to match Go 1.25)
+# Install golangci-lint v2 (built from source to match Go 1.26)
 RUN go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@latest
 
 # Install buf and protoc plugins for proto generation
