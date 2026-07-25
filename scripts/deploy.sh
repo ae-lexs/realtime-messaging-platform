@@ -49,7 +49,9 @@ echo "==> docker login to ${REGION}-docker.pkg.dev"
 tb gcloud auth print-access-token | docker login -u oauth2accesstoken --password-stdin "https://${REGION}-docker.pkg.dev"
 for svc in gateway ingest fanout chatmgmt; do
   echo "==> build + push ${svc}:${TAG}"
-  docker build -f "docker/${svc}.Dockerfile" -t "${AR}/${svc}:${TAG}" .
+  # GKE nodes are amd64; force the image platform so a build on an arm64 host
+  # (Apple Silicon) doesn't publish an arm64-labelled manifest the nodes reject.
+  docker build --platform linux/amd64 -f "docker/${svc}.Dockerfile" -t "${AR}/${svc}:${TAG}" .
   docker push "${AR}/${svc}:${TAG}"
 done
 
