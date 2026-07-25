@@ -19,7 +19,7 @@ jobs:
     name: Proto Lint & Breaking
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0  # Needed for buf breaking against main
 
@@ -29,6 +29,7 @@ jobs:
 
       - uses: bufbuild/buf-setup-action@v1
         with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
           version: 'latest'
 
       - name: Buf lint
@@ -43,15 +44,16 @@ jobs:
     name: Go Lint
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v7
         with:
-          go-version: '1.25'
+          go-version: '1.26'
           cache: true
 
       - uses: bufbuild/buf-setup-action@v1
         with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
           version: 'latest'
 
       - name: Install protoc plugins
@@ -63,7 +65,7 @@ jobs:
       - name: Generate proto stubs
         run: cd proto && buf generate
 
-      # Build golangci-lint v2 from source to support Go 1.25
+      # Build golangci-lint v2 from source to support Go 1.26
       # Pre-built binaries may be built with older Go versions
       - name: Install golangci-lint
         run: go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@latest
@@ -76,15 +78,16 @@ jobs:
     name: Unit Tests
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v7
         with:
-          go-version: '1.25'
+          go-version: '1.26'
           cache: true
 
       - uses: bufbuild/buf-setup-action@v1
         with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
           version: 'latest'
 
       - name: Install protoc plugins
@@ -100,7 +103,7 @@ jobs:
         run: go test -race -coverprofile=coverage.txt -covermode=atomic ./...
 
       - name: Upload coverage
-        uses: codecov/codecov-action@v4
+        uses: codecov/codecov-action@v7
         with:
           files: coverage.txt
           fail_ci_if_error: false
@@ -110,15 +113,16 @@ jobs:
     name: Build
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v7
         with:
-          go-version: '1.25'
+          go-version: '1.26'
           cache: true
 
       - uses: bufbuild/buf-setup-action@v1
         with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
           version: 'latest'
 
       - name: Install protoc plugins
@@ -141,15 +145,16 @@ jobs:
       matrix:
         service: [gateway, ingest, fanout, chatmgmt]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v7
         with:
-          go-version: '1.25'
+          go-version: '1.26'
           cache: true
 
       - uses: bufbuild/buf-setup-action@v1
         with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
           version: 'latest'
 
       - name: Install protoc plugins
@@ -162,10 +167,10 @@ jobs:
         run: cd proto && buf generate
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@v4
 
       - name: Build ${{ matrix.service }}
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v7
         with:
           context: .
           file: docker/${{ matrix.service }}.Dockerfile
@@ -203,15 +208,16 @@ jobs:
           --health-retries 10
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v7
         with:
-          go-version: '1.25'
+          go-version: '1.26'
           cache: true
 
       - uses: bufbuild/buf-setup-action@v1
         with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
           version: 'latest'
 
       - name: Install protoc plugins
@@ -234,11 +240,11 @@ jobs:
     name: Terraform Validate
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Check Terraform file changes
         id: changes
-        uses: dorny/paths-filter@v3
+        uses: dorny/paths-filter@v4
         with:
           filters: |
             terraform:
@@ -246,9 +252,9 @@ jobs:
 
       - name: Setup Terraform
         if: steps.changes.outputs.terraform == 'true'
-        uses: hashicorp/setup-terraform@v3
+        uses: hashicorp/setup-terraform@v4
         with:
-          terraform_version: '1.14.0'
+          terraform_version: '1.15.8'
 
       - name: Terraform fmt check
         if: steps.changes.outputs.terraform == 'true'
@@ -256,9 +262,9 @@ jobs:
 
       - name: Setup tflint
         if: steps.changes.outputs.terraform == 'true'
-        uses: terraform-linters/setup-tflint@v4
+        uses: terraform-linters/setup-tflint@v6
         with:
-          tflint_version: 'v0.55.1'
+          tflint_version: 'v0.63.1'
 
       - name: Init tflint plugins
         if: steps.changes.outputs.terraform == 'true'
@@ -273,7 +279,7 @@ jobs:
 
       - name: Run trivy security scan
         if: steps.changes.outputs.terraform == 'true'
-        uses: aquasecurity/trivy-action@master
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           scan-type: 'config'
           scan-ref: 'terraform/'
