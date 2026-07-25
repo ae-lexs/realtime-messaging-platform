@@ -50,7 +50,8 @@ Eight modules. Each PR lists what it delivers, the ADRs it implements, its scope
 
 *Re-home the skeleton to GCP; stand up base infra and the events schema.*
 
-**M0.1 — Toolchain reset & GCP-targeting workspace** *(the one health-only PR, Principle 2)*
+**M0.1 — Toolchain reset & GCP-targeting workspace** *(the one health-only PR, Principle 2)* — ✅ **Done**
+- **Status:** ✅ **Done** (PR #11). Gate met: `make ci-local` green inside the new GCP toolbox (gcloud/terraform/kubectl/buf), `buf generate` clean, zero `aws-sdk-go` imports. The AWS SDK, LocalStack, and Redpanda were removed; chatmgmt reduced to `/healthz` with its substrate-neutral auth logic retained for the M1.2 re-home. Retired AWS `terraform/` left in place for M0.2 to replace.
 - **Delivers:** the Docker workspace now runs `gcloud`/`terraform`/`kubectl`/`buf`; LocalStack and `docker-compose` service-emulation removed; `Makefile`/CI updated; the four services still expose only `/healthz`.
 - **ADRs:** ADR-021 (Axis F, Docker toolchain; no local emulation), ADR-014 (repo structure — retained), ADR-012 (OTel setup).
 - **Gate:** `make ci-local` passes in-container; `buf generate` clean; no AWS SDK imports remain.

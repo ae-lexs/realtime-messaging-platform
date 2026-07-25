@@ -5,7 +5,7 @@ A **Distributed Systems Lab** designed to demonstrate senior/staff-level decisio
 This repository is intended to be **read, reviewed, and reasoned about** — not just run. The design lives in 23 Architecture Decision Records; the code is a faithful implementation of those decisions.
 
 > [!NOTE]
-> **Status — design complete, implementation in progress.** All architectural decisions (ADR-001 … ADR-023) are accepted. The substrate was migrated **AWS → GCP** (see [Substrate](#substrate)); implementation proceeds per [EXECUTION_PLAN v2.2](docs/EXECUTION_PLAN.md) as granular per-module PRs, currently at **Module 0** (toolchain reset). The v1 skeleton and authentication were built on the AWS substrate and are being re-homed to GCP.
+> **Status — design complete, implementation in progress.** All architectural decisions (ADR-001 … ADR-023) are accepted. The substrate was migrated **AWS → GCP** (see [Substrate](#substrate)); implementation proceeds per [EXECUTION_PLAN v2.2](docs/EXECUTION_PLAN.md) as granular per-module PRs. **Module 0 — M0.1 (toolchain reset & GCP-targeting workspace) is done:** the AWS SDK and all local cloud-emulation were removed, the container toolbox now runs `gcloud`/`terraform`/`kubectl`/`buf`, and the four services expose only `/healthz`; next is **M0.2** (base GCP Terraform — GKE, networking, registry, state). The v1 skeleton and authentication were built on the AWS substrate and are being re-homed to GCP.
 
 ## Architecture Overview
 
@@ -137,7 +137,7 @@ proto/
 └── events/v1/           # Event envelopes for Kafka + BigQuery (ADR-022)
 test/                    # harness / conformance (L1) / contract (L2) / e2e (L3) / chaos (L4) — ADR-017
 terraform/               # GCP modules + dev/prod environments (ADR-021)
-docker/                  # dev.Dockerfile (toolchain) + per-service production Dockerfiles (scratch)
+docker/                  # toolbox.Dockerfile (gcloud/terraform/kubectl/buf/Go) + dev.Dockerfile (hot reload) + per-service production Dockerfiles (scratch)
 ```
 
 > The `internal/postgres` and `internal/firestore` adapters replace the AWS-era `internal/dynamo` per ADR-023; this re-homing is tracked in EXECUTION_PLAN Module 1–2.
