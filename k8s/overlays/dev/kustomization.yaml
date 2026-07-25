@@ -1,0 +1,22 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+resources:
+  - ../../base
+
+# The image newName values are placeholders. scripts/deploy.sh copies this tree
+# to a build dir and runs `kustomize edit set image messaging-<svc>=<AR>/<svc>:<tag>`
+# to point them at the project's Artifact Registry before `kubectl apply -k`.
+images:
+  - name: messaging-gateway
+    newName: REGISTRY-PLACEHOLDER/gateway
+    newTag: latest
+  - name: messaging-ingest
+    newName: REGISTRY-PLACEHOLDER/ingest
+    newTag: latest
+  - name: messaging-fanout
+    newName: REGISTRY-PLACEHOLDER/fanout
+    newTag: latest
+  - name: messaging-chatmgmt
+    newName: REGISTRY-PLACEHOLDER/chatmgmt
+    newTag: latest

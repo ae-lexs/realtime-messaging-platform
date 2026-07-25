@@ -1,8 +1,10 @@
-# Dev environment variable values.
-# Copy to terraform.tfvars and adjust as needed.
-# NEVER commit terraform.tfvars — it is git-ignored.
+# Copy to terraform.tfvars and fill in real values (terraform.tfvars is gitignored).
+# No secrets belong here — only project/billing identifiers.
 
-domain_name  = "messaging-dev.example.com"
-project_name = "messaging-platform"
-environment  = "dev"
-aws_region   = "us-east-2"
+project_id         = "your-gcp-project-id"
+billing_account_id = "XXXXXX-XXXXXX-XXXXXX"
+region             = "us-central1"
+
+# Optional overrides:
+# artifact_repository_id = "messaging"
+# budget_amount_units    = 500

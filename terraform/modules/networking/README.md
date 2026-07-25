@@ -1,36 +1,66 @@
-# Networking Module
+# networking
 
-Provisions the VPC, public/private subnets, NAT Gateway(s), Internet Gateway, VPC Gateway Endpoints (S3, DynamoDB), and security groups for the Realtime Messaging Platform.
-
-## Architecture
-
-- **Public subnets**: Host ALB and NAT Gateway only
-- **Private subnets**: Host all compute (ECS tasks), no IGW routes
-- **VPC Gateway Endpoints**: S3 and DynamoDB (free, reduces NAT charges)
-- **VPC Interface Endpoints** (optional): Secrets Manager, SSM, KMS — for ECS tasks accessing auth services in private subnets (TBD-TF1-6)
-- **Security groups**: 7 base groups enforcing ADR-002 plane boundaries (sg-alb, sg-gateway, sg-ingest, sg-fanout, sg-chatmgmt, sg-redis, sg-msk) + optional sg-vpc-endpoints
+Custom-mode VPC with a single regional subnet (secondary ranges for VPC-native
+GKE pods and services) plus Cloud Router + Cloud NAT for private egress. Nodes
+reach the internet (image pulls, module downloads) without external IPs.
 
 ## Usage
 
 ```hcl
 module "networking" {
-  source = "../../modules/networking"
-
-  project_name                   = "messaging-platform"
-  environment                    = "dev"
-  vpc_cidr                       = "10.0.0.0/16"
-  az_count                       = 2
-  single_nat_gateway             = true
-  enable_vpc_interface_endpoints = true
+  source      = "../../modules/networking"
+  project_id  = var.project_id
+  region      = var.region
+  name_prefix = "messaging-dev"
 }
 ```
 
-## References
-
-- [TBD-TF0-1: Region & Availability Zones](../../../docs/tbd/TF0-DECISIONS.md)
-- [TBD-TF0-2: VPC & Network Topology](../../../docs/tbd/TF0-DECISIONS.md)
-- [TBD-TF0-4: Security Group Architecture](../../../docs/tbd/TF0-DECISIONS.md)
-- [TBD-TF1-6: VPC Interface Endpoints](../../../docs/tbd/TF1-DECISIONS.md)
-
 <!-- BEGIN_TF_DOCS -->
+## Requirements
+
+| Name | Version |
+|------|---------|
+| terraform | >= 1.9.0, < 2.0.0 |
+| google | >= 6.0 |
+
+## Providers
+
+| Name | Version |
+|------|---------|
+| google | >= 6.0 |
+
+## Resources
+
+| Name | Type |
+|------|------|
+| [google_compute_network.main](https://registry.terraform.io/providers/hashicorp/google/latest/docs/resources/compute_network) | resource |
+| [google_compute_router.main](https://registry.terraform.io/providers/hashicorp/google/latest/docs/resources/compute_router) | resource |
+| [google_compute_router_nat.main](https://registry.terraform.io/providers/hashicorp/google/latest/docs/resources/compute_router_nat) | resource |
+| [google_compute_subnetwork.main](https://registry.terraform.io/providers/hashicorp/google/latest/docs/resources/compute_subnetwork) | resource |
+
+## Inputs
+
+| Name | Description | Type | Default | Required |
+|------|-------------|------|---------|:--------:|
+| name\_prefix | Prefix for cloud resource names (e.g. messaging-dev). | `string` | n/a | yes |
+| project\_id | GCP project ID that owns the network resources. | `string` | n/a | yes |
+| region | Region for the subnet, Cloud Router, and Cloud NAT. | `string` | n/a | yes |
+| pods\_cidr | Secondary IPv4 CIDR range for GKE pod IPs. | `string` | `"10.20.0.0/16"` | no |
+| pods\_range\_name | Name of the secondary range used for GKE pod IPs (VPC-native). | `string` | `"pods"` | no |
+| services\_cidr | Secondary IPv4 CIDR range for GKE service (ClusterIP) IPs. | `string` | `"10.30.0.0/20"` | no |
+| services\_range\_name | Name of the secondary range used for GKE service (ClusterIP) IPs. | `string` | `"services"` | no |
+| subnet\_cidr | Primary IPv4 CIDR range for the GKE node subnet. | `string` | `"10.10.0.0/20"` | no |
+
+## Outputs
+
+| Name | Description |
+|------|-------------|
+| nat\_name | The Cloud NAT name providing pod egress. |
+| network\_id | The VPC network self-link/ID, for attaching the GKE cluster. |
+| network\_name | The VPC network name. |
+| pods\_range\_name | Secondary range name for GKE pod IPs (for ip\_allocation\_policy). |
+| router\_name | The Cloud Router name backing egress NAT. |
+| services\_range\_name | Secondary range name for GKE service IPs (for ip\_allocation\_policy). |
+| subnet\_id | The subnet self-link/ID, for attaching the GKE cluster. |
+| subnet\_name | The subnet name. |
 <!-- END_TF_DOCS -->

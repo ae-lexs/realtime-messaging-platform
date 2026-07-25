@@ -136,7 +136,7 @@ proto/
 ├── messaging/v1/        # Service contracts (gRPC)
 └── events/v1/           # Event envelopes for Kafka + BigQuery (ADR-022)
 test/                    # harness / conformance (L1) / contract (L2) / e2e (L3) / chaos (L4) — ADR-017
-terraform/               # GCP modules + dev/prod environments (ADR-021)
+terraform/               # GCP modules + dev environment; GCS remote state (ADR-021)
 docker/                  # toolbox.Dockerfile (gcloud/terraform/kubectl/buf/Go) + dev.Dockerfile (hot reload) + per-service production Dockerfiles (scratch)
 ```
 

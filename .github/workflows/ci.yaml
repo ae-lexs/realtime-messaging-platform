@@ -251,11 +251,13 @@ jobs:
           terraform -chdir=terraform/environments/dev init -backend=false
           terraform -chdir=terraform/environments/dev validate
 
-      - name: Validate prod environment
+      - name: Check module docs are current (terraform-docs)
         if: steps.changes.outputs.terraform == 'true'
         run: |
-          terraform -chdir=terraform/environments/prod init -backend=false
-          terraform -chdir=terraform/environments/prod validate
+          for m in terraform/modules/*/; do
+            docker run --rm -v "$PWD:/work" -w /work quay.io/terraform-docs/terraform-docs:0.19.0 \
+              -c .terraform-docs.yml --output-check "$m"
+          done
 
   # Final gate - all checks must pass
   ci-passed:
