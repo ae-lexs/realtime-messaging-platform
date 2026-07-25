@@ -46,9 +46,9 @@ variable "artifact_repository_id" {
 }
 
 variable "budget_amount_units" {
-  description = "Budget alert threshold in whole USD (ADR-021 Deployment Req 4)."
+  description = "Budget alert threshold in whole units of the billing account currency (MXN for this account; ~5000 MXN ≈ $270 USD). ADR-021 Deployment Req 4."
   type        = number
-  default     = 500
+  default     = 5000
 }
 
 variable "master_authorized_cidr_blocks" {

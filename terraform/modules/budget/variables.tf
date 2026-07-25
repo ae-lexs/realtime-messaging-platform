@@ -22,15 +22,9 @@ variable "name_prefix" {
 # ─────────────────────────────────────────────
 
 variable "amount_units" {
-  description = "Budget amount in whole currency units (ADR-021 Deployment Req 4: 500)."
+  description = "Budget amount in whole units of the billing account's currency (ADR-021 Deployment Req 4)."
   type        = number
   default     = 500
-}
-
-variable "currency_code" {
-  description = "ISO 4217 currency code for the budget amount."
-  type        = string
-  default     = "USD"
 }
 
 variable "threshold_percents" {

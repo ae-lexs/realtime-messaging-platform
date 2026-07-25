@@ -17,8 +17,10 @@ resource "google_billing_budget" "main" {
 
   amount {
     specified_amount {
-      currency_code = var.currency_code
-      units         = tostring(var.amount_units)
+      # currency_code is intentionally omitted so the budget inherits the
+      # billing account's currency. Specifying a currency that differs from the
+      # account (e.g. USD against an MXN account) is a 400 invalid-argument.
+      units = tostring(var.amount_units)
     }
   }
 
