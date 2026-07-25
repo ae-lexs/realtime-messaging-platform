@@ -3,7 +3,7 @@
 # No Go, buf, or lint tools are invoked directly on the host.
 
 .PHONY: all dev down logs lint fmt test test-integration proto proto-lint proto-breaking build docker ci-local ci-fast check-no-aws clean help \
-	terraform-fmt terraform-fmt-fix terraform-validate terraform-lint terraform-security \
+	terraform-fmt terraform-fmt-fix terraform-validate terraform-lint terraform-security terraform-docs terraform-docs-check \
 	gcp-auth gcp-bootstrap-state deploy teardown
 
 # Default target
@@ -129,6 +129,7 @@ check-no-aws:
 
 TFLINT_IMAGE := ghcr.io/terraform-linters/tflint:v0.63.1
 TRIVY_IMAGE := aquasec/trivy:0.59.1
+TFDOCS_IMAGE := quay.io/terraform-docs/terraform-docs:0.19.0
 TF_ENV := terraform/environments/dev
 
 ## Check Terraform formatting
@@ -153,6 +154,20 @@ terraform-lint:
 terraform-security:
 	docker run --rm -v "$(CURDIR)/terraform:/terraform" $(TRIVY_IMAGE) \
 		config --severity HIGH,CRITICAL --exit-code 1 /terraform
+
+## Generate module READMEs (inject inputs/outputs tables via terraform-docs)
+terraform-docs:
+	@for m in terraform/modules/*/; do \
+		echo "==> $$m"; \
+		docker run --rm -v "$(CURDIR):/work" -w /work $(TFDOCS_IMAGE) -c .terraform-docs.yml "$$m"; \
+	done
+
+## Verify module READMEs are current (CI gate — fails if a README is stale)
+terraform-docs-check:
+	@for m in terraform/modules/*/; do \
+		docker run --rm -v "$(CURDIR):/work" -w /work $(TFDOCS_IMAGE) -c .terraform-docs.yml --output-check "$$m" || \
+		{ echo "❌ $$m/README.md is stale — run: make terraform-docs"; exit 1; }; \
+	done
 
 # ============================================================================
 # GCP deploy-and-destroy loop (M0.2) — requires: PROJECT_ID, BILLING_ACCOUNT_ID
@@ -239,6 +254,7 @@ help:
 	@echo "  make terraform-validate Validate Terraform configurations"
 	@echo "  make terraform-lint     Lint with tflint"
 	@echo "  make terraform-security Security scan with trivy"
+	@echo "  make terraform-docs     Regenerate module READMEs (terraform-docs)"
 	@echo ""
 	@echo "GCP deploy-and-destroy (needs PROJECT_ID, BILLING_ACCOUNT_ID):"
 	@echo "  make gcp-auth            Authenticate gcloud + ADC (one-time)"

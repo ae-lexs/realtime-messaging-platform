@@ -1,0 +1,18 @@
+# terraform-docs config — injects the inputs/outputs tables into each module's
+# README.md between the BEGIN_TF_DOCS / END_TF_DOCS markers.
+# Regenerate with: make terraform-docs
+formatter: "markdown table"
+
+output:
+  file: README.md
+  mode: inject
+
+sort:
+  enabled: true
+  by: required
+
+settings:
+  anchor: false
+  color: false
+  description: true
+  hide-empty: true
