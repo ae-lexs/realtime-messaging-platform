@@ -68,7 +68,7 @@ Terraform validation also runs inside Docker containers. The Makefile targets mi
 make terraform-fmt       # check formatting
 make terraform-fmt-fix   # fix formatting
 make terraform-validate  # validate per environment
-make terraform-lint      # tflint (naming, docs, AWS rules)
+make terraform-lint      # tflint (naming, docs, google rules)
 make terraform-security  # trivy security scan
 ```
 
@@ -277,7 +277,7 @@ make ci-local        # full CI pipeline locally
 
 # Terraform
 make terraform-fmt       # Terraform formatting
-make terraform-lint      # tflint (naming, docs, AWS rules)
+make terraform-lint      # tflint (naming, docs, google rules)
 make terraform-validate  # terraform validate per environment
 make terraform-security  # trivy HIGH/CRITICAL scan
 ```

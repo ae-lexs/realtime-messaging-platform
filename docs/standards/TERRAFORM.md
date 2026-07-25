@@ -12,7 +12,7 @@ These rules must never be violated. They are the Terraform equivalent of the Go 
 
 | Rule | Rationale | Enforcement |
 |------|-----------|-------------|
-| No credentials in code or `.tfvars` — ever | Secrets belong in AWS Secrets Manager, SSM, or CI environment variables | Code review, tfsec/trivy |
+| No credentials in code or `.tfvars` — ever | Secrets belong in GCP Secret Manager or CI environment variables | Code review, trivy |
 | Every variable and output has a `description` | Self-documenting infrastructure; terraform-docs generates from these | tflint |
 | Every variable has an explicit `type` | Catches misconfiguration at plan time, not apply time | tflint |
 | Providers are configured only in `environments/`, never in `modules/` | Modules must be environment-agnostic | Code review |
@@ -50,8 +50,8 @@ terraform/modules/networking/
 
 | File | Purpose |
 |------|---------|
-| `backend.tf` | Remote state backend configuration |
-| `providers.tf` | Provider configuration with `default_tags` |
+| `backend.tf` | Remote state backend configuration (GCS) |
+| `providers.tf` | Provider configuration with `default_labels` |
 | `terraform.tfvars.example` | Example variable values (committed, never real secrets) |
 
 ## Root Module vs Child Module Conventions
@@ -63,16 +63,16 @@ terraform/modules/networking/
 - Export at least one output per resource created
 
 **Root modules** (`terraform/environments/*`):
-- Configure providers with `default_tags` and region
-- Configure backend (S3 + DynamoDB)
-- Pin providers to minor version (`~> 6.x.0`)
+- Configure providers with `default_labels` and region
+- Configure backend (GCS bucket; native object locking, no lock table)
+- Pin providers to minor version (`~> 6.x`)
 - Compose child modules — contain minimal inline resources
 - Target < 100 resources per state file
 
 ## When to Create a Module
 
 Create a module when:
-- Resources form a logical unit with a clear purpose (e.g., "networking", "ALB")
+- Resources form a logical unit with a clear purpose (e.g., "networking", "gke")
 - The same pattern appears or will appear in 2+ environments
 - You want to hide complexity behind a clean variable/output interface
 - Resources share a security/IAM boundary
@@ -85,24 +85,24 @@ Do NOT create a module when:
 ## Naming Conventions
 
 **Terraform identifiers** — `snake_case`:
-- Resource names: `aws_ecs_service.gateway`
-- Variable names: `gateway_task_cpu`
-- Module references: `module.ecs_cluster`
-- Local values: `local.common_tags`
+- Resource names: `google_container_cluster.main`
+- Variable names: `master_authorized_cidr_blocks`
+- Module references: `module.gke`
+- Local values: `local.name_prefix`
 
 **Cloud resource names** — `kebab-case` with project-environment prefix:
 
 ```
 {project}-{environment}-{component}
-messaging-dev-gateway
-messaging-prod-ecs-cluster
-messaging-dev-alb
+messaging-dev-gke
+messaging-dev-vpc
+messaging-dev-subnet
 ```
 
 **Resource naming within modules:**
-- Use `main` if a module contains a single resource of that type: `aws_vpc.main`
-- Use descriptive names when differentiating: `aws_subnet.public`, `aws_subnet.private`
-- Never repeat the resource type in the name: `aws_instance.web`, not `aws_instance.web_instance`
+- Use `main` if a module contains a single resource of that type: `google_compute_network.main`
+- Use descriptive names when differentiating: `google_compute_subnetwork.public`, `google_compute_subnetwork.private`
+- Never repeat the resource type in the name: `google_compute_instance.web`, not `google_compute_instance.web_instance`
 
 ## Variable Design
 
@@ -154,58 +154,63 @@ Rules:
 - No `terraform.tfvars` committed to version control — `.gitignore` enforced
 - `terraform.tfvars.example` committed for documentation
 - Per-environment values in `environments/{env}/terraform.tfvars.example`
-- Sensitive values come from Secrets Manager or SSM Parameter Store (ADR-014 §7), never from `.tfvars` files
+- Sensitive values come from GCP Secret Manager, never from `.tfvars` files
 - CI injects variables via `TF_VAR_*` environment variables or `-var-file`
 
-## Tagging Strategy
+## Labeling Strategy
 
-All AWS resources MUST carry these tags — enforced via `default_tags` in the provider block:
+GCP uses **labels** (not tags) for cost allocation. Label keys and values must be
+lowercase, and may contain only letters, numbers, `-`, and `_`. All resources
+carry these labels — applied via `default_labels` in the provider block:
 
-| Tag | Value | Purpose |
-|-----|-------|---------|
-| `Project` | `messaging-platform` | Cost allocation, resource identification |
-| `Environment` | `dev`, `staging`, `prod` | Environment identification |
-| `ManagedBy` | `terraform` | Distinguishes IaC-managed from manual resources |
+| Label | Value | Purpose |
+|-------|-------|---------|
+| `project` | `messaging-platform` | Cost allocation, resource identification |
+| `environment` | `dev`, `staging`, `prod` | Environment identification |
+| `managed-by` | `terraform` | Distinguishes IaC-managed from manual resources |
 
 ```hcl
 # environments/dev/providers.tf
-provider "aws" {
-  region = var.aws_region
+provider "google" {
+  project = var.project_id
+  region  = var.region
 
-  default_tags {
-    tags = {
-      Project     = var.project_name
-      Environment = var.environment
-      ManagedBy   = "terraform"
-    }
+  default_labels = {
+    project     = var.project_name
+    environment = var.environment
+    managed-by  = "terraform"
   }
 }
 ```
 
-Additional tags (`Owner`, `CostCenter`) may be added per-resource as needed. Module variables accept a `tags` map that is merged with `default_tags`.
+Not every GCP resource type supports labels; where unsupported, rely on the
+resource-name prefix for identification. Additional labels may be added
+per-resource as needed.
 
 ## State Management
 
-**Remote backend:** S3 bucket with DynamoDB locking. Versioning enabled on the bucket for state recovery. Encryption at rest via SSE-S3. Public access blocked.
+**Remote backend:** GCS bucket with **native object-level locking** (no separate lock table, unlike S3 + DynamoDB). Object versioning enabled for state recovery; uniform bucket-level access and public-access prevention on. Encryption at rest is on by default (Google-managed keys).
 
-**State isolation:** Separate state file per environment. State key pattern: `{environment}/terraform.tfstate`.
+**State isolation:** Separate state prefix per environment. Prefix pattern: `{environment}` (i.e. `dev/default.tfstate` under the bucket).
+
+The bucket name is project-derived, so it is supplied at init via partial configuration rather than hardcoded (keeps project identifiers out of committed code). Bootstrap the bucket with `scripts/bootstrap-terraform-state.sh`.
 
 ```hcl
 # environments/dev/backend.tf
 terraform {
-  backend "s3" {
-    bucket         = "messaging-platform-terraform-state"
-    key            = "dev/terraform.tfstate"
-    region         = "us-east-2"
-    dynamodb_table = "terraform-locks"
-    encrypt        = true
-  }
+  backend "gcs" {}
 }
+```
+
+```bash
+terraform init \
+  -backend-config="bucket=${PROJECT_ID}-tf-state" \
+  -backend-config="prefix=dev"
 ```
 
 **Cross-state references:** When one environment root needs outputs from another (rare for this project), use `terraform_remote_state` data sources. Prefer dedicated data sources over remote state for simple lookups.
 
-**Access control:** Restrict S3 bucket access to CI/CD roles and infrastructure admins. Never use root credentials for Terraform operations.
+**Access control:** Restrict state bucket access to CI/CD service accounts and infrastructure admins. Never use owner/organization-admin credentials for routine Terraform operations.
 
 ## Versioning & Pinning
 
@@ -218,28 +223,33 @@ terraform {
 ```
 
 **Provider versions:**
-- Root modules: pessimistic constraint to minor version — `~> 6.31.0`
+- Root modules: pessimistic constraint — `~> 6.0`
 - Child modules: broader constraint — `>= 6.0`
 
+Every module (root and child) declares `required_version`; tflint's
+`terraform_required_version` rule enforces this in all modules, not only roots.
+
 ```hcl
-# modules/*/versions.tf — broad constraint
+# modules/*/versions.tf — broad provider constraint
 terraform {
+  required_version = ">= 1.9.0, < 2.0.0"
+
   required_providers {
-    aws = {
-      source  = "hashicorp/aws"
+    google = {
+      source  = "hashicorp/google"
       version = ">= 6.0"
     }
   }
 }
 
-# environments/*/versions.tf — pinned to minor
+# environments/*/versions.tf — pinned to major, lock file pins exact
 terraform {
   required_version = ">= 1.9.0, < 2.0.0"
 
   required_providers {
-    aws = {
-      source  = "hashicorp/aws"
-      version = "~> 6.31.0"
+    google = {
+      source  = "hashicorp/google"
+      version = "~> 6.0"
     }
   }
 }
@@ -261,13 +271,13 @@ External registry modules (if used): always specify `version`. Git-sourced modul
 - Never use `count > 1` with distinct configurations — index shifts cause cascading resource recreation
 
 **Lifecycle management:**
-- `prevent_destroy` on stateful resources (DynamoDB tables, S3 buckets)
-- `create_before_destroy` for zero-downtime replacements (security groups, target groups)
+- `prevent_destroy` on stateful resources (Cloud SQL instances, GCS state buckets) in **persistent** environments. The deploy-and-destroy lab (ADR-021) is the deliberate exception: the GKE cluster sets `deletion_protection = false` so the mandatory end-of-session `terraform destroy` is never blocked.
+- `create_before_destroy` for zero-downtime replacements
 - Use `ignore_changes` sparingly and always on specific attributes, never `all`
 
 **Data sources:**
-- Use data sources to look up existing infrastructure (AMIs, AZs, caller identity)
-- Never hardcode AWS account IDs, AZ names, or region-specific values
+- Use data sources to look up existing infrastructure (project number, billing account, available zones)
+- Never hardcode project IDs, project numbers, or region-specific values
 
 **Locals:**
 - Use `locals` to name complex expressions and avoid repetition
@@ -276,14 +286,14 @@ External registry modules (if used): always specify `version`. Git-sourced modul
 ## Security
 
 **Provider credentials:** never in code. Hierarchy (most to least preferred):
-1. OIDC / Workload Identity Federation (CI/CD)
-2. Instance profiles / IAM roles (ECS, EC2)
-3. Environment variables (local development)
-4. Static credentials in provider block — **NEVER**
+1. Workload Identity Federation (CI/CD)
+2. Attached service accounts / Workload Identity (GKE, Cloud Run)
+3. Application Default Credentials via `gcloud auth application-default login` (local development)
+4. Static service-account key files in the provider block — **NEVER**
 
 **Pre-apply security scanning:** `trivy config .` (successor to tfsec) runs in CI and blocks PRs on high/critical findings. See [CI/CD Pipeline](../../CONTRIBUTING.md#cicd-pipeline).
 
-**State file security:** Encrypted at rest (S3 SSE), access restricted to CI/CD roles and admins, never committed to git.
+**State file security:** Encrypted at rest (GCS default encryption), access restricted to CI/CD service accounts and admins, never committed to git.
 
 ## Validation Tooling
 
@@ -302,7 +312,8 @@ All Terraform tooling runs in Docker. No local Terraform installation required.
 - `terraform_documented_variables` — requires `description` on all variables
 - `terraform_documented_outputs` — requires `description` on all outputs
 - `terraform_standard_module_structure` — validates file layout
-- AWS ruleset — AWS-specific best practices
+- `terraform_required_version` — requires `required_version` in every module
+- google ruleset — GCP-specific best practices
 
 ## Documentation
 

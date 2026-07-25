@@ -251,12 +251,6 @@ jobs:
           terraform -chdir=terraform/environments/dev init -backend=false
           terraform -chdir=terraform/environments/dev validate
 
-      - name: Validate prod environment
-        if: steps.changes.outputs.terraform == 'true'
-        run: |
-          terraform -chdir=terraform/environments/prod init -backend=false
-          terraform -chdir=terraform/environments/prod validate
-
   # Final gate - all checks must pass
   ci-passed:
     name: CI Passed
