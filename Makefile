@@ -3,7 +3,8 @@
 # No Go, buf, or lint tools are invoked directly on the host.
 
 .PHONY: all dev down logs lint fmt test test-integration proto proto-lint proto-breaking build docker ci-local ci-fast check-no-aws clean help \
-	terraform-fmt terraform-fmt-fix terraform-validate terraform-lint terraform-security
+	terraform-fmt terraform-fmt-fix terraform-validate terraform-lint terraform-security \
+	gcp-auth gcp-bootstrap-state deploy teardown
 
 # Default target
 all: ci-local
@@ -123,29 +124,27 @@ check-no-aws:
 # ============================================================================
 # Terraform (Docker-only per PR0-INV-1)
 # ============================================================================
+# fmt/validate run in the toolbox (terraform 1.15.8); tflint/trivy use their
+# dedicated images, matching the CI job versions.
 
-TF_IMAGE := hashicorp/terraform:1.14
-TF_DOCKER := docker run --rm -v "$(CURDIR)/terraform:/terraform" -w /terraform
-TFLINT_IMAGE := ghcr.io/terraform-linters/tflint:v0.55.1
+TFLINT_IMAGE := ghcr.io/terraform-linters/tflint:v0.63.1
 TRIVY_IMAGE := aquasec/trivy:0.59.1
+TF_ENV := terraform/environments/dev
 
 ## Check Terraform formatting
 terraform-fmt:
-	$(TF_DOCKER) $(TF_IMAGE) fmt -check -recursive
+	docker compose run --rm toolbox terraform -chdir=terraform fmt -check -recursive
 
 ## Fix Terraform formatting
 terraform-fmt-fix:
-	$(TF_DOCKER) $(TF_IMAGE) fmt -recursive
+	docker compose run --rm toolbox terraform -chdir=terraform fmt -recursive
 
-## Validate Terraform configurations (per environment)
+## Validate the dev Terraform configuration (no backend/credentials needed)
 terraform-validate:
-	@for env in environments/dev environments/prod; do \
-		echo "==> Validating $$env"; \
-		$(TF_DOCKER) $(TF_IMAGE) -chdir=$$env init -backend=false > /dev/null 2>&1 && \
-		$(TF_DOCKER) $(TF_IMAGE) -chdir=$$env validate || exit 1; \
-	done
+	docker compose run --rm toolbox sh -c \
+		"terraform -chdir=$(TF_ENV) init -backend=false -input=false >/dev/null && terraform -chdir=$(TF_ENV) validate"
 
-## Lint Terraform with tflint
+## Lint Terraform with tflint (google ruleset)
 terraform-lint:
 	docker run --rm -v "$(CURDIR)/terraform:/terraform" -w /terraform --entrypoint sh $(TFLINT_IMAGE) \
 		-c "tflint --init --config /terraform/.tflint.hcl && tflint --recursive --config /terraform/.tflint.hcl"
@@ -154,6 +153,28 @@ terraform-lint:
 terraform-security:
 	docker run --rm -v "$(CURDIR)/terraform:/terraform" $(TRIVY_IMAGE) \
 		config --severity HIGH,CRITICAL --exit-code 1 /terraform
+
+# ============================================================================
+# GCP deploy-and-destroy loop (M0.2) — requires: PROJECT_ID, BILLING_ACCOUNT_ID
+# ============================================================================
+# First-time setup: `make gcp-auth`, then `make gcp-bootstrap-state`.
+# ALWAYS `make teardown` at end of session (ADR-021 Deployment Req 4).
+
+## Authenticate gcloud + Application Default Credentials (interactive, one-time)
+gcp-auth:
+	docker compose run --rm toolbox sh -c "gcloud auth login && gcloud auth application-default login"
+
+## Create the GCS Terraform state bucket (idempotent)
+gcp-bootstrap-state:
+	./scripts/bootstrap-terraform-state.sh
+
+## Deploy base infra + four health services to GKE (FIRST CLOUD SPEND)
+deploy:
+	./scripts/deploy.sh
+
+## Tear down everything (mandatory end-of-session step)
+teardown:
+	./scripts/teardown.sh
 
 # ============================================================================
 # Utilities
@@ -218,6 +239,12 @@ help:
 	@echo "  make terraform-validate Validate Terraform configurations"
 	@echo "  make terraform-lint     Lint with tflint"
 	@echo "  make terraform-security Security scan with trivy"
+	@echo ""
+	@echo "GCP deploy-and-destroy (needs PROJECT_ID, BILLING_ACCOUNT_ID):"
+	@echo "  make gcp-auth            Authenticate gcloud + ADC (one-time)"
+	@echo "  make gcp-bootstrap-state Create the GCS Terraform state bucket"
+	@echo "  make deploy              Deploy infra + health services to GKE"
+	@echo "  make teardown            Destroy everything (end-of-session)"
 	@echo ""
 	@echo "Utilities:"
 	@echo "  make toolbox CMD=...  Run command in toolbox"

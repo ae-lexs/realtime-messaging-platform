@@ -18,11 +18,18 @@ services:
       - .:/app
       - go-mod-cache:/go/pkg/mod
       - go-build-cache-toolbox:/root/.cache/go-build
+      # gcloud/ADC + kubeconfig live on the host and are mounted :rw so tokens
+      # refreshed in-container persist (per the AWS-SSO mount lesson). Run
+      # `make gcp-auth` once to populate them.
+      - ${HOME}/.config/gcloud:/root/.config/gcloud:rw
+      - ${HOME}/.kube:/root/.kube:rw
     working_dir: /app
     command: ["sleep", "infinity"]
     environment:
       - GOPROXY=https://proxy.golang.org,direct
       - GOPRIVATE=github.com/aelexs/*
+      - USE_GKE_GCLOUD_AUTH_PLUGIN=True
+      - CLOUDSDK_CONFIG=/root/.config/gcloud
 
   # Gateway Service — health-only skeleton (M0.1).
   gateway:
