@@ -183,6 +183,6 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for code standards, development workflow,
 This repository is dual-licensed:
 
 - **Code** — [Apache License 2.0](LICENSE). You may use, modify, and distribute it, including commercially, with attribution and the license notice (see [NOTICE](NOTICE)).
-- **Documentation** (everything under [`docs/`](docs/), including the ADRs) — [Creative Commons Attribution 4.0 International (CC BY 4.0)](docs/LICENSE). You may share and adapt the writing, including commercially, as long as you credit **Alexis Nava**.
+- **Documentation** (everything under [`docs/`](docs/), including the ADRs) — [Creative Commons Attribution 4.0 International (CC BY 4.0)](LICENSE-docs). You may share and adapt the writing, including commercially, as long as you credit **Alexis Nava**.
 
 Copyright 2026 Alexis Nava.
