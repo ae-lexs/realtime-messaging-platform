@@ -90,7 +90,7 @@ Eight modules. Each PR lists what it delivers, the ADRs it implements, its scope
 *The write path — ADR-023's core, the "ACK = Durability" backbone.*
 
 **M2.1 — Cloud SQL adapter, migrations & infra**
-- **Delivers:** Terraform for **Cloud SQL Postgres** + **PgBouncer** (transaction pooling; `pgx` prepared-statement caveat handled — ADR-021 Deployment Req §2); `golang-migrate` migrations for the five ADR-023 tables (`chat_counters`, `messages`, `idempotency_keys`, `delivery_state`, `outbox`) with all indexes; **`pg_cron` sweep** for `idempotency_keys`/`outbox` (Postgres has no native TTL); **all reads pinned to the primary**.
+- **Delivers:** Terraform for **Cloud SQL Postgres** + **PgBouncer** (transaction pooling; `pgx` prepared-statement caveat handled — ADR-021 Deployment Req §2); `golang-migrate` migrations for the five ADR-023 tables (`chat_counters`, `messages`, `idempotency_keys`, `delivery_state`, `outbox`) with all indexes; **hourly `pg_cron` sweeps** — `idempotency_keys WHERE expires_at < now()` and `outbox WHERE published_at IS NOT NULL AND published_at < now() - interval '1 day'` (**keyed on `published_at`, so the sweep can delete only already-published rows — an unpublished outbox row, however far behind the relay, is never swept, so a slow relay cannot silently lose messages**); **all reads pinned to the primary**.
 - **ADRs:** ADR-023 (Postgres DDL), ADR-021 (Decision A, pooling).
 - **Gate:** migrations apply clean; primary-only connection routing asserted; sweep job scheduled.
 
@@ -103,7 +103,8 @@ Eight modules. Each PR lists what it delivers, the ADRs it implements, its scope
 **M2.3 — Outbox relay → Managed Kafka**
 - **Delivers:** the in-process relay poller in Ingest — **claim (`FOR UPDATE SKIP LOCKED`) → produce Protobuf event with `acks=all` → mark `published_at`** (never before the ack; ADR-023 CI-2); Managed-Kafka producer with murmur2/`chat_id` partitioning (ADR-011) and Schema-Registry-encoded `MessagePersisted` (ADR-022 D1).
 - **ADRs:** ADR-022 (D2/D4 relay + effectively-once), ADR-023 (relay claim), ADR-011 (partitioning).
-- **Key invariants:** an event exists on Kafka iff its message committed; a crash between claim and ack leaves the row reclaimable (at-least-once), never lost; per-chat order preserved (single owner per `chat_id`).
+- **Relay topology (required for per-chat order):** the relay runs as a **single replica** (the ADR-023 default) — or, if ever scaled out, each worker takes a Postgres advisory lock on `hash(chat_id)` so exactly one worker owns a chat at a time. `FOR UPDATE SKIP LOCKED` gives row-level mutual exclusion, **not** per-chat sequential ordering: with N replicas, instances could claim seq 1/2/3 of one chat and race them onto the same Kafka partition (murmur2 on `chat_id`), violating ADR-001's per-chat total order. `acks=all` + producer idempotence do not fix this — it is a cross-producer ordering problem. Single-replica is the simplest-correct choice for the lab; its only cost is a brief publish pause on restart, bounded because the outbox is durable and the relay resumes from it.
+- **Key invariants:** an event exists on Kafka iff its message committed; a crash between claim and ack leaves the row reclaimable (at-least-once), never lost; **per-chat Kafka order is preserved by the single-owner-per-`chat_id` topology above, not by `SKIP LOCKED` alone**.
 - **Gate:** message persisted → exactly one `MessagePersisted` on `messages.persisted`; induced crash mid-relay → event reappears, deduped downstream by `event_id`.
 
 ### Module 3 — Connection Plane (Gateway on GKE)
@@ -125,6 +126,7 @@ Eight modules. Each PR lists what it delivers, the ADRs it implements, its scope
 - **Delivers:** `internal/fanout` consumer group on `messages.persisted` — membership resolve (Firestore + Memorystore cache, TTL), connection lookup, deliver via Redis pub/sub to the owning gateway; **offset commit after processing**; **delivery watermark to Postgres `delivery_state`** via the monotonic `INSERT … ON CONFLICT … WHERE last < new` (ADR-023, ADR-008 — note `delivery_state` is Postgres, not Firestore).
 - **ADRs:** ADR-002 (fanout plane, best-effort), ADR-008 (watermarks), ADR-011 (consumer semantics), ADR-010 (routing), ADR-023 (`delivery_state`).
 - **Key invariants:** watermark never exceeds the highest persisted sequence; offset committed after processing regardless of delivery success; never deliver to a non-member.
+- **Watermark failure & concurrency (safe by design):** if the `delivery_state` write fails *after* the Kafka offset commits, the watermark simply **lags** — sync-on-reconnect (M5.2) then re-sends those messages, which the client dedupes by `message_id` (at-least-once push; a documented non-goal, not data loss). Under a consumer rebalance, two Fanout instances may write the same chat's watermark out of order; the `ON CONFLICT … WHERE last < new` update is **max-wins and commutative**, so it converges to the correct maximum regardless of application order — "never exceeds highest persisted" is a bound, not an ordering requirement.
 - **Gate:** offline recipient → logged, no retry; watermark max-wins; rebalance → no duplicate steady-state processing.
 
 ### Module 5 — End-to-End Wire-Up
@@ -146,7 +148,8 @@ Eight modules. Each PR lists what it delivers, the ADRs it implements, its scope
 **M6.1 — BigQuery sink & landing tables**
 - **Delivers:** Terraform for the **BigQuery** dataset + landing tables (`raw_messages_persisted`, `raw_memberships_changed`, `raw_chats_created`; partition `DATE(occurred_at)`, cluster `chat_id`, **90-day** expiration) and the **BigQuery Sink V2 connector on Managed Kafka Connect** (Storage Write API, **UPSERT on `event_id`**, DLQ → `dead_letters`).
 - **ADRs:** ADR-022 (all), ADR-003 (BigQuery as analytical consumer).
-- **Key invariants:** metadata-only (no message body reaches BigQuery); effectively-once (relay at-least-once + `event_id` upsert); coverage = the three topics since sink activation (G1–G4 documented).
+- **Backfill window (the M2.3→M6.1 gap):** the sink connector starts from the **earliest retained offset** (`auto.offset.reset=earliest`), not `latest`, so on first activation it backfills whatever Kafka still holds — bounded by Managed Kafka's **7-day retention** (ADR-011). Land M6.1 within 7 days of M2.3 and there is *no* analytics gap; land it later and events older than the retention horizon are permanently absent — that is exactly ADR-022's **G1 (pre-sink events)**, an accepted non-goal, not a silent surprise.
+- **Key invariants:** metadata-only (no message body reaches BigQuery); effectively-once (relay at-least-once + `event_id` upsert); coverage = the three topics since sink activation, backfilled to the retention horizon (G1–G4 documented).
 - **Gate:** events land in BigQuery; a replayed duplicate `event_id` collapses to one row; no `content` column exists.
 
 ### Module 7 — Verification (contract → E2E → chaos)
@@ -156,7 +159,7 @@ Eight modules. Each PR lists what it delivers, the ADRs it implements, its scope
 - **M7.1 — Auth & Ingest contract tests:** OTP/token flow; `PersistMessage` idempotency-under-concurrency, sequence monotonicity, murmur2 test vectors; outbox-relay effectively-once.
 - **M7.2 — Chat lifecycle contract tests:** direct dedup, group two-phase, membership concurrency, entity-event verification.
 - **M7.3 — E2E scenarios (ADR-017 §5):** basic flow, offline sync, idempotency-under-retry, per-chat ordering under load, cross-chat independence — asserting the M5.1 "ACK = Durability" invariant end-to-end.
-- **M7.4 — Chaos (ADR-017 §6):** gateway crash, Memorystore wipe, Kafka partition-leader loss, **Cloud SQL failover**, relay crash mid-publish — validating correctness holds under failure. (Toxiproxy sidecars / GKE fault injection replace the AWS FIS approach.)
+- **M7.4 — Chaos (ADR-017 §6):** gateway crash, Memorystore wipe, Kafka partition-leader loss, **Cloud SQL failover**, relay crash mid-publish — validating correctness holds under failure. Mechanism: **Toxiproxy sidecars** for network faults (latency, partition) + Kubernetes **pod-kill / NetworkPolicy** for crashes, replacing the AWS FIS approach. No service mesh is in the stack, so no Istio/ASM-based injection.
 
 ---
 
@@ -193,7 +196,11 @@ flowchart TD
     style M61 fill:#f3e5f5,stroke:#7b1fa2
 ```
 
-**Critical path:** M0.1 → M0.2 → M2.1 → M2.2 → M2.3 → M4.1 → M5.1 → M5.2. Identity (M1) and connection (M3) parallelize with durability (M2) once base infra (M0.2) lands.
+**Critical path:** M2.2 (Ingest) validates membership against Firestore, so it is gated on **both** M2.1 *and* the M1 chain (M1.1 → M1.2 → M1.3). The true longest chain therefore runs through Identity:
+
+`M0.1 → M0.2 → M1.1 → M1.2 → M1.3 → M2.2 → M2.3 → M4.1 → M5.1 → M5.2`
+
+**What actually parallelizes:** M2.1 (Cloud SQL infra + migrations) and M3.x (connection plane) run alongside the M1 chain — but M2.2 waits on M1.3. If a second contributor needs M1 and M2 fully independent, split M2.2 into (a) the pure persist transaction with membership behind an interface (tested with a fake), then (b) a small PR wiring the real Firestore membership check. For the single-developer default this false-parallelism costs nothing, but the graph edge `M1.3 → M2.2` is the real constraint.
 
 ---
 
@@ -265,7 +272,7 @@ Deliberate scope boundaries, carried from v1 and updated for the GCP substrate.
 1. **Proto/DDL evolution mid-development:** changes go in the PR that needs them (`buf breaking` + `golang-migrate` catch incompatibilities), not a separate "schema update" PR.
 2. **Terraform module granularity:** each PR ships its own resources, composed under a root module; first-time apply is incremental (data → cache → Kafka) per ADR-003's authority order, mirroring the v1 TF-2 blast-radius note.
 3. **Reference client (ADR-017 §1):** built incrementally across M7.1–M7.3 (auth client → message client → chat client), composed for E2E in M7.3.
-4. **`pg_cron` availability on Cloud SQL:** confirm the extension is enabled in the chosen Cloud SQL tier during M2.1; fall back to a scheduled Cloud Run/GKE CronJob sweep if not.
+4. **`pg_cron` on Cloud SQL:** supported on Cloud SQL for PostgreSQL 12+ across tiers — enable the `cloudsql.enable_pg_cron` flag in M2.1. The sweep predicate is safety-checked (only `published_at IS NOT NULL` outbox rows are deletable, so a lagging relay never loses messages). Fallback if ever unavailable: a GKE `CronJob` running the same `DELETE`s.
 
 ---
 
@@ -275,3 +282,4 @@ Deliberate scope boundaries, carried from v1 and updated for the GCP substrate.
 |---|---|---|
 | 2026-02-01 | Initial version (v1, AWS) — PR-0…PR-6, TF-0…TF-3, IT-1…IT-5; correctness invariants; Non-Goals | Alexis + Claude |
 | 2026-07-24 | **v2.0 re-split (GCP substrate).** Retired the v1 PR/TF/IT structure; reorganized into Modules 0–7 with granular vertical-slice PRs on the GCP substrate (ADR-021/022/023). Folded infra into each PR (code + Terraform travel together; no separate TF track; no CD). Added Migration Context (salvage/re-home map), GCP traceability, and updated Non-Goals/Tradeoffs (Postgres counter, metadata-only lake, single-region GCP, no CD, no local emulation). Preserved Guiding Principles and correctness-invariant discipline. | Alexis + Claude |
+| 2026-07-24 | **v2.1 review response.** Fixed three under-specified invariants the plan asserted but did not guarantee: (Issue 2, most urgent) **M2.3 relay must be single-replica or advisory-lock-per-`chat_id`** — `SKIP LOCKED` alone does not preserve per-chat Kafka order under N replicas; (Issue 1) corrected the **critical path** to route through the M1 chain since M2.2 validates membership against Firestore (M1.3), with a split option for a second contributor; (Issue 3) **M6.1 sink starts from `earliest` offset**, backfilling to Kafka's 7-day retention, beyond which is ADR-022 G1. Clarified: M4.1 watermark-write-failure lags safely (re-sync + client dedup) and max-wins is commutative under rebalance; the **`outbox` sweep deletes only `published_at IS NOT NULL` rows** (a slow relay cannot lose messages); M7.4 uses Toxiproxy + pod-kill (no service mesh); `pg_cron` is supported on Cloud SQL PG12+. | Alexis + Claude |
