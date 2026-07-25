@@ -2,9 +2,8 @@
 # All targets delegate to Docker containers per ADR-014 (PR0-INV-1).
 # No Go, buf, or lint tools are invoked directly on the host.
 
-.PHONY: all dev up down logs lint fmt test test-integration proto proto-lint proto-breaking build docker ci-local clean help \
-	terraform-fmt terraform-fmt-fix terraform-validate terraform-lint terraform-security \
-	dynamo-tables dynamo-scan
+.PHONY: all dev down logs lint fmt test test-integration proto proto-lint proto-breaking build docker ci-local ci-fast check-no-aws clean help \
+	terraform-fmt terraform-fmt-fix terraform-validate terraform-lint terraform-security
 
 # Default target
 all: ci-local
@@ -13,21 +12,17 @@ all: ci-local
 # Development
 # ============================================================================
 
-## Start development environment with hot reload
+## Start the health-only services with hot reload
 dev:
-	docker compose -f docker-compose.yaml -f docker-compose.dev.yaml up --build
+	docker compose up --build
 
-## Start infrastructure only (LocalStack, Redpanda, Redis)
-up:
-	docker compose up -d
-
-## Stop all services
+## Stop all services and remove volumes
 down:
-	docker compose -f docker-compose.yaml -f docker-compose.dev.yaml down -v
+	docker compose down -v
 
 ## View logs (use SERVICE=name to filter)
 logs:
-	docker compose -f docker-compose.yaml -f docker-compose.dev.yaml logs -f $(SERVICE)
+	docker compose logs -f $(SERVICE)
 
 # ============================================================================
 # Code Quality (Docker-only per PR0-INV-1)
@@ -35,17 +30,17 @@ logs:
 
 ## Run linters (golangci-lint)
 lint:
-	docker compose -f docker-compose.yaml -f docker-compose.dev.yaml run --rm toolbox \
+	docker compose run --rm toolbox \
 		golangci-lint run ./...
 
 ## Run gofmt (format all Go files in-place)
 fmt:
-	docker compose -f docker-compose.yaml -f docker-compose.dev.yaml run --rm toolbox \
+	docker compose run --rm toolbox \
 		golangci-lint fmt
 
 ## Run architectural linting (go-arch-lint)
 lint-arch:
-	docker compose -f docker-compose.yaml -f docker-compose.dev.yaml run --rm toolbox \
+	docker compose run --rm toolbox \
 		arch-go
 
 ## Run all linters
@@ -57,17 +52,17 @@ lint-all: lint lint-arch
 
 ## Run unit tests with race detection (excludes cmd/ and gen/ from coverage)
 test:
-	docker compose -f docker-compose.yaml -f docker-compose.dev.yaml run --rm toolbox \
+	docker compose run --rm toolbox \
 		sh -c 'go test -race -v $$(go list ./... | grep -v -E "cmd/|gen/")'
 
 ## Run unit tests with coverage (excludes cmd/ and gen/ from coverage)
 test-coverage:
-	docker compose -f docker-compose.yaml -f docker-compose.dev.yaml run --rm toolbox \
+	docker compose run --rm toolbox \
 		sh -c 'go test -race -coverprofile=coverage.txt -covermode=atomic $$(go list ./... | grep -v -E "cmd/|gen/")'
 
 ## Run integration tests (requires infrastructure up)
 test-integration:
-	docker compose -f docker-compose.yaml -f docker-compose.dev.yaml run --rm toolbox \
+	docker compose run --rm toolbox \
 		go test -race -tags=integration -v ./...
 
 # ============================================================================
@@ -76,17 +71,17 @@ test-integration:
 
 ## Generate Go code and OpenAPI spec from proto files
 proto:
-	docker compose -f docker-compose.yaml -f docker-compose.dev.yaml run --rm toolbox \
+	docker compose run --rm toolbox \
 		sh -c "cd proto && buf dep update && buf generate && buf generate --template buf.gen.openapi.yaml --path messaging/v1/chatmgmt.proto"
 
 ## Lint proto files
 proto-lint:
-	docker compose -f docker-compose.yaml -f docker-compose.dev.yaml run --rm toolbox \
+	docker compose run --rm toolbox \
 		sh -c "cd proto && buf lint"
 
 ## Check for breaking changes against main branch
 proto-breaking:
-	docker compose -f docker-compose.yaml -f docker-compose.dev.yaml run --rm toolbox \
+	docker compose run --rm toolbox \
 		sh -c "cd proto && buf breaking --against '../.git#branch=main,subdir=proto'"
 
 # ============================================================================
@@ -95,7 +90,7 @@ proto-breaking:
 
 ## Build all service binaries
 build:
-	docker compose -f docker-compose.yaml -f docker-compose.dev.yaml run --rm toolbox \
+	docker compose run --rm toolbox \
 		go build -v ./cmd/...
 
 ## Build production Docker images
@@ -110,12 +105,20 @@ docker:
 # ============================================================================
 
 ## Run full CI pipeline locally
-ci-local: proto-lint lint test build docker
+ci-local: check-no-aws proto-lint lint test build docker
 	@echo "✅ CI pipeline passed"
 
 ## Run CI pipeline without Docker build (faster)
-ci-fast: proto-lint lint test
+ci-fast: check-no-aws proto-lint lint test
 	@echo "✅ Fast CI passed"
+
+## Gate: no AWS SDK imports may remain (M0.1, ADR-021 substrate migration)
+check-no-aws:
+	@if grep -rn "aws-sdk-go" --include="*.go" . ; then \
+		echo "❌ AWS SDK imports found — M0.1 requires none"; exit 1; \
+	else \
+		echo "✅ no AWS SDK imports"; \
+	fi
 
 # ============================================================================
 # Terraform (Docker-only per PR0-INV-1)
@@ -156,41 +159,23 @@ terraform-security:
 # Utilities
 # ============================================================================
 
-# ============================================================================
-# DynamoDB (LocalStack)
-# ============================================================================
-
-## List DynamoDB tables in LocalStack
-dynamo-tables:
-	docker compose -f docker-compose.yaml -f docker-compose.dev.yaml exec localstack \
-		awslocal dynamodb list-tables
-
-## Scan a DynamoDB table (use TABLE=name, default: otp_requests)
-dynamo-scan:
-	docker compose -f docker-compose.yaml -f docker-compose.dev.yaml exec localstack \
-		awslocal dynamodb scan --table-name $(or $(TABLE),otp_requests)
-
-# ============================================================================
-# Utilities
-# ============================================================================
-
 ## Run a command in the toolbox container
 toolbox:
-	docker compose -f docker-compose.yaml -f docker-compose.dev.yaml run --rm toolbox $(CMD)
+	docker compose run --rm toolbox $(CMD)
 
 ## Download Go dependencies
 deps:
-	docker compose -f docker-compose.yaml -f docker-compose.dev.yaml run --rm toolbox \
+	docker compose run --rm toolbox \
 		go mod download
 
 ## Tidy Go modules
 tidy:
-	docker compose -f docker-compose.yaml -f docker-compose.dev.yaml run --rm toolbox \
+	docker compose run --rm toolbox \
 		go mod tidy
 
 ## Clean build artifacts and caches
 clean:
-	docker compose -f docker-compose.yaml -f docker-compose.dev.yaml down -v
+	docker compose down -v
 	rm -rf tmp/ gen/ coverage.txt
 
 ## Display help
@@ -198,9 +183,8 @@ help:
 	@echo "Realtime Messaging Platform - Makefile targets"
 	@echo ""
 	@echo "Development:"
-	@echo "  make dev              Start development environment with hot reload"
-	@echo "  make up               Start infrastructure only"
-	@echo "  make down             Stop all services"
+	@echo "  make dev              Start the health-only services with hot reload"
+	@echo "  make down             Stop all services and remove volumes"
 	@echo "  make logs             View logs (SERVICE=name to filter)"
 	@echo ""
 	@echo "Code Quality:"
@@ -226,6 +210,7 @@ help:
 	@echo "CI:"
 	@echo "  make ci-local         Run full CI pipeline locally"
 	@echo "  make ci-fast          Run fast CI (no Docker build)"
+	@echo "  make check-no-aws     Assert no AWS SDK imports remain"
 	@echo ""
 	@echo "Terraform:"
 	@echo "  make terraform-fmt      Check Terraform formatting"
@@ -233,10 +218,6 @@ help:
 	@echo "  make terraform-validate Validate Terraform configurations"
 	@echo "  make terraform-lint     Lint with tflint"
 	@echo "  make terraform-security Security scan with trivy"
-	@echo ""
-	@echo "DynamoDB:"
-	@echo "  make dynamo-tables    List DynamoDB tables in LocalStack"
-	@echo "  make dynamo-scan      Scan a table (TABLE=name, default: otp_requests)"
 	@echo ""
 	@echo "Utilities:"
 	@echo "  make toolbox CMD=...  Run command in toolbox"

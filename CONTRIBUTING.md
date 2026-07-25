@@ -57,8 +57,7 @@ make build           # go build inside Docker
 To run an ad-hoc command inside the toolbox:
 
 ```bash
-docker compose -f docker-compose.yaml -f docker-compose.dev.yaml \
-  run --rm toolbox "go doc ./internal/domain"
+docker compose run --rm toolbox go doc ./internal/domain
 ```
 
 ### Terraform Tooling
@@ -153,7 +152,7 @@ The following imports are **prohibited** and enforced by `go-arch-lint` + `depgu
 - 🚫 `domain` must not import `app`, `port`, or `adapter` — **CI-enforced**
 - 🚫 `app` must not import `port` or `adapter` — **CI-enforced**
 - 🚫 `port` must not import `adapter` directly (always goes through `app`) — **CI-enforced**
-- 🚫 Only `internal/dynamo/` may import `aws-sdk-go-v2/service/dynamodb` — **CI-enforced**
+- 🚫 No package may import `aws-sdk-go` — **CI-enforced** (AWS→GCP migration, ADR-021; the `no-aws` CI job and `make check-no-aws` fail on any match). GCP client adapters land per module.
 - 🚫 Only `internal/kafka/` may import `franz-go` — **CI-enforced**
 - 🚫 Only `internal/redis/` may import `go-redis` — **CI-enforced**
 
@@ -169,7 +168,7 @@ Constructor injection in `main.go` wires adapters to application services. No de
 
 ### Shared Packages
 
-`internal/domain/`, `internal/dynamo/`, `internal/kafka/`, `internal/redis/`, `internal/auth/`, and `internal/observability/` are shared across services. These are infrastructure adapters and cross-cutting concerns that multiple services depend on. They live outside individual service directories to avoid duplication but remain in `internal/` to prevent external import.
+`internal/domain/`, `internal/kafka/`, `internal/redis/`, `internal/auth/`, and `internal/observability/` are shared across services. These are infrastructure adapters and cross-cutting concerns that multiple services depend on. They live outside individual service directories to avoid duplication but remain in `internal/` to prevent external import. (The former `internal/dynamo/` was removed in the AWS→GCP migration; its Firestore/Cloud SQL successors arrive with Modules 1–2.)
 
 ### Domain Modeling (DDD Lite)
 

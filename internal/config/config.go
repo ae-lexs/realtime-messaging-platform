@@ -1,5 +1,5 @@
 // Package config provides configuration loading using koanf.
-// Follows TBD-PR0-1 decisions: env → AWS SDK → defaults precedence.
+// Follows TBD-PR0-1 decisions: env → defaults precedence.
 package config
 
 import (
@@ -31,10 +31,8 @@ type Config struct {
 	ChatMgmt ChatMgmtConfig `koanf:"chatmgmt"`
 
 	// Infrastructure configurations
-	DynamoDB DynamoDBConfig `koanf:"dynamodb"`
-	Kafka    KafkaConfig    `koanf:"kafka"`
-	Redis    RedisConfig    `koanf:"redis"`
-	AWS      AWSConfig      `koanf:"aws"`
+	Kafka KafkaConfig `koanf:"kafka"`
+	Redis RedisConfig `koanf:"redis"`
 
 	// OpenTelemetry configuration
 	OTEL OTELConfig `koanf:"otel"`
@@ -63,12 +61,6 @@ type ChatMgmtConfig struct {
 	GRPCPort int `koanf:"grpc_port"`
 }
 
-// DynamoDBConfig holds DynamoDB configuration.
-type DynamoDBConfig struct {
-	Endpoint string        `koanf:"endpoint"` // Empty for production (uses default AWS endpoint)
-	Timeout  time.Duration `koanf:"timeout"`
-}
-
 // KafkaConfig holds Kafka configuration.
 type KafkaConfig struct {
 	Brokers  []string `koanf:"brokers"` // Required in production
@@ -81,12 +73,6 @@ type RedisConfig struct {
 	Password string        `koanf:"password"`
 	DB       int           `koanf:"db"`
 	Timeout  time.Duration `koanf:"timeout"`
-}
-
-// AWSConfig holds AWS SDK configuration.
-type AWSConfig struct {
-	Region   string `koanf:"region"`
-	Endpoint string `koanf:"endpoint"` // LocalStack endpoint for development
 }
 
 // OTELConfig holds OpenTelemetry configuration.
@@ -119,9 +105,6 @@ func defaults() *Config {
 			GRPCPort: 9093,
 		},
 
-		DynamoDB: DynamoDBConfig{
-			Timeout: domain.DynamoDBTimeout,
-		},
 		Kafka: KafkaConfig{
 			ClientID: "messaging-platform",
 		},
@@ -130,16 +113,12 @@ func defaults() *Config {
 			DB:      0,
 			Timeout: domain.RedisTimeout,
 		},
-		AWS: AWSConfig{
-			Region: "us-east-1",
-		},
 	}
 }
 
 // Load loads configuration following the precedence:
 // 1. Environment variables (highest)
-// 2. AWS SDK (Secrets Manager / SSM) - not implemented in PR-0
-// 3. Compiled defaults (lowest)
+// 2. Compiled defaults (lowest)
 //
 // Per TBD-PR0-1 normative rule:
 // - Required keys missing → startup failure

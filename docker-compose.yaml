@@ -1,88 +1,118 @@
-# Infrastructure services for development and testing.
-# Use with: docker compose up -d
-# Or with dev overlay: docker compose -f docker-compose.yaml -f docker-compose.dev.yaml up
-
+# Development workspace — GCP-targeting (ADR-021 Axis F).
+#
+# There is no local cloud emulation: LocalStack, Redpanda, and local Redis were
+# removed with the AWS→GCP substrate migration. Dev targets a real GCP project
+# via Terraform (M0.2+); unit tests are hermetic and run in the toolbox.
+#
+#   make dev            # start the four health-only services with hot reload
+#   make toolbox CMD=.. # run any command in the toolbox
+#
 services:
-  # LocalStack - AWS services emulator (DynamoDB, Secrets Manager, SSM, SNS)
-  localstack:
-    image: localstack/localstack:3.4
-    ports:
-      - "4566:4566"      # LocalStack Gateway
-      - "4510-4559:4510-4559"  # External service ports
+  # Toolbox — runs every make target (lint, test, proto, build) and the GCP
+  # deploy-and-destroy loop. Carries gcloud, terraform, kubectl, buf, and Go.
+  toolbox:
+    build:
+      context: .
+      dockerfile: docker/toolbox.Dockerfile
+    volumes:
+      - .:/app
+      - go-mod-cache:/go/pkg/mod
+      - go-build-cache-toolbox:/root/.cache/go-build
+    working_dir: /app
+    command: ["sleep", "infinity"]
     environment:
-      - SERVICES=dynamodb,secretsmanager,ssm,sns
-      - DEBUG=0
-      - DOCKER_HOST=unix:///var/run/docker.sock
-      - PERSISTENCE=1
-    volumes:
-      - localstack-data:/var/lib/localstack
-      - /var/run/docker.sock:/var/run/docker.sock
-      - ./scripts/localstack-init.sh:/etc/localstack/init/ready.d/init.sh:ro
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:4566/_localstack/health"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
+      - GOPROXY=https://proxy.golang.org,direct
+      - GOPRIVATE=github.com/aelexs/*
 
-  # Redpanda - Kafka-compatible streaming platform
-  redpanda:
-    image: redpandadata/redpanda:v24.1.1
-    command:
-      - redpanda
-      - start
-      - --kafka-addr internal://0.0.0.0:9092,external://0.0.0.0:19092
-      - --advertise-kafka-addr internal://redpanda:9092,external://localhost:19092
-      - --pandaproxy-addr internal://0.0.0.0:8082,external://0.0.0.0:18082
-      - --advertise-pandaproxy-addr internal://redpanda:8082,external://localhost:18082
-      - --schema-registry-addr internal://0.0.0.0:8081,external://0.0.0.0:18081
-      - --rpc-addr redpanda:33145
-      - --advertise-rpc-addr redpanda:33145
-      - --smp 1
-      - --memory 1G
-      - --mode dev-container
-      - --default-log-level=warn
+  # Gateway Service — health-only skeleton (M0.1).
+  gateway:
+    build:
+      context: .
+      dockerfile: docker/dev.Dockerfile
     ports:
-      - "18081:18081"  # Schema Registry
-      - "18082:18082"  # Pandaproxy (REST)
-      - "19092:19092"  # Kafka external
-      - "19644:9644"   # Admin API
+      - "8080:8080"   # HTTP health check
+      - "9090:9090"   # gRPC
+      - "2345:2345"   # Delve debugger
     volumes:
-      - redpanda-data:/var/lib/redpanda/data
-    healthcheck:
-      test: ["CMD-SHELL", "rpk cluster health | grep -q 'Healthy'"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-
-  # Redpanda Console - Kafka UI
-  redpanda-console:
-    image: redpandadata/console:v2.5.2
-    ports:
-      - "8888:8080"
+      - .:/app
+      - go-mod-cache:/go/pkg/mod
+      - go-build-cache:/root/.cache/go-build
+    working_dir: /app
+    command: ["air", "-c", ".air/gateway.toml"]
+    env_file:
+      - .env.dev
     environment:
-      - KAFKA_BROKERS=redpanda:9092
-    depends_on:
-      redpanda:
-        condition: service_healthy
+      - ENVIRONMENT=local
+      - GATEWAY_HTTP_PORT=8080
+      - GATEWAY_GRPC_PORT=9090
 
-  # Redis - Connection routing, caching, rate limiting
-  redis:
-    image: redis:7-alpine
+  # Ingest Service — health-only skeleton (M0.1).
+  ingest:
+    build:
+      context: .
+      dockerfile: docker/dev.Dockerfile
     ports:
-      - "6379:6379"
-    command: redis-server --appendonly yes
+      - "8081:8081"   # HTTP health check
+      - "9091:9091"   # gRPC
+      - "2346:2345"   # Delve debugger
     volumes:
-      - redis-data:/data
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
+      - .:/app
+      - go-mod-cache:/go/pkg/mod
+      - go-build-cache:/root/.cache/go-build
+    working_dir: /app
+    command: ["air", "-c", ".air/ingest.toml"]
+    env_file:
+      - .env.dev
+    environment:
+      - ENVIRONMENT=local
+      - INGEST_HTTP_PORT=8081
+      - INGEST_GRPC_PORT=9091
+
+  # Fanout Service — health-only skeleton (M0.1).
+  fanout:
+    build:
+      context: .
+      dockerfile: docker/dev.Dockerfile
+    ports:
+      - "8082:8082"   # HTTP health check
+      - "2347:2345"   # Delve debugger
+    volumes:
+      - .:/app
+      - go-mod-cache:/go/pkg/mod
+      - go-build-cache:/root/.cache/go-build
+    working_dir: /app
+    command: ["air", "-c", ".air/fanout.toml"]
+    env_file:
+      - .env.dev
+    environment:
+      - ENVIRONMENT=local
+      - FANOUT_HTTP_PORT=8082
+
+  # Chat Management Service — health-only skeleton (M0.1); the auth composition
+  # root returns with the Firestore re-home in M1.2.
+  chatmgmt:
+    build:
+      context: .
+      dockerfile: docker/dev.Dockerfile
+    ports:
+      - "8083:8083"   # HTTP health check
+      - "2348:2345"   # Delve debugger
+    volumes:
+      - .:/app
+      - go-mod-cache:/go/pkg/mod
+      - go-build-cache:/root/.cache/go-build
+    working_dir: /app
+    command: ["air", "-c", ".air/chatmgmt.toml"]
+    env_file:
+      - .env.dev
+    environment:
+      - ENVIRONMENT=local
+      - CHATMGMT_HTTP_PORT=8083
 
 volumes:
-  localstack-data:
-  redpanda-data:
-  redis-data:
+  go-mod-cache:
+  go-build-cache:
+  go-build-cache-toolbox:
 
 networks:
   default:
