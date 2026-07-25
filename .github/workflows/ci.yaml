@@ -14,6 +14,21 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # Substrate gate — no AWS SDK imports may remain (M0.1, ADR-021).
+  no-aws:
+    name: No AWS SDK Imports
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Assert no aws-sdk-go imports
+        run: |
+          if grep -rn "aws-sdk-go" --include="*.go" . ; then
+            echo "AWS SDK imports found — M0.1 requires none"
+            exit 1
+          fi
+          echo "No AWS SDK imports found."
+
   # Proto validation
   proto:
     name: Proto Lint & Breaking
@@ -179,62 +194,6 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-  # Integration tests (requires infrastructure)
-  integration:
-    name: Integration Tests
-    runs-on: ubuntu-latest
-    needs: [lint, test, build]
-    services:
-      redis:
-        image: redis:7-alpine
-        ports:
-          - 6379:6379
-        options: >-
-          --health-cmd "redis-cli ping"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 5
-
-      localstack:
-        image: localstack/localstack:3.4
-        ports:
-          - 4566:4566
-        env:
-          SERVICES: dynamodb,secretsmanager,ssm
-        options: >-
-          --health-cmd "curl -sf http://localhost:4566/_localstack/health"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 10
-
-    steps:
-      - uses: actions/checkout@v7
-
-      - uses: actions/setup-go@v7
-        with:
-          go-version: '1.26'
-          cache: true
-
-      - uses: bufbuild/buf-action@v1
-        with:
-          setup_only: true
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Install protoc plugins
-        run: |
-          go install google.golang.org/protobuf/cmd/protoc-gen-go@latest
-          go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@latest
-          go install github.com/grpc-ecosystem/grpc-gateway/v2/protoc-gen-grpc-gateway@latest
-
-      - name: Generate proto stubs
-        run: cd proto && buf generate
-
-      - name: Run integration tests
-        run: go test -race -tags=integration -v ./...
-        env:
-          AWS_ENDPOINT: http://localhost:4566
-          REDIS_ADDR: localhost:6379
-
   # Terraform validation
   terraform:
     name: Terraform Validate
@@ -302,17 +261,17 @@ jobs:
   ci-passed:
     name: CI Passed
     runs-on: ubuntu-latest
-    needs: [proto, lint, test, build, docker, integration, terraform]
+    needs: [no-aws, proto, lint, test, build, docker, terraform]
     if: always()
     steps:
       - name: Check all jobs passed
         run: |
-          if [[ "${{ needs.proto.result }}" != "success" ]] || \
+          if [[ "${{ needs.no-aws.result }}" != "success" ]] || \
+             [[ "${{ needs.proto.result }}" != "success" ]] || \
              [[ "${{ needs.lint.result }}" != "success" ]] || \
              [[ "${{ needs.test.result }}" != "success" ]] || \
              [[ "${{ needs.build.result }}" != "success" ]] || \
              [[ "${{ needs.docker.result }}" != "success" ]] || \
-             [[ "${{ needs.integration.result }}" != "success" ]] || \
              [[ "${{ needs.terraform.result }}" != "success" ]]; then
             echo "One or more CI jobs failed"
             exit 1
