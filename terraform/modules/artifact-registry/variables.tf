@@ -27,3 +27,9 @@ variable "description" {
   type        = string
   default     = "Container images for the realtime messaging platform services."
 }
+
+variable "reader_members" {
+  description = "IAM members granted read (pull) access — e.g. the GKE node service account, so Autopilot can pull the images."
+  type        = list(string)
+  default     = []
+}

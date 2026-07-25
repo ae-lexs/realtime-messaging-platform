@@ -1,6 +1,13 @@
 locals {
   # Cloud resource name prefix: {project}-{environment} (TERRAFORM.md naming).
   name_prefix = "messaging-${var.environment}"
+
+  # Default compute service account = the Autopilot node identity that pulls images.
+  compute_sa = "serviceAccount:${data.google_project.this.number}-compute@developer.gserviceaccount.com"
+}
+
+data "google_project" "this" {
+  project_id = var.project_id
 }
 
 # Enable required APIs first; every other module depends on this.
@@ -33,10 +40,11 @@ module "gke" {
 }
 
 module "artifact_registry" {
-  source        = "../../modules/artifact-registry"
-  project_id    = var.project_id
-  region        = var.region
-  repository_id = var.artifact_repository_id
+  source         = "../../modules/artifact-registry"
+  project_id     = var.project_id
+  region         = var.region
+  repository_id  = var.artifact_repository_id
+  reader_members = [local.compute_sa]
 
   depends_on = [module.project_services]
 }
