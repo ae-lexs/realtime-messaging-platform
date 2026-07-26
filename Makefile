@@ -4,7 +4,7 @@
 
 .PHONY: all dev down logs lint fmt test test-integration proto proto-lint proto-breaking build docker ci-local ci-fast check-no-aws check-firestore-boundary clean help \
 	terraform-fmt terraform-fmt-fix terraform-validate terraform-lint terraform-security terraform-docs terraform-docs-check \
-	gcp-auth gcp-bootstrap-state deploy teardown schema-register schema-verify schema-test firestore-test
+	gcp-auth gcp-bootstrap-state deploy teardown schema-register schema-verify schema-test firestore-up firestore-test firestore-down
 
 # Default target
 all: ci-local
@@ -212,9 +212,17 @@ schema-verify:
 schema-test:
 	./scripts/schema.sh test
 
+## Apply Firestore on its own (skips GKE/Kafka — needs PROJECT_ID, BILLING_ACCOUNT_ID)
+firestore-up:
+	./scripts/firestore.sh apply
+
 ## M1.1 gate: Firestore CRUD round-trip against the dev database
 firestore-test:
-	./scripts/firestore.sh
+	./scripts/firestore.sh test
+
+## Destroy Firestore on its own (the TTL field delete takes ~6 min)
+firestore-down:
+	./scripts/firestore.sh destroy
 
 # ============================================================================
 # Utilities
@@ -290,7 +298,9 @@ help:
 	@echo "  make schema-register     Create the schema registry + publish events/v1"
 	@echo "  make schema-verify       Show the registered event subjects"
 	@echo "  make schema-test         Live encode/register/decode round-trip"
+	@echo "  make firestore-up        Apply Firestore alone (no GKE/Kafka)"
 	@echo "  make firestore-test      Live Firestore CRUD round-trip (M1.1 gate)"
+	@echo "  make firestore-down      Destroy Firestore alone"
 	@echo ""
 	@echo "Utilities:"
 	@echo "  make toolbox CMD=...  Run command in toolbox"
