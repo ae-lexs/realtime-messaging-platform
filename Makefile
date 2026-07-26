@@ -4,7 +4,7 @@
 
 .PHONY: all dev down logs lint fmt test test-integration proto proto-lint proto-breaking build docker ci-local ci-fast check-no-aws clean help \
 	terraform-fmt terraform-fmt-fix terraform-validate terraform-lint terraform-security terraform-docs terraform-docs-check \
-	gcp-auth gcp-bootstrap-state deploy teardown
+	gcp-auth gcp-bootstrap-state deploy teardown schema-register schema-verify schema-test
 
 # Default target
 all: ci-local
@@ -191,6 +191,19 @@ deploy:
 teardown:
 	./scripts/teardown.sh
 
+## Register proto/events/v1 in the Managed Kafka schema registry (needs PROJECT_ID)
+schema-register:
+	./scripts/schema.sh create
+	./scripts/schema.sh register
+
+## Read back what the schema registry holds for the event subjects
+schema-verify:
+	./scripts/schema.sh verify
+
+## M0.3 gate: encode -> register -> decode against the live registry
+schema-test:
+	./scripts/schema.sh test
+
 # ============================================================================
 # Utilities
 # ============================================================================
@@ -261,6 +274,9 @@ help:
 	@echo "  make gcp-bootstrap-state Create the GCS Terraform state bucket"
 	@echo "  make deploy              Deploy infra + health services to GKE"
 	@echo "  make teardown            Destroy everything (end-of-session)"
+	@echo "  make schema-register     Create the schema registry + publish events/v1"
+	@echo "  make schema-verify       Show the registered event subjects"
+	@echo "  make schema-test         Live encode/register/decode round-trip"
 	@echo ""
 	@echo "Utilities:"
 	@echo "  make toolbox CMD=...  Run command in toolbox"

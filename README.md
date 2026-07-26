@@ -112,18 +112,44 @@ make build        # compile all four service binaries
 
 Integration, end-to-end, and chaos tests run against a **Terraform-provisioned GCP dev project**, deployed and destroyed per session (there is no local cloud emulation). The provisioning workflow is stood up in Module 0; see [EXECUTION_PLAN v2.3](docs/EXECUTION_PLAN.md) for the module roadmap and [CONTRIBUTING.md](CONTRIBUTING.md) for the development workflow, code standards, and commit conventions.
 
+### Event wire format
+
+Kafka events are Protobuf, registered in the **Managed Kafka schema registry** and pinned to **FULL** compatibility (ADR-022 D1, ADR-011 §5.1). One schema — `proto/events/v1/events.proto` — backs all three topics; a record says which message it carries through the Confluent header:
+
+```
+0x00 | schema ID (4 bytes, big endian) | message index | Protobuf payload
+```
+
+| Topic | Subject | Message | Index |
+|---|---|---|---|
+| `messages.persisted` | `messages.persisted-value` | `MessagePersisted` | 1 |
+| `memberships.changed` | `memberships.changed-value` | `MembershipChanged` | 2 |
+| `chats.created` | `chats.created-value` | `ChatCreated` | 3 |
+
+The index is the message's declaration order in `events.proto`, so **new event types are appended, never inserted** — reordering silently re-points every record already on a topic and in the lake. `internal/events` owns that table and the encoder; a unit test pins the indexes against the generated file descriptor.
+
+Compatibility is enforced twice: `buf breaking` (category `FILE`, stricter than wire + JSON) rejects an incompatible change in CI, and the registry itself holds each subject at FULL for producers that never went through CI.
+
+The registry has **no Terraform resource** in either Google provider, and GCP refuses to create one in a region with no Kafka cluster, so it is created and populated by the deploy script after the cluster exists:
+
+```bash
+make schema-register   # create the registry (idempotent) + publish events/v1
+make schema-verify     # read back subject, ID, version, compatibility
+```
+
 ## Repository Structure
 
 A Go monorepo with a single `go.mod` (ADR-014). Four services map to the three-plane architecture (ADR-002):
 
 ```
-cmd/                     # Service entry points: gateway, ingest, fanout, chatmgmt
+cmd/                     # Service entry points: gateway, ingest, fanout, chatmgmt (+ schemactl)
 internal/
 ├── gateway/             # Connection Plane — WebSocket, presence (port/app/adapter)
 ├── ingest/              # Durability Plane — persist + sequence + outbox
 ├── fanout/              # Fanout Plane — Kafka consumer, delivery dispatch, watermarks
 ├── chatmgmt/            # Chat Management — REST + gRPC (grpc-gateway)
 ├── domain/              # Shared: value objects, error types, constants
+├── events/              # Shared: Kafka event wire contract — subjects, message indexes, serde (ADR-022)
 ├── postgres/            # Shared adapter: Cloud SQL write path (ADR-023) — re-homing from internal/dynamo
 ├── firestore/           # Shared adapter: identity/membership documents (ADR-023)
 ├── kafka/               # Shared adapter: Managed Kafka producer/consumer + Schema Registry

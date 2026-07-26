@@ -22,7 +22,11 @@ tb() { docker compose run --rm -T toolbox "$@"; }
 echo "==> deleting namespace messaging (releases the external load balancer)"
 tb kubectl delete namespace messaging --ignore-not-found=true --wait=true || true
 
-# 2. Destroy the infrastructure.
+# 2. Delete the schema registry. Terraform does not own it (no resource exists),
+#    and it must go before its Kafka cluster does.
+REGION="${REGION}" PROJECT_ID="${PROJECT_ID}" ./scripts/schema.sh delete
+
+# 3. Destroy the infrastructure.
 echo "==> terraform destroy"
 tb terraform -chdir="${ENV_DIR}" init -input=false -reconfigure \
   -backend-config="bucket=${BUCKET}" -backend-config="prefix=dev"
