@@ -80,7 +80,10 @@ Eight modules. Each PR lists what it delivers, the ADRs it implements, its scope
 
 *Re-home auth; add the chat/membership entity store.*
 
-**M1.1 — Firestore adapter & infra**
+**M1.1 — Firestore adapter & infra** — ✅ **Done**
+- **Status:** ✅ **Done**. Gate met live against `messaging-dev` in `us-central1`: the CRUD round-trip passes for all four collections, the composite membership ID is the derived 74-byte value and serves the point lookup plus both list directions from one document, an expired session reads back successfully with `IsExpired` true (TTL is GC, not the gate), and unknown IDs/phones yield `domain.ErrNotFound`. The TTL policy on `sessions.expires_at` reports `state: ACTIVE`. `terraform destroy` **removed** the database rather than abandoning it — the `deletion_policy` finding below, verified rather than assumed.
+- **Four schema notes settled while implementing** (details in the ADR-023 changelog): `expires_at` must be a **timestamp**, not the DynamoDB-era RFC3339 string, because TTL policies only act on timestamp fields; `sessions` gains `prev_token_hash` and `token_generation`, which ADR-015 requires and ADR-023's list omitted; the composite membership ID is **74 bytes** (UUID identifiers), not the 54 the ADR computed from ULIDs — and UUIDs are the better choice regardless, since Firestore documents warn against monotonically increasing document IDs, which is exactly what a ULID prefix produces; the DynamoDB `ttl` attribute has no counterpart.
+- **Two provisioning findings:** `google_firestore_database.deletion_policy` defaults to **ABANDON**, which leaves the database and its data behind while reporting a successful destroy (the GKE `deletion_protection` trap again) — it is set to `DELETE`, with `DELETE_PROTECTION_DISABLED`. And deleting a `google_firestore_field` takes **~6 minutes**, so a teardown that includes Firestore is dominated by that field operation, not by the database.
 - **Delivers:** Terraform for Firestore (native mode) + **TTL policy on `sessions.expires_at`**; `internal/firestore` client with typed collection helpers (`users`, `chats`, `memberships`, `sessions`) per ADR-023.
 - **ADRs:** ADR-023 (Firestore model), ADR-021 (Decision A entity tier).
 - **Gate:** CRUD round-trip against the dev Firestore; deterministic `memberships/{chat}__{user}` doc-id helper enforces the 54-byte bound.
