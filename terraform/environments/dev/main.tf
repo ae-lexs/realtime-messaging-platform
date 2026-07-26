@@ -39,6 +39,16 @@ module "gke" {
   depends_on = [module.project_services]
 }
 
+module "kafka" {
+  source      = "../../modules/kafka"
+  project_id  = var.project_id
+  region      = var.region
+  name_prefix = local.name_prefix
+  subnet_id   = module.networking.subnet_id
+
+  depends_on = [module.project_services]
+}
+
 module "artifact_registry" {
   source         = "../../modules/artifact-registry"
   project_id     = var.project_id
