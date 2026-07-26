@@ -18,6 +18,11 @@ output "artifact_registry_url" {
   value       = module.artifact_registry.registry_url
 }
 
+output "kafka_cluster_id" {
+  description = "The Managed Kafka cluster ID. Its existence is what allows the schema registry to be created in this region."
+  value       = module.kafka.cluster_id
+}
+
 output "budget_name" {
   description = "The billing budget display name guarding this environment."
   value       = module.budget.budget_name

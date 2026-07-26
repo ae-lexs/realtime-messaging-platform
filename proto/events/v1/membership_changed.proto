@@ -1,0 +1,27 @@
+syntax = "proto3";
+
+package events.v1;
+
+import "events/v1/envelope.proto";
+
+option go_package = "github.com/aelexs/realtime-messaging-platform/gen/events/v1;eventsv1";
+
+// Topic `memberships.changed`, subject `memberships.changed-value`.
+
+// MembershipChanged is published by Chat Management after the Firestore write
+// commits. At-least-once (Firestore has no cross-collection transactional
+// outbox), deduped downstream by event_id.
+message MembershipChanged {
+  // CHANGE_UNSPECIFIED = 0 so an omitted field is never silently "added".
+  enum Change {
+    CHANGE_UNSPECIFIED = 0;
+    CHANGE_ADDED = 1;
+    CHANGE_REMOVED = 2;
+    CHANGE_ROLE_CHANGED = 3;
+  }
+
+  EnvelopeMeta meta = 1;
+  string chat_id = 2;
+  string user_id = 3;
+  Change change = 4;
+}

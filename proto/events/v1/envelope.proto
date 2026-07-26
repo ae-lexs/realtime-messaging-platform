@@ -1,0 +1,48 @@
+syntax = "proto3";
+
+package events.v1;
+
+import "google/protobuf/timestamp.proto";
+
+option go_package = "github.com/aelexs/realtime-messaging-platform/gen/events/v1;eventsv1";
+
+// Kafka event wire format (ADR-022 D1).
+//
+// These are the analytical/streaming contracts, versioned independently of the
+// gRPC service contracts in messaging/v1: once a topic produces bytes and the
+// BigQuery sink consumes them, the envelope is a published contract. Evolution
+// is FULL-compatible (ADR-011 §5.1), enforced by `buf breaking` in CI and by
+// the registry itself.
+//
+// One message per file, deliberately: the Managed Kafka schema registry rejects
+// a multi-message schema with "Too many message types specified in schema
+// definition", so each subject registers exactly one type and pulls in what it
+// needs by reference. That also fixes every message index at 0 on the wire.
+// This envelope is registered as its own subject because the event schemas
+// import it; it is never a topic value itself.
+
+// EnvelopeMeta is a faithful Protobuf translation of ADR-011 §3.3's JSON
+// envelope. Every ADR-011 field is preserved except `partition_key`, which is
+// intentionally dropped: it was always chat_id, and each event carries chat_id.
+message EnvelopeMeta {
+  // ULID (ADR-011) — sortable, and the UPSERT key at the BigQuery sink
+  // (ADR-022 D2). It is what makes the at-least-once relay effectively-once.
+  string event_id = 1;
+
+  // Discriminator, e.g. "MessagePersisted". Redundant with the Protobuf type
+  // but kept for dead-letter triage and ADR-011 parity.
+  string event_type = 2;
+
+  // Semver of proto/events/v1, e.g. "1.0.0". Replaces ADR-011 event_version.
+  string schema_version = 3;
+
+  // When the event occurred (not when it was published). Partitions the
+  // BigQuery landing tables by DATE(occurred_at).
+  google.protobuf.Timestamp occurred_at = 4;
+
+  // Producing service INSTANCE identity (ADR-011 fidelity), e.g. "ingest-7d9f".
+  string producer_id = 5;
+
+  // Distributed-tracing correlation ID (ADR-012), preserved from ADR-011.
+  string trace_id = 6;
+}

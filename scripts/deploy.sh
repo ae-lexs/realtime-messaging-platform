@@ -68,6 +68,13 @@ tb sh -c "kubectl kustomize k8s/overlays/dev \
 echo "==> waiting for rollouts"
 tb kubectl -n messaging wait --for=condition=Available deployment --all --timeout=300s
 
+# 7. Publish the event schemas (M0.3). The registry is not a Terraform resource
+#    — see scripts/schema.sh — so it is created and populated here, after the
+#    Kafka cluster its creation depends on exists.
+echo "==> schema registry"
+REGION="${REGION}" PROJECT_ID="${PROJECT_ID}" ./scripts/schema.sh create
+REGION="${REGION}" PROJECT_ID="${PROJECT_ID}" ./scripts/schema.sh register
+
 echo "==> Deployed. External LB IP (may take a few minutes to populate):"
 tb kubectl -n messaging get ingress gateway -o jsonpath='{.status.loadBalancer.ingress[0].ip}' || true
 echo

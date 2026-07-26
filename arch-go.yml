@@ -77,6 +77,11 @@ components:
     patterns:
       - pkg/protocol/**
 
+  # Kafka event wire contract (ADR-022 D1) — shared by producers and consumers
+  - name: events
+    patterns:
+      - internal/events/**
+
 # Dependency rules - dependencies flow inward only
 rules:
   # Domain depends on nothing (innermost layer)
@@ -241,5 +246,28 @@ rules:
     mayDependOn:
       - chatmgmt-app
       - domain
+      - observability
+      - errors
+
+  # The event wire contract is a leaf: every plane encodes against it, so it
+  # must not reach back into any of them.
+  - name: events-isolation
+    components:
+      - events
+    shouldNotDependOn:
+      - domain
+      - gateway-app
+      - gateway-port
+      - gateway-adapter
+      - ingest-app
+      - ingest-port
+      - ingest-adapter
+      - fanout-app
+      - fanout-port
+      - fanout-adapter
+      - chatmgmt-app
+      - chatmgmt-port
+      - chatmgmt-adapter
+      - config
       - observability
       - errors

@@ -5,7 +5,7 @@ A **Distributed Systems Lab** designed to demonstrate senior/staff-level decisio
 This repository is intended to be **read, reviewed, and reasoned about** — not just run. The design lives in 23 Architecture Decision Records; the code is a faithful implementation of those decisions.
 
 > [!NOTE]
-> **Status — design complete, implementation in progress.** All architectural decisions (ADR-001 … ADR-023) are accepted. The substrate was migrated **AWS → GCP** (see [Substrate](#substrate)); implementation proceeds per [EXECUTION_PLAN v2.2](docs/EXECUTION_PLAN.md) as granular per-module PRs. **Module 0 — M0.1 (toolchain reset & GCP-targeting workspace) is done:** the AWS SDK and all local cloud-emulation were removed, the container toolbox now runs `gcloud`/`terraform`/`kubectl`/`buf`, and the four services expose only `/healthz`; next is **M0.2** (base GCP Terraform — GKE, networking, registry, state). The v1 skeleton and authentication were built on the AWS substrate and are being re-homed to GCP.
+> **Status — design complete, implementation in progress.** All architectural decisions (ADR-001 … ADR-023) are accepted. The substrate was migrated **AWS → GCP** (see [Substrate](#substrate)); implementation proceeds per [EXECUTION_PLAN v2.3](docs/EXECUTION_PLAN.md) as granular per-module PRs. **Module 0 is done:** the AWS SDK and all local cloud-emulation were removed and the container toolbox now runs `gcloud`/`terraform`/`kubectl`/`buf` (M0.1); the base GCP Terraform — VPC, **GKE Autopilot**, Artifact Registry, GCS state backend, budget guard — deploys the four `/healthz` services behind an external load balancer and destroys back to zero (M0.2, validated live); and the Kafka event wire format is fixed in code, in CI, and in the Managed Kafka schema registry (M0.3 — see [Event wire format](#event-wire-format)). Next is **M1** (Firestore identity and chat lifecycle). The v1 skeleton and authentication were built on the AWS substrate and are being re-homed to GCP.
 
 ## Architecture Overview
 
@@ -110,20 +110,51 @@ make proto        # generate Go from proto definitions
 make build        # compile all four service binaries
 ```
 
-Integration, end-to-end, and chaos tests run against a **Terraform-provisioned GCP dev project**, deployed and destroyed per session (there is no local cloud emulation). The provisioning workflow is stood up in Module 0; see [EXECUTION_PLAN v2.2](docs/EXECUTION_PLAN.md) for the module roadmap and [CONTRIBUTING.md](CONTRIBUTING.md) for the development workflow, code standards, and commit conventions.
+Integration, end-to-end, and chaos tests run against a **Terraform-provisioned GCP dev project**, deployed and destroyed per session (there is no local cloud emulation). The provisioning workflow is stood up in Module 0; see [EXECUTION_PLAN v2.3](docs/EXECUTION_PLAN.md) for the module roadmap and [CONTRIBUTING.md](CONTRIBUTING.md) for the development workflow, code standards, and commit conventions.
+
+### Event wire format
+
+Kafka events are Protobuf, registered in the **Managed Kafka schema registry** and pinned to **FULL** compatibility (ADR-022 D1, ADR-011 §5.1). Records carry the Confluent header:
+
+```
+0x00 | schema ID (4 bytes, big endian) | message index | Protobuf payload
+```
+
+| Topic | Subject | Schema |
+|---|---|---|
+| `messages.persisted` | `messages.persisted-value` | `events/v1/message_persisted.proto` |
+| `memberships.changed` | `memberships.changed-value` | `events/v1/membership_changed.proto` |
+| `chats.created` | `chats.created-value` | `events/v1/chat_created.proto` |
+| — (imported) | `events.v1.envelope` | `events/v1/envelope.proto` |
+| — (imported) | `wkt.timestamp` | `google/protobuf/timestamp.proto` (vendored) |
+
+**One message per schema**, because the registry rejects anything else (*"Too many message types specified in schema definition"*). Each subject registers exactly one type and declares its direct imports as references, so the message index is always 0. The registry resolves no imports on its own — not even the well-known types — which is why `google/protobuf/timestamp.proto` is vendored verbatim under `proto/third_party` and registered as its own subject. Subject names may not start with `google`, hence `wkt.timestamp`.
+
+`internal/events` owns that table, the registration order, and the encoder. Unit tests pin the invariants the registry enforces but `buf lint` cannot see: one message per file, imports listed in dependency order, and generated types matching the files that get published.
+
+Compatibility is enforced twice: `buf breaking` (category `FILE`, stricter than wire + JSON) rejects an incompatible change in CI, and the registry holds each subject at FULL for producers that never went through CI.
+
+The registry has **no Terraform resource** in either Google provider, and GCP refuses to create one in a region with no Kafka cluster, so it is created and populated by the deploy script after the cluster exists:
+
+```bash
+make schema-register   # create the registry (idempotent) + publish events/v1
+make schema-verify     # read back subject, ID, version, compatibility
+make schema-test       # live encode -> register -> decode round-trip
+```
 
 ## Repository Structure
 
 A Go monorepo with a single `go.mod` (ADR-014). Four services map to the three-plane architecture (ADR-002):
 
 ```
-cmd/                     # Service entry points: gateway, ingest, fanout, chatmgmt
+cmd/                     # Service entry points: gateway, ingest, fanout, chatmgmt (+ schemactl)
 internal/
 ├── gateway/             # Connection Plane — WebSocket, presence (port/app/adapter)
 ├── ingest/              # Durability Plane — persist + sequence + outbox
 ├── fanout/              # Fanout Plane — Kafka consumer, delivery dispatch, watermarks
 ├── chatmgmt/            # Chat Management — REST + gRPC (grpc-gateway)
 ├── domain/              # Shared: value objects, error types, constants
+├── events/              # Shared: Kafka event wire contract — subjects, message indexes, serde (ADR-022)
 ├── postgres/            # Shared adapter: Cloud SQL write path (ADR-023) — re-homing from internal/dynamo
 ├── firestore/           # Shared adapter: identity/membership documents (ADR-023)
 ├── kafka/               # Shared adapter: Managed Kafka producer/consumer + Schema Registry

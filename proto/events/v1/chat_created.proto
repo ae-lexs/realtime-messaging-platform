@@ -1,0 +1,17 @@
+syntax = "proto3";
+
+package events.v1;
+
+import "events/v1/envelope.proto";
+
+option go_package = "github.com/aelexs/realtime-messaging-platform/gen/events/v1;eventsv1";
+
+// Topic `chats.created`, subject `chats.created-value`.
+
+// ChatCreated is published by Chat Management after the Firestore write
+// commits. At-least-once, as with MembershipChanged.
+message ChatCreated {
+  EnvelopeMeta meta = 1;
+  string chat_id = 2;
+  string creator_id = 3;
+}

@@ -2,6 +2,13 @@ version: v2
 modules:
   - path: .
     name: buf.build/aelexs/realtime-messaging-platform
+    # third_party holds verbatim copies of protos that buf already knows about
+    # (the well-known types) but the Managed Kafka schema registry does not: it
+    # cannot resolve `google/protobuf/*.proto` imports, so the text has to be
+    # registered as a schema reference. Excluded from lint/breaking/codegen —
+    # it is registry input, not a contract this repo owns.
+    excludes:
+      - third_party
 deps:
   - buf.build/googleapis/googleapis
   - buf.build/grpc-ecosystem/grpc-gateway
