@@ -1,6 +1,11 @@
 package firestore
 
-import "time"
+import (
+	"fmt"
+	"time"
+
+	"github.com/aelexs/realtime-messaging-platform/internal/domain"
+)
 
 // UserDoc is a document in `users` (ADR-023). Doc ID is the user ID.
 type UserDoc struct {
@@ -71,6 +76,55 @@ type SessionDoc struct {
 
 	CreatedAt time.Time `firestore:"created_at"`
 	ExpiresAt time.Time `firestore:"expires_at"`
+}
+
+// Validate reports whether the document can be written. Each Validate covers
+// what its collection's write actually requires, so the checks are testable
+// without a Firestore connection and are enforced in one place.
+func (d UserDoc) Validate() error {
+	if d.ID == "" {
+		return fmt.Errorf("firestore: user document ID is required")
+	}
+	return nil
+}
+
+// Validate reports whether the chat document can be written.
+func (d ChatDoc) Validate() error {
+	if d.ID == "" {
+		return fmt.Errorf("firestore: chat document ID is required")
+	}
+	return nil
+}
+
+// DocID derives the document ID a membership is written at, validating both
+// identifiers on the way.
+//
+// The ID is derived from the fields rather than supplied, so the two can never
+// disagree — a membership addressed by one pair while carrying another would
+// break the point lookup and both list queries at once.
+func (d MembershipDoc) DocID() (string, error) {
+	chatID, err := domain.NewChatID(d.ChatID)
+	if err != nil {
+		return "", fmt.Errorf("firestore: membership chat ID: %w", err)
+	}
+	userID, err := domain.NewUserID(d.UserID)
+	if err != nil {
+		return "", fmt.Errorf("firestore: membership user ID: %w", err)
+	}
+	return MembershipDocID(chatID, userID), nil
+}
+
+// Validate reports whether the session can be written.
+func (d SessionDoc) Validate() error {
+	if d.ID == "" {
+		return fmt.Errorf("firestore: session document ID is required")
+	}
+	if d.ExpiresAt.IsZero() {
+		// A zero expires_at is never collected by the TTL policy and never
+		// refused by IsExpired — a session that would live forever, silently.
+		return fmt.Errorf("firestore: session %s has no expires_at", d.ID)
+	}
+	return nil
 }
 
 // IsExpired reports whether the session is past its expiry at now.
