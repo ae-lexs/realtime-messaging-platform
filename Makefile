@@ -4,7 +4,7 @@
 
 .PHONY: all dev down logs lint fmt test test-integration proto proto-lint proto-breaking build docker ci-local ci-fast check-no-aws check-firestore-boundary clean help \
 	terraform-fmt terraform-fmt-fix terraform-validate terraform-lint terraform-security terraform-docs terraform-docs-check \
-	gcp-auth gcp-bootstrap-state deploy teardown schema-register schema-verify schema-test
+	gcp-auth gcp-bootstrap-state deploy teardown schema-register schema-verify schema-test firestore-test
 
 # Default target
 all: ci-local
@@ -212,6 +212,10 @@ schema-verify:
 schema-test:
 	./scripts/schema.sh test
 
+## M1.1 gate: Firestore CRUD round-trip against the dev database
+firestore-test:
+	./scripts/firestore.sh
+
 # ============================================================================
 # Utilities
 # ============================================================================
@@ -286,6 +290,7 @@ help:
 	@echo "  make schema-register     Create the schema registry + publish events/v1"
 	@echo "  make schema-verify       Show the registered event subjects"
 	@echo "  make schema-test         Live encode/register/decode round-trip"
+	@echo "  make firestore-test      Live Firestore CRUD round-trip (M1.1 gate)"
 	@echo ""
 	@echo "Utilities:"
 	@echo "  make toolbox CMD=...  Run command in toolbox"
