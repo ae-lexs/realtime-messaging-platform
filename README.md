@@ -5,7 +5,7 @@ A **Distributed Systems Lab** designed to demonstrate senior/staff-level decisio
 This repository is intended to be **read, reviewed, and reasoned about** — not just run. The design lives in 23 Architecture Decision Records; the code is a faithful implementation of those decisions.
 
 > [!NOTE]
-> **Status — design complete, implementation in progress.** All architectural decisions (ADR-001 … ADR-023) are accepted. The substrate was migrated **AWS → GCP** (see [Substrate](#substrate)); implementation proceeds per [EXECUTION_PLAN v2.2](docs/EXECUTION_PLAN.md) as granular per-module PRs. **Module 0 — M0.1 (toolchain reset & GCP-targeting workspace) is done:** the AWS SDK and all local cloud-emulation were removed, the container toolbox now runs `gcloud`/`terraform`/`kubectl`/`buf`, and the four services expose only `/healthz`; next is **M0.2** (base GCP Terraform — GKE, networking, registry, state). The v1 skeleton and authentication were built on the AWS substrate and are being re-homed to GCP.
+> **Status — design complete, implementation in progress.** All architectural decisions (ADR-001 … ADR-023) are accepted. The substrate was migrated **AWS → GCP** (see [Substrate](#substrate)); implementation proceeds per [EXECUTION_PLAN v2.3](docs/EXECUTION_PLAN.md) as granular per-module PRs. **Module 0 — M0.1 and M0.2 are done:** the AWS SDK and all local cloud-emulation were removed and the container toolbox now runs `gcloud`/`terraform`/`kubectl`/`buf` (M0.1); the base GCP Terraform — VPC, **GKE Autopilot**, Artifact Registry, GCS state backend, budget guard — deploys the four `/healthz` services behind an external load balancer and destroys back to zero (M0.2, validated live). Next is **M0.3** (events proto module + Managed Kafka schema registry). The v1 skeleton and authentication were built on the AWS substrate and are being re-homed to GCP.
 
 ## Architecture Overview
 
@@ -110,7 +110,7 @@ make proto        # generate Go from proto definitions
 make build        # compile all four service binaries
 ```
 
-Integration, end-to-end, and chaos tests run against a **Terraform-provisioned GCP dev project**, deployed and destroyed per session (there is no local cloud emulation). The provisioning workflow is stood up in Module 0; see [EXECUTION_PLAN v2.2](docs/EXECUTION_PLAN.md) for the module roadmap and [CONTRIBUTING.md](CONTRIBUTING.md) for the development workflow, code standards, and commit conventions.
+Integration, end-to-end, and chaos tests run against a **Terraform-provisioned GCP dev project**, deployed and destroyed per session (there is no local cloud emulation). The provisioning workflow is stood up in Module 0; see [EXECUTION_PLAN v2.3](docs/EXECUTION_PLAN.md) for the module roadmap and [CONTRIBUTING.md](CONTRIBUTING.md) for the development workflow, code standards, and commit conventions.
 
 ## Repository Structure
 
