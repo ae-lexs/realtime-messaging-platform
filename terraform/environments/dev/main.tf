@@ -39,6 +39,15 @@ module "gke" {
   depends_on = [module.project_services]
 }
 
+module "firestore" {
+  source      = "../../modules/firestore"
+  project_id  = var.project_id
+  region      = var.region
+  name_prefix = local.name_prefix
+
+  depends_on = [module.project_services]
+}
+
 module "kafka" {
   source      = "../../modules/kafka"
   project_id  = var.project_id

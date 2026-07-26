@@ -18,6 +18,11 @@ output "artifact_registry_url" {
   value       = module.artifact_registry.registry_url
 }
 
+output "firestore_database_id" {
+  description = "The Firestore database ID; clients read it as FIRESTORE_DATABASE."
+  value       = module.firestore.database_id
+}
+
 output "kafka_cluster_id" {
   description = "The Managed Kafka cluster ID. Its existence is what allows the schema registry to be created in this region."
   value       = module.kafka.cluster_id
