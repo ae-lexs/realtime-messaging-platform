@@ -2,6 +2,7 @@ package events_test
 
 import (
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -34,20 +35,30 @@ func TestNewRegistryClientRequiresURLAndToken(t *testing.T) {
 	}
 }
 
-// TestSchemaTextReadsTheRegisteredProto also pins DefaultSchemaPath: the
-// registry stores schema text, so a moved or renamed .proto silently publishes
-// nothing until this fails.
-func TestSchemaTextReadsTheRegisteredProto(t *testing.T) {
-	// Arrange — tests run in the package directory.
-	path := filepath.Join("..", "..", events.DefaultSchemaPath)
+// TestSchemaTextReadsEverySource pins the paths in Sources: the registry stores
+// schema text, so a moved or renamed .proto silently publishes nothing until
+// this fails.
+func TestSchemaTextReadsEverySource(t *testing.T) {
+	for _, source := range events.Sources() {
+		t.Run(source.Subject, func(t *testing.T) {
+			// Act
+			schema, err := events.SchemaText(filepath.Join(repoRoot, source.File))
 
-	// Act
-	schema, err := events.SchemaText(path)
+			// Assert
+			require.NoError(t, err)
+			assert.Contains(t, schema, "syntax = \"proto3\";")
+		})
+	}
+}
 
-	// Assert
-	require.NoError(t, err)
-	assert.Contains(t, schema, "package events.v1;")
-	assert.Contains(t, schema, "message MessagePersisted")
+// TestSubjectNamesAvoidTheReservedPrefix records a registry rule that is not
+// obvious: subjects starting with "google" are rejected outright ("not in valid
+// format"), which is why the vendored well-known type is registered under
+// wkt.timestamp.
+func TestSubjectNamesAvoidTheReservedPrefix(t *testing.T) {
+	for _, source := range events.Sources() {
+		assert.False(t, strings.HasPrefix(source.Subject, "google"), "%s is not a valid subject name", source.Subject)
+	}
 }
 
 func TestSchemaTextMissingFile(t *testing.T) {

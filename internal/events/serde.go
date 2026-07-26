@@ -8,6 +8,12 @@ import (
 	"google.golang.org/protobuf/reflect/protoreflect"
 )
 
+// messageIndex is the index of the encoded type among the top-level messages
+// of its schema. Every event schema holds exactly one message — the registry
+// rejects any other layout — so the index is always 0, which the Confluent
+// framing encodes as a single zero byte.
+const messageIndex = 0
+
 // NewSerde builds the encoder/decoder for the Confluent wire format:
 //
 //	magic byte 0x00 | schema ID (4 bytes, big endian) | message index | payload
@@ -31,7 +37,7 @@ func NewSerde(idsBySubject map[string]int) (*sr.Serde, error) {
 
 		want := d.New().ProtoReflect().Descriptor()
 		serde.Register(id, d.New(),
-			sr.Index(d.Index),
+			sr.Index(messageIndex),
 			sr.EncodeFn(encodeFor(want)),
 			sr.DecodeFn(decodeFor(want)),
 			sr.GenerateFn(func() any { return d.New() }),

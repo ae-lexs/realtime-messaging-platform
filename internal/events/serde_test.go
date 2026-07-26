@@ -40,16 +40,14 @@ func TestSerdeRoundTrip(t *testing.T) {
 	}
 
 	tests := []struct {
-		name      string
-		topic     string
-		wantIndex int
-		event     proto.Message
-		decodeTo  proto.Message
+		name     string
+		topic    string
+		event    proto.Message
+		decodeTo proto.Message
 	}{
 		{
-			name:      "message persisted",
-			topic:     events.TopicMessagesPersisted,
-			wantIndex: 1,
+			name:  "message persisted",
+			topic: events.TopicMessagesPersisted,
 			event: &eventsv1.MessagePersisted{
 				Meta:         proto.Clone(meta).(*eventsv1.EnvelopeMeta),
 				ChatId:       "chat-1",
@@ -61,9 +59,8 @@ func TestSerdeRoundTrip(t *testing.T) {
 			decodeTo: &eventsv1.MessagePersisted{},
 		},
 		{
-			name:      "membership changed",
-			topic:     events.TopicMembershipsChanged,
-			wantIndex: 2,
+			name:  "membership changed",
+			topic: events.TopicMembershipsChanged,
 			event: &eventsv1.MembershipChanged{
 				Meta:   proto.Clone(meta).(*eventsv1.EnvelopeMeta),
 				ChatId: "chat-1",
@@ -73,9 +70,8 @@ func TestSerdeRoundTrip(t *testing.T) {
 			decodeTo: &eventsv1.MembershipChanged{},
 		},
 		{
-			name:      "chat created",
-			topic:     events.TopicChatsCreated,
-			wantIndex: 3,
+			name:  "chat created",
+			topic: events.TopicChatsCreated,
 			event: &eventsv1.ChatCreated{
 				Meta:      proto.Clone(meta).(*eventsv1.EnvelopeMeta),
 				ChatId:    "chat-1",
@@ -111,9 +107,11 @@ func TestSerdeRoundTrip(t *testing.T) {
 			require.NoError(t, err)
 			assert.Equal(t, testIDs[d.Subject()], id)
 
+			// One message per schema, so the index is always 0 — the
+			// framing's single-zero-byte shortcut.
 			index, _, err := serde.DecodeIndex(rest, 1)
 			require.NoError(t, err)
-			assert.Equal(t, []int{tt.wantIndex}, index, "index must select the message inside events.proto")
+			assert.Equal(t, []int{0}, index)
 		})
 	}
 }

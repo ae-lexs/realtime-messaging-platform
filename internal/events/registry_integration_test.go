@@ -41,12 +41,9 @@ func TestRegistryRoundTrip(t *testing.T) {
 	client, err := events.NewRegistryClient(url, token)
 	require.NoError(t, err)
 
-	schema, err := events.SchemaText("../../" + events.DefaultSchemaPath)
-	require.NoError(t, err)
-
-	// Act — register every subject, then encode and decode through the IDs the
+	// Act — register every schema, then encode and decode through the IDs the
 	// registry assigned.
-	published, err := events.Publish(ctx, client, schema)
+	published, err := events.Publish(ctx, client, repoRoot)
 	require.NoError(t, err)
 
 	serde, err := events.NewSerde(events.SchemaIDs(published))
@@ -77,7 +74,7 @@ func TestRegistryRoundTrip(t *testing.T) {
 	// Assert
 	assert.True(t, proto.Equal(event, decoded))
 
-	require.Len(t, published, 3)
+	require.Len(t, published, len(events.Sources()))
 	for _, state := range published {
 		assert.Positive(t, state.ID, "%s must have a registry-assigned ID", state.Subject)
 	}
@@ -86,13 +83,13 @@ func TestRegistryRoundTrip(t *testing.T) {
 	// only in CI.
 	inspected, err := events.Inspect(ctx, client)
 	require.NoError(t, err)
-	require.Len(t, inspected, 3)
+	require.Len(t, inspected, len(events.Sources()))
 	for _, state := range inspected {
 		assert.Equal(t, events.Compatibility.String(), state.Compatibility, state.Subject)
 	}
 
 	// Registration is idempotent: identical text must not mint new IDs.
-	republished, err := events.Publish(ctx, client, schema)
+	republished, err := events.Publish(ctx, client, repoRoot)
 	require.NoError(t, err)
 	assert.Equal(t, events.SchemaIDs(published), events.SchemaIDs(republished))
 }

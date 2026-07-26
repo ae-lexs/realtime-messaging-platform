@@ -1,32 +1,108 @@
 package events_test
 
 import (
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"google.golang.org/protobuf/reflect/protoregistry"
 
-	eventsv1 "github.com/aelexs/realtime-messaging-platform/gen/events/v1"
 	"github.com/aelexs/realtime-messaging-platform/internal/events"
 )
 
-// TestDescriptorIndexesMatchProtoFile guards the one thing about events.proto
-// that cannot be recovered from the schema text: the Confluent wire format
-// identifies a message by its declaration index, so inserting or reordering a
-// top-level message silently re-points every record already on a topic and in
-// the lake. If this fails, the proto was reordered — append instead.
-func TestDescriptorIndexesMatchProtoFile(t *testing.T) {
-	// Arrange
-	messages := eventsv1.File_events_v1_events_proto.Messages()
+// repoRoot is where the .proto paths in Sources resolve from; tests run in the
+// package directory.
+const repoRoot = "../.."
 
-	for _, d := range events.Descriptors() {
-		t.Run(d.Topic, func(t *testing.T) {
+// TestEachSchemaHoldsOneMessage guards the layout the registry enforces: a
+// schema with more than one top-level message is rejected with "Too many
+// message types specified in schema definition", and one message per schema is
+// also what fixes every wire message index at 0. Adding a second message to any
+// events/v1 file would pass `buf lint` and fail at publish time.
+func TestEachSchemaHoldsOneMessage(t *testing.T) {
+	for _, source := range events.Sources() {
+		t.Run(source.Subject, func(t *testing.T) {
+			// Arrange
+			text, err := os.ReadFile(filepath.Join(repoRoot, source.File))
+			require.NoError(t, err)
+
 			// Act
-			require.Greater(t, messages.Len(), d.Index)
-			atIndex := messages.Get(d.Index).FullName()
+			messages := strings.Count(string(text), "\nmessage ")
 
 			// Assert
-			assert.Equal(t, d.New().ProtoReflect().Descriptor().FullName(), atIndex)
+			assert.Equal(t, 1, messages, "%s must declare exactly one top-level message", source.File)
+		})
+	}
+}
+
+// TestSourcesAreOrderedByDependency pins the registration order: the registry
+// resolves no imports itself, so a schema must be registered before anything
+// that references it.
+func TestSourcesAreOrderedByDependency(t *testing.T) {
+	// Arrange
+	registered := map[string]bool{}
+
+	for _, source := range events.Sources() {
+		t.Run(source.Subject, func(t *testing.T) {
+			// Assert — every import is already registered...
+			for _, imported := range source.Imports {
+				assert.True(t, registered[imported], "%s imports %s before it is registered", source.File, imported)
+			}
+
+			// ...and the file declares exactly the imports listed.
+			text, err := os.ReadFile(filepath.Join(repoRoot, source.File))
+			require.NoError(t, err)
+			assert.Equal(t, strings.Count(string(text), "\nimport "), len(source.Imports),
+				"%s declares imports the source table does not list", source.File)
+
+			registered[source.Path] = true
+		})
+	}
+}
+
+// TestEventSubjectsHaveASchemaSource keeps the two tables in step: every topic
+// the serde can encode must have a schema someone publishes.
+func TestEventSubjectsHaveASchemaSource(t *testing.T) {
+	// Arrange
+	published := map[string]bool{}
+	for _, source := range events.Sources() {
+		published[source.Subject] = true
+	}
+
+	// Assert
+	for _, subject := range events.Subjects() {
+		assert.True(t, published[subject], "%s has no schema source", subject)
+	}
+}
+
+// TestGeneratedTypesMatchTheSchemaFiles ties the Go types back to the .proto
+// files that get registered — a type generated from a file nobody publishes
+// would encode against a schema ID that does not exist.
+func TestGeneratedTypesMatchTheSchemaFiles(t *testing.T) {
+	for _, d := range events.Descriptors() {
+		t.Run(d.Topic, func(t *testing.T) {
+			// Arrange
+			descriptor := d.New().ProtoReflect().Descriptor()
+
+			// Act
+			file, err := protoregistry.GlobalFiles.FindFileByPath(descriptor.ParentFile().Path())
+
+			// Assert
+			require.NoError(t, err)
+			assert.Equal(t, 1, file.Messages().Len(), "%s must be the only message in %s", descriptor.Name(), file.Path())
+
+			var source *events.SchemaSource
+			for _, s := range events.Sources() {
+				if s.Subject == d.Subject() {
+					source = &s
+					break
+				}
+			}
+			require.NotNil(t, source, "no schema source for %s", d.Subject())
+			assert.Equal(t, source.Path, file.Path(), "the registered file and the generated type must come from the same .proto")
 		})
 	}
 }

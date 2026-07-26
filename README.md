@@ -5,7 +5,7 @@ A **Distributed Systems Lab** designed to demonstrate senior/staff-level decisio
 This repository is intended to be **read, reviewed, and reasoned about** — not just run. The design lives in 23 Architecture Decision Records; the code is a faithful implementation of those decisions.
 
 > [!NOTE]
-> **Status — design complete, implementation in progress.** All architectural decisions (ADR-001 … ADR-023) are accepted. The substrate was migrated **AWS → GCP** (see [Substrate](#substrate)); implementation proceeds per [EXECUTION_PLAN v2.3](docs/EXECUTION_PLAN.md) as granular per-module PRs. **Module 0 — M0.1 and M0.2 are done:** the AWS SDK and all local cloud-emulation were removed and the container toolbox now runs `gcloud`/`terraform`/`kubectl`/`buf` (M0.1); the base GCP Terraform — VPC, **GKE Autopilot**, Artifact Registry, GCS state backend, budget guard — deploys the four `/healthz` services behind an external load balancer and destroys back to zero (M0.2, validated live). Next is **M0.3** (events proto module + Managed Kafka schema registry). The v1 skeleton and authentication were built on the AWS substrate and are being re-homed to GCP.
+> **Status — design complete, implementation in progress.** All architectural decisions (ADR-001 … ADR-023) are accepted. The substrate was migrated **AWS → GCP** (see [Substrate](#substrate)); implementation proceeds per [EXECUTION_PLAN v2.3](docs/EXECUTION_PLAN.md) as granular per-module PRs. **Module 0 is done:** the AWS SDK and all local cloud-emulation were removed and the container toolbox now runs `gcloud`/`terraform`/`kubectl`/`buf` (M0.1); the base GCP Terraform — VPC, **GKE Autopilot**, Artifact Registry, GCS state backend, budget guard — deploys the four `/healthz` services behind an external load balancer and destroys back to zero (M0.2, validated live); and the Kafka event wire format is fixed in code, in CI, and in the Managed Kafka schema registry (M0.3 — see [Event wire format](#event-wire-format)). Next is **M1** (Firestore identity and chat lifecycle). The v1 skeleton and authentication were built on the AWS substrate and are being re-homed to GCP.
 
 ## Architecture Overview
 
@@ -114,27 +114,32 @@ Integration, end-to-end, and chaos tests run against a **Terraform-provisioned G
 
 ### Event wire format
 
-Kafka events are Protobuf, registered in the **Managed Kafka schema registry** and pinned to **FULL** compatibility (ADR-022 D1, ADR-011 §5.1). One schema — `proto/events/v1/events.proto` — backs all three topics; a record says which message it carries through the Confluent header:
+Kafka events are Protobuf, registered in the **Managed Kafka schema registry** and pinned to **FULL** compatibility (ADR-022 D1, ADR-011 §5.1). Records carry the Confluent header:
 
 ```
 0x00 | schema ID (4 bytes, big endian) | message index | Protobuf payload
 ```
 
-| Topic | Subject | Message | Index |
-|---|---|---|---|
-| `messages.persisted` | `messages.persisted-value` | `MessagePersisted` | 1 |
-| `memberships.changed` | `memberships.changed-value` | `MembershipChanged` | 2 |
-| `chats.created` | `chats.created-value` | `ChatCreated` | 3 |
+| Topic | Subject | Schema |
+|---|---|---|
+| `messages.persisted` | `messages.persisted-value` | `events/v1/message_persisted.proto` |
+| `memberships.changed` | `memberships.changed-value` | `events/v1/membership_changed.proto` |
+| `chats.created` | `chats.created-value` | `events/v1/chat_created.proto` |
+| — (imported) | `events.v1.envelope` | `events/v1/envelope.proto` |
+| — (imported) | `wkt.timestamp` | `google/protobuf/timestamp.proto` (vendored) |
 
-The index is the message's declaration order in `events.proto`, so **new event types are appended, never inserted** — reordering silently re-points every record already on a topic and in the lake. `internal/events` owns that table and the encoder; a unit test pins the indexes against the generated file descriptor.
+**One message per schema**, because the registry rejects anything else (*"Too many message types specified in schema definition"*). Each subject registers exactly one type and declares its direct imports as references, so the message index is always 0. The registry resolves no imports on its own — not even the well-known types — which is why `google/protobuf/timestamp.proto` is vendored verbatim under `proto/third_party` and registered as its own subject. Subject names may not start with `google`, hence `wkt.timestamp`.
 
-Compatibility is enforced twice: `buf breaking` (category `FILE`, stricter than wire + JSON) rejects an incompatible change in CI, and the registry itself holds each subject at FULL for producers that never went through CI.
+`internal/events` owns that table, the registration order, and the encoder. Unit tests pin the invariants the registry enforces but `buf lint` cannot see: one message per file, imports listed in dependency order, and generated types matching the files that get published.
+
+Compatibility is enforced twice: `buf breaking` (category `FILE`, stricter than wire + JSON) rejects an incompatible change in CI, and the registry holds each subject at FULL for producers that never went through CI.
 
 The registry has **no Terraform resource** in either Google provider, and GCP refuses to create one in a region with no Kafka cluster, so it is created and populated by the deploy script after the cluster exists:
 
 ```bash
 make schema-register   # create the registry (idempotent) + publish events/v1
 make schema-verify     # read back subject, ID, version, compatibility
+make schema-test       # live encode -> register -> decode round-trip
 ```
 
 ## Repository Structure

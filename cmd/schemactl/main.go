@@ -9,24 +9,35 @@
 // Configuration is environment-only, because the caller (scripts/schema.sh)
 // already resolves the registry URL and mints the token:
 //
-//	SCHEMA_REGISTRY_URL   .../schemaRegistries/{id}   (required)
-//	SR_TOKEN              OAuth access token         (required)
-//	SCHEMA_FILE           path to events.proto       (optional)
+//	SCHEMA_REGISTRY_URL   .../schemaRegistries/{id}       (required)
+//	SR_TOKEN              OAuth access token             (required)
+//	REPO_ROOT             root the .proto paths resolve  (optional, default .)
+//	                      against
 package main
 
 import (
 	"context"
 	"fmt"
 	"os"
+	"time"
 
 	"github.com/aelexs/realtime-messaging-platform/internal/events"
 )
 
 func main() {
-	if err := run(context.Background(), os.Args[1:]); err != nil {
+	if err := runBounded(os.Args[1:]); err != nil {
 		fmt.Fprintf(os.Stderr, "fatal: %v\n", err)
 		os.Exit(1)
 	}
+}
+
+// runBounded exists so the context cancel runs before main calls os.Exit.
+// Bounded so a stalled registry fails the deploy step instead of hanging it.
+func runBounded(args []string) error {
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
+	defer cancel()
+
+	return run(ctx, args)
 }
 
 func run(ctx context.Context, args []string) error {
@@ -43,17 +54,12 @@ func run(ctx context.Context, args []string) error {
 
 	switch args[0] {
 	case "register":
-		path := os.Getenv("SCHEMA_FILE")
-		if path == "" {
-			path = events.DefaultSchemaPath
+		root := os.Getenv("REPO_ROOT")
+		if root == "" {
+			root = "."
 		}
 
-		schema, readErr := events.SchemaText(path)
-		if readErr != nil {
-			return readErr
-		}
-
-		if states, err = events.Publish(ctx, client, schema); err != nil {
+		if states, err = events.Publish(ctx, client, root); err != nil {
 			return err
 		}
 

@@ -8,13 +8,17 @@
 # (terraform/modules/kafka) rather than with the first producer.
 #
 # Usage:
-#   PROJECT_ID=my-project [REGION=us-central1] [SCHEMA_REGISTRY_ID=messaging-dev] \
+#   PROJECT_ID=my-project [REGION=us-central1] [SCHEMA_REGISTRY_ID=messaging_dev] \
 #     scripts/schema.sh {create|register|verify|test|delete}
 set -euo pipefail
 
 : "${PROJECT_ID:?set PROJECT_ID}"
 REGION="${REGION:-us-central1}"
-REGISTRY_ID="${SCHEMA_REGISTRY_ID:-messaging-dev}"
+# Underscores, not the hyphens used everywhere else in this project: the API
+# rejects `messaging-dev` with
+#   INVALID_ARGUMENT: 'messaging-dev' not in valid format, must be composed of
+#   letters, numbers, or underscores.
+REGISTRY_ID="${SCHEMA_REGISTRY_ID:-messaging_dev}"
 REGISTRY_URL="https://managedkafka.googleapis.com/v1/projects/${PROJECT_ID}/locations/${REGION}/schemaRegistries/${REGISTRY_ID}"
 
 tb() { docker compose run --rm -T toolbox "$@"; }
