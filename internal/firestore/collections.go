@@ -1,0 +1,40 @@
+package firestore
+
+import (
+	"github.com/aelexs/realtime-messaging-platform/internal/domain"
+)
+
+// Collection names (ADR-023 "Firestore model").
+const (
+	CollectionUsers       = "users"
+	CollectionChats       = "chats"
+	CollectionMemberships = "memberships"
+	CollectionSessions    = "sessions"
+)
+
+const (
+	// membershipIDSeparator joins the two IDs in a membership document ID.
+	membershipIDSeparator = "__"
+
+	// MaxDocIDBytes is Firestore's document-ID limit. The composite membership
+	// ID is the only ID this project constructs rather than generates, so it is
+	// the only one that could approach the bound; TestMembershipDocIDFitsBound
+	// pins the margin.
+	MaxDocIDBytes = 1500
+)
+
+// MembershipDocID builds the deterministic membership document ID,
+// {chat_id}__{user_id} (ADR-023).
+//
+// Determinism is what makes "is this user in this chat?" a strongly consistent
+// single get() instead of a query, while `where('chat_id','==',c)` and
+// `where('user_id','==',u)` still serve both list directions off the automatic
+// single-field indexes — one document, no manual index, all three patterns.
+//
+// It also means a delete followed by a re-set overwrites joined_at: the
+// collection holds *current* membership, not history. Membership history lives
+// in lake.raw_memberships_changed, fed by the memberships.changed events
+// (ADR-022 D2).
+func MembershipDocID(chatID domain.ChatID, userID domain.UserID) string {
+	return chatID.String() + membershipIDSeparator + userID.String()
+}

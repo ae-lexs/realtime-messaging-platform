@@ -29,6 +29,16 @@ jobs:
           fi
           echo "No AWS SDK imports found."
 
+      # Only internal/firestore may import the Firestore SDK, the same rule the
+      # retired internal/dynamo held (CONTRIBUTING §Shared packages).
+      - name: Assert the Firestore SDK stays in internal/firestore
+        run: |
+          if grep -rln '"cloud.google.com/go/firestore"' --include="*.go" . | grep -v '^./internal/firestore/' ; then
+            echo "The Firestore SDK may only be imported by internal/firestore"
+            exit 1
+          fi
+          echo "Firestore SDK confined to internal/firestore."
+
   # Proto validation
   proto:
     name: Proto Lint & Breaking

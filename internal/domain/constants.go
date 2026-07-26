@@ -33,6 +33,7 @@ const (
 	// Timeout contracts (ADR-009 §1)
 	KafkaProduceTimeout = 10 * time.Second // Max time for Kafka produce
 	RedisTimeout        = 2 * time.Second  // Max time for Redis operations
+	FirestoreTimeout    = 5 * time.Second  // Max time for a Firestore document read/write or query
 	GRPCCallTimeout     = 10 * time.Second // Max time for inter-service gRPC calls
 
 	// Graceful shutdown budget (ADR-014 §4.1)

@@ -108,14 +108,46 @@ func TestValidateRequired_ProdRequiresRedisAddr(t *testing.T) {
 	assert.Contains(t, err.Error(), "redis.addr")
 }
 
+func TestValidateRequired_ProdRequiresFirestoreProject(t *testing.T) {
+	t.Setenv("ENVIRONMENT", "prod")
+	t.Setenv("KAFKA_BROKERS", "broker1:9092")
+	t.Setenv("REDIS_ADDR", "redis:6379")
+
+	_, err := config.Load(context.Background())
+
+	require.Error(t, err)
+	assert.ErrorIs(t, err, domain.ErrConfigRequired)
+	assert.Contains(t, err.Error(), "firestore.project")
+}
+
+// The named database is required, not defaulted: an empty value would target
+// Firestore's "(default)" database, which this project never provisions.
+func TestValidateRequired_ProdRequiresFirestoreDatabase(t *testing.T) {
+	t.Setenv("ENVIRONMENT", "prod")
+	t.Setenv("KAFKA_BROKERS", "broker1:9092")
+	t.Setenv("REDIS_ADDR", "redis:6379")
+	t.Setenv("FIRESTORE_PROJECT", "aelexs-rtm")
+
+	_, err := config.Load(context.Background())
+
+	require.Error(t, err)
+	assert.ErrorIs(t, err, domain.ErrConfigRequired)
+	assert.Contains(t, err.Error(), "firestore.database")
+}
+
 func TestLoadWithEnvOverride(t *testing.T) {
 	t.Setenv("ENVIRONMENT", "prod")
 	t.Setenv("REDIS_ADDR", "redis:6379")
 	t.Setenv("KAFKA_BROKERS", "broker1:9092")
+	t.Setenv("FIRESTORE_PROJECT", "aelexs-rtm")
+	t.Setenv("FIRESTORE_DATABASE", "messaging-dev")
 
 	cfg, err := config.Load(context.Background())
 
 	require.NoError(t, err)
 	assert.Equal(t, "prod", cfg.Environment)
 	assert.Equal(t, "redis:6379", cfg.Redis.Addr)
+	assert.Equal(t, "aelexs-rtm", cfg.Firestore.ProjectID)
+	assert.Equal(t, "messaging-dev", cfg.Firestore.Database)
+	assert.Equal(t, domain.FirestoreTimeout, cfg.Firestore.Timeout)
 }
