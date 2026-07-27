@@ -388,18 +388,28 @@ func (s *OTPRequests) Get(ctx context.Context, phoneHash string) (OTPRequestDoc,
 	return otpRequestFrom(snapshot)
 }
 
-// Create issues an OTP, refusing to overwrite one that is still live: it
-// returns domain.ErrAlreadyExists when a record exists and has not yet passed
-// expires_at, which is ADR-015 §1.2's ConditionalCheckFailed branch.
+// Create issues an OTP, refusing only to overwrite one that is still usable —
+// present, unconsumed, and unexpired. That is ADR-015 §1.2's condition, whose
+// three disjuncts (absent, verified, or past expires_at) all mean "no active,
+// unverified OTP is in flight"; anything else returns domain.ErrAlreadyExists.
 //
-// This is a transaction rather than a plain Create() for one reason, and it is
-// not a stylistic one. Firestore's Create() fails with AlreadyExists whenever
-// the document is present, and TTL removes an expired OTP only within ~24
-// hours of its expiry — so a bare Create() would refuse every new OTP for
-// almost a full day after one five-minute code lapsed, locking the phone
-// number out. The transaction asks the question that actually matters, "is
-// there a *live* OTP?", and Firestore's optimistic-concurrency retry makes the
-// read-then-write atomic against a second request for the same number.
+// Both of the permissive cases matter, and each is a bug if dropped:
+//
+//   - Expired. TTL removes a lapsed OTP only within ~24 hours of its expiry,
+//     so the document outlives its five-minute validity by nearly a day. Were
+//     expiry not checked, the phone number would be locked out for that whole
+//     window with nothing to explain it.
+//   - Verified. Once consumed, the code is spent and cannot be replayed, so
+//     nothing is protected by keeping it. Were consumption not checked, a user
+//     who just logged in could not request another OTP until their previous one
+//     timed out — which the live gate caught. Re-request abuse is the rate
+//     limiter's job (ADR-013 §4.1), not this write's.
+//
+// It is a transaction rather than a plain Create() because Create() can only
+// express "the document is absent", which is the strictest of the three
+// disjuncts and not the one the ADR asks for. Firestore's optimistic-
+// concurrency retry is what makes the read-then-write atomic against a second
+// request for the same number.
 func (s *OTPRequests) Create(ctx context.Context, doc OTPRequestDoc, now time.Time) error {
 	ctx, cancel := s.client.withTimeout(ctx)
 	defer cancel()
@@ -422,10 +432,11 @@ func (s *OTPRequests) Create(ctx context.Context, doc OTPRequestDoc, now time.Ti
 			if decodeErr != nil {
 				return decodeErr
 			}
-			if !existing.IsExpired(now) {
+			if existing.Status == domain.OTPStatusPending && !existing.IsExpired(now) {
 				return fmt.Errorf("firestore: OTP request %s is still live: %w", doc.ID, domain.ErrAlreadyExists)
 			}
-			// Expired but not yet collected: overwriting is correct, and
+			// Consumed, or expired and not yet collected. Either way no
+			// unverified code is in flight, so overwriting is correct — and it
 			// resets attempt_count along with the code.
 		}
 

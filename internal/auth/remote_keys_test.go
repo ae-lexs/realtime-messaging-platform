@@ -6,9 +6,9 @@ import (
 	"crypto/x509"
 	"encoding/pem"
 	"errors"
+	"fmt"
 	"io"
 	"log/slog"
-	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -17,6 +17,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/aelexs/realtime-messaging-platform/internal/auth"
+	"github.com/aelexs/realtime-messaging-platform/internal/domain"
 )
 
 // fakeFetcher is an in-memory SecretFetcher. Its payloads are mutable so a
@@ -40,25 +41,11 @@ func (f *fakeFetcher) Latest(_ context.Context, secretID string) ([]byte, error)
 	}
 	payload, ok := f.secrets[secretID]
 	if !ok {
-		return nil, errors.New("no such secret: " + secretID)
+		// Mirrors internal/secrets.Client, which maps both NotFound and
+		// "exists but has no enabled version" onto this sentinel.
+		return nil, fmt.Errorf("no such secret %s: %w", secretID, domain.ErrNotFound)
 	}
 	return payload, nil
-}
-
-func (f *fakeFetcher) ListIDsWithPrefix(_ context.Context, prefix string) ([]string, error) {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-
-	if f.err != nil {
-		return nil, f.err
-	}
-	var ids []string
-	for id := range f.secrets {
-		if strings.HasPrefix(id, prefix) {
-			ids = append(ids, id)
-		}
-	}
-	return ids, nil
 }
 
 func (f *fakeFetcher) set(secretID string, payload []byte) {
@@ -105,17 +92,14 @@ func newTestKeyStore(t *testing.T, fetcher auth.SecretFetcher) *auth.RemoteKeySt
 	return store
 }
 
-func TestRemoteKeyStoreLoadsTheKeySet(t *testing.T) {
-	// Arrange — one active key plus a second whose public half is still
-	// published, the shape a half-finished rotation leaves behind.
+func TestRemoteKeyStoreLoadsTheActiveKey(t *testing.T) {
+	// Arrange
 	active := generateTestKey(t)
-	retiring := generateTestKey(t)
 
 	fetcher := newFakeFetcher(map[string][]byte{
 		auth.SecretCurrentKeyID:                    []byte("key-active"),
 		auth.SecretSigningKeyPrefix + "key-active": privatePEM(t, active),
 		auth.SecretPublicKeyPrefix + "key-active":  publicPEM(t, &active.PublicKey),
-		auth.SecretPublicKeyPrefix + "key-old":     publicPEM(t, &retiring.PublicKey),
 	})
 
 	// Act
@@ -131,14 +115,38 @@ func TestRemoteKeyStoreLoadsTheKeySet(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, &active.PublicKey, activePub)
 
-	// The retiring key still verifies tokens minted before the switch —
-	// dropping it would invalidate every access token in flight.
-	oldPub, err := store.PublicKey("key-old")
-	require.NoError(t, err)
-	assert.Equal(t, &retiring.PublicKey, oldPub)
-
 	_, err = store.PublicKey("key-never-issued")
 	assert.Error(t, err)
+}
+
+// TestRemoteKeyStoreAcceptsOnlyTheActiveKey states the cost of resolving keys
+// by name instead of enumerating them, so it is a decision on the record rather
+// than a surprise during a rotation.
+//
+// The store cannot list secrets: secretmanager.secrets.list is a project-level
+// permission and cannot be scoped to the four secrets this service is granted,
+// as the first deploy proved. So a published-but-not-active public key is
+// invisible, and a rotation forces re-auth for tokens minted under the previous
+// key — bounded by the one-hour access token lifetime (ADR-015 §3.3), and
+// unexercised until M7.
+func TestRemoteKeyStoreAcceptsOnlyTheActiveKey(t *testing.T) {
+	// Arrange — a retiring key whose public half is still published.
+	active := generateTestKey(t)
+	retiring := generateTestKey(t)
+
+	fetcher := newFakeFetcher(map[string][]byte{
+		auth.SecretCurrentKeyID:                    []byte("key-active"),
+		auth.SecretSigningKeyPrefix + "key-active": privatePEM(t, active),
+		auth.SecretPublicKeyPrefix + "key-active":  publicPEM(t, &active.PublicKey),
+		auth.SecretPublicKeyPrefix + "key-old":     publicPEM(t, &retiring.PublicKey),
+	})
+
+	// Act
+	store := newTestKeyStore(t, fetcher)
+
+	// Assert
+	_, err := store.PublicKey("key-old")
+	assert.Error(t, err, "only the key named by jwt-current-key-id is accepted")
 }
 
 // TestRemoteKeyStoreRefusesToStartWithoutKeys pins ADR-015's
@@ -183,7 +191,7 @@ func TestRemoteKeyStoreRefusesToStartWithoutKeys(t *testing.T) {
 			secrets: map[string][]byte{
 				auth.SecretCurrentKeyID:                    []byte("key-active"),
 				auth.SecretSigningKeyPrefix + "key-active": privatePEM(t, key),
-				auth.SecretPublicKeyPrefix + "key-old":     []byte("not a key"),
+				auth.SecretPublicKeyPrefix + "key-active":  []byte("not a key"),
 			},
 			wantErr: "parse public key",
 		},
@@ -247,10 +255,14 @@ func TestRemoteKeyStoreRefreshPicksUpARotation(t *testing.T) {
 	assert.Equal(t, "key-2", kid)
 	assert.Equal(t, second, signing)
 
-	// The superseded key keeps verifying until its tokens expire.
-	oldPub, err := store.PublicKey("key-1")
+	newPub, err := store.PublicKey("key-2")
 	require.NoError(t, err)
-	assert.Equal(t, &first.PublicKey, oldPub)
+	assert.Equal(t, &second.PublicKey, newPub)
+
+	// And the superseded key stops verifying — the documented cost of
+	// resolving by name (see TestRemoteKeyStoreAcceptsOnlyTheActiveKey).
+	_, err = store.PublicKey("key-1")
+	assert.Error(t, err)
 }
 
 // TestRemoteKeyStoreKeepsKeysWhenRefreshFails is the behaviour that keeps a

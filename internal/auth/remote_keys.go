@@ -5,11 +5,14 @@ import (
 	"crypto/rsa"
 	"crypto/x509"
 	"encoding/pem"
+	"errors"
 	"fmt"
 	"log/slog"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/aelexs/realtime-messaging-platform/internal/domain"
 )
 
 // Secret ID conventions (ADR-015 Appendix F). AWS held these across Secrets
@@ -26,9 +29,7 @@ const (
 	SecretSigningKeyPrefix = "jwt-signing-key-" //nolint:gosec // a secret's name, not its value
 
 	// SecretPublicKeyPrefix prefixes jwt-public-key-{KEY_ID} (PEM public key).
-	// Listing by this prefix is how the set of acceptable `kid` values is
-	// discovered, so a key added during rotation becomes valid for
-	// verification without a deploy.
+	// Addressed by name, never discovered: see RemoteKeyStore.
 	SecretPublicKeyPrefix = "jwt-public-key-" //nolint:gosec // a secret's name, not its value
 
 	// SecretOTPPepper names the HMAC pepper for OTP MACs (ADR-015 §1.2).
@@ -37,9 +38,11 @@ const (
 
 // SecretFetcher is the narrow view of a secret store RemoteKeyStore needs.
 // internal/secrets.Client satisfies it; tests supply a map.
+//
+// It reads one secret by name and nothing else. That is not minimalism for its
+// own sake — it is the shape the IAM model actually permits; see RemoteKeyStore.
 type SecretFetcher interface {
 	Latest(ctx context.Context, secretID string) ([]byte, error)
-	ListIDsWithPrefix(ctx context.Context, prefix string) ([]string, error)
 }
 
 // Compile-time check: RemoteKeyStore satisfies KeyStore.
@@ -59,14 +62,25 @@ type RemoteKeyStoreConfig struct {
 // RemoteKeyStore is a KeyStore backed by a secret store, holding the key
 // material in memory between refreshes (ADR-015 §3.2).
 //
-// Scope note: §3.2 also specifies that a token bearing an unknown `kid`
-// triggers a single out-of-cache refresh with a 30-second cooldown. That is
-// deliberately NOT implemented here, and the omission is recorded in ADR-015
-// v1.1 rather than left to be discovered: the AWS build shipped only the
-// KeyStore interface and StaticKeyStore, so building it during a re-home would
-// be new scope, and it is reachable only mid-rotation — which nothing exercises
-// before the M7 verification module. Until then the 5-minute refresh bounds how
-// long a freshly added key stays unrecognised.
+// It resolves keys by name — jwt-current-key-id names the active key, and the
+// signing and public secrets are named after it — and never enumerates. The
+// first deploy is what settled that: an earlier version discovered valid `kid`
+// values by listing secrets with the jwt-public-key- prefix, and the pod
+// crash-looped on PermissionDenied for secretmanager.secrets.list. The
+// permission cannot be scoped to a secret, because listing is a query over the
+// project's whole secret collection; making it work would have meant granting
+// roles/secretmanager.viewer project-wide.
+//
+// The cost of resolving by name is that exactly one `kid` is accepted at a
+// time, so a rotation invalidates access tokens minted under the previous key.
+// They live at most an hour (ADR-015 §3.3), and rotation is unexercised until
+// M7 — so the trade is an hour of forced re-auth during a deliberate rotation,
+// against a permanent project-wide widening of this service's reach. ADR-015
+// v1.1 had already deferred the rotation machinery; this keeps the deferral
+// honest instead of paying for it in IAM.
+//
+// Scope note, unchanged: §3.2's unknown-`kid` immediate refresh with a
+// 30-second cooldown is not implemented, and was not implemented on AWS either.
 type RemoteKeyStore struct {
 	fetcher  SecretFetcher
 	interval time.Duration
@@ -132,7 +146,7 @@ func (s *RemoteKeyStore) PublicKey(kid string) (*rsa.PublicKey, error) {
 	return key, nil
 }
 
-// Refresh reloads the current key ID, its private key, and every public key.
+// Refresh reloads the active key ID and the key pair it names.
 //
 // It builds the whole set before taking the write lock, so a failure part-way
 // through leaves the previously loaded keys serving traffic rather than a
@@ -157,34 +171,30 @@ func (s *RemoteKeyStore) Refresh(ctx context.Context) error {
 		return fmt.Errorf("auth: parse signing key %s: %w", keyID, err)
 	}
 
-	publicIDs, err := s.fetcher.ListIDsWithPrefix(ctx, SecretPublicKeyPrefix)
-	if err != nil {
-		return fmt.Errorf("auth: list public keys: %w", err)
-	}
+	publicKeys := make(map[string]*rsa.PublicKey, 1)
 
-	publicKeys := make(map[string]*rsa.PublicKey, len(publicIDs))
-	for _, secretID := range publicIDs {
-		kid := strings.TrimPrefix(secretID, SecretPublicKeyPrefix)
-
-		publicPEM, fetchErr := s.fetcher.Latest(ctx, secretID)
-		if fetchErr != nil {
-			return fmt.Errorf("auth: load public key %s: %w", kid, fetchErr)
-		}
+	// The published public key is preferred over deriving one from the private
+	// key: if the two ever disagree, the tokens this service mints would not
+	// validate anywhere else, and failing here says so.
+	publicPEM, err := s.fetcher.Latest(ctx, SecretPublicKeyPrefix+keyID)
+	switch {
+	case err == nil:
 		publicKey, parseErr := parseRSAPublicKey(publicPEM)
 		if parseErr != nil {
-			return fmt.Errorf("auth: parse public key %s: %w", kid, parseErr)
+			return fmt.Errorf("auth: parse public key %s: %w", keyID, parseErr)
 		}
-		publicKeys[kid] = publicKey
-	}
-
-	// The signing key's own public half must be in the verify set, or this
-	// service would mint tokens it cannot itself validate on the REST path.
-	if _, ok := publicKeys[keyID]; !ok {
+		publicKeys[keyID] = publicKey
+	case errors.Is(err, domain.ErrNotFound):
+		// No published public key. Derive it, so the service can still
+		// validate the tokens it mints, and say so — this is a provisioning
+		// gap, and other services will not be able to verify anything.
 		publicKeys[keyID] = &privateKey.PublicKey
-		s.logger.WarnContext(ctx, "auth.public_key_missing_for_signing_key",
+		s.logger.WarnContext(ctx, "auth.public_key_not_published",
 			slog.String("kid", keyID),
 			slog.String("secret", SecretPublicKeyPrefix+keyID),
 		)
+	default:
+		return fmt.Errorf("auth: load public key %s: %w", keyID, err)
 	}
 
 	s.mu.Lock()

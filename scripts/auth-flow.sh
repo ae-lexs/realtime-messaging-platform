@@ -55,6 +55,12 @@ post() {
     -d "${body}"
 }
 
+# field reads one JSON field. Note the absence of `//` fallbacks between camel
+# and snake spellings: jq's alternative operator treats `false` as empty, so
+# `.isNewUser // .is_new_user` silently yields null for a returning user — which
+# cost a gate run to find. protojson emits lowerCamelCase, and the mux is
+# configured with EmitUnpopulated (see port.ServeMuxOptions), so every declared
+# field is present under exactly one name.
 field() { jq -r "$1" /tmp/response.json; }
 
 # read_otp pulls the code out of the pod's structured log. LogSMSProvider is the
@@ -75,7 +81,7 @@ read_otp() {
 echo "==> 1. request OTP"
 code="$(post /otp/request "{\"phone_number\":\"${PHONE}\"}")"
 [[ "${code}" == "200" ]] || fail "request-otp returned ${code}: $(cat /tmp/response.json)"
-[[ "$(field '.expiresAt.millis // .expires_at.millis')" != "null" ]] || fail "no expires_at in response"
+[[ "$(field '.expiresAt.millis')" != "null" ]] || fail "no expires_at in response"
 ok "OTP issued"
 
 sleep 2
@@ -91,9 +97,9 @@ echo "==> 2. verify OTP (registration)"
 code="$(post /otp/verify "{\"phone_number\":\"${PHONE}\",\"otp\":\"${OTP}\",\"device_id\":\"${DEVICE}\"}")"
 [[ "${code}" == "200" ]] || fail "verify-otp returned ${code}: $(cat /tmp/response.json)"
 
-IS_NEW="$(field '.isNewUser // .is_new_user')"
-ACCESS="$(field '.accessToken // .access_token')"
-REFRESH="$(field '.refreshToken // .refresh_token')"
+IS_NEW="$(field '.isNewUser')"
+ACCESS="$(field '.accessToken')"
+REFRESH="$(field '.refreshToken')"
 [[ "${IS_NEW}" == "true" ]] || fail "expected is_new_user=true on first verify, got ${IS_NEW}"
 [[ -n "${ACCESS}" && "${ACCESS}" != "null" ]] || fail "no access token"
 ok "registered; tokens issued"
@@ -116,7 +122,7 @@ OTP_2="$(read_otp)"
 
 code="$(post /otp/verify "{\"phone_number\":\"${PHONE}\",\"otp\":\"${OTP_2}\",\"device_id\":\"${DEVICE_2}\"}")"
 [[ "${code}" == "200" ]] || fail "login verify returned ${code}: $(cat /tmp/response.json)"
-IS_NEW="$(field '.isNewUser // .is_new_user')"
+IS_NEW="$(field '.isNewUser')"
 [[ "${IS_NEW}" == "false" ]] || fail "expected is_new_user=false for a known phone, got ${IS_NEW}"
 ok "returning user recognised — the phone lookup resolved to the existing user"
 
@@ -131,8 +137,8 @@ echo "==> 4. refresh tokens"
 code="$(post /tokens/refresh "{\"refresh_token\":\"${REFRESH}\"}" \
   -H "Authorization: Bearer ${ACCESS}" -H "X-Device-Id: ${DEVICE}")"
 [[ "${code}" == "200" ]] || fail "refresh returned ${code}: $(cat /tmp/response.json)"
-NEW_ACCESS="$(field '.accessToken // .access_token')"
-NEW_REFRESH="$(field '.refreshToken // .refresh_token')"
+NEW_ACCESS="$(field '.accessToken')"
+NEW_REFRESH="$(field '.refreshToken')"
 [[ -n "${NEW_ACCESS}" && "${NEW_ACCESS}" != "null" ]] || fail "no rotated access token"
 [[ "${NEW_REFRESH}" != "${REFRESH}" ]] || fail "refresh returned the same token — no rotation happened"
 ok "tokens rotated"

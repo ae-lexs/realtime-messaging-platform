@@ -80,6 +80,52 @@ func TestOTPCreateRefusesALiveOTPButNotAnExpiredOne(t *testing.T) {
 	assert.Zero(t, stored.AttemptCount, "reissuing resets the attempt budget with the code")
 }
 
+// TestOTPCreateReplacesAConsumedOTP covers the third disjunct of ADR-015 §1.2's
+// condition, `#status = "verified"`.
+//
+// The live flow gate is what found this missing: a user verifies successfully,
+// immediately asks for another code, and gets refused — because the spent
+// record was still inside its five-minute window and an expiry-only check
+// treats it as live. Nothing is protected by keeping it: the code is consumed
+// and cannot be replayed, and throttling re-requests is the rate limiter's job
+// (ADR-013 §4.1), not this write's.
+func TestOTPCreateReplacesAConsumedOTP(t *testing.T) {
+	// Arrange — an OTP consumed by a registration, still well inside its
+	// validity window.
+	ctx := context.Background()
+	client := liveClient(t)
+	requests := firestore.NewOTPRequests(client)
+	authTx := firestore.NewAuthTx(client)
+
+	phoneHash := uniquePhoneHash(t)
+	now := time.Now().UTC()
+	phone, err := domain.NewPhoneNumber("+525512340005")
+	require.NoError(t, err)
+
+	require.NoError(t, requests.Create(ctx,
+		firestore.NewOTPRequestDoc(phoneHash, "mac-consumed", now, now.Add(domain.OTPValidityDuration)), now))
+	require.NoError(t, authTx.Register(ctx,
+		registration(phoneHash, "mac-consumed", now, domain.GenerateUserID(), domain.GenerateSessionID(), phone.String())))
+
+	consumed, err := requests.Get(ctx, phoneHash)
+	require.NoError(t, err)
+	require.Equal(t, domain.OTPStatusVerified, consumed.Status)
+	require.False(t, consumed.IsExpired(now), "the spent record is still inside its window")
+
+	// Act — request another code one second later.
+	soon := now.Add(time.Second)
+	next := firestore.NewOTPRequestDoc(phoneHash, "mac-next", soon, soon.Add(domain.OTPValidityDuration))
+
+	// Assert
+	require.NoError(t, requests.Create(ctx, next, soon),
+		"a consumed OTP must not block a new one for the rest of its window")
+
+	stored, err := requests.Get(ctx, phoneHash)
+	require.NoError(t, err)
+	assert.Equal(t, "mac-next", stored.OTPMAC)
+	assert.Equal(t, domain.OTPStatusPending, stored.Status, "the replacement is issuable, not pre-consumed")
+}
+
 // TestOTPExpiresAtSurvivesTheRoundTripExactly guards the MAC-stability
 // invariant end to end. auth.ComputeOTPMAC binds the MAC to expires_at's
 // RFC3339 rendering, and Firestore stores microseconds — so if the value that

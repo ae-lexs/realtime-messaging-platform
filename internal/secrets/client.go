@@ -20,14 +20,11 @@ package secrets
 
 import (
 	"context"
-	"errors"
 	"fmt"
-	"strings"
 	"time"
 
 	secretmanager "cloud.google.com/go/secretmanager/apiv1"
 	"cloud.google.com/go/secretmanager/apiv1/secretmanagerpb"
-	"google.golang.org/api/iterator"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
@@ -103,35 +100,14 @@ func (c *Client) Latest(ctx context.Context, secretID string) ([]byte, error) {
 	return result.GetPayload().GetData(), nil
 }
 
-// ListIDsWithPrefix returns the IDs of the project's secrets whose ID begins
-// with prefix. It is how the set of valid JWT `kid` values is discovered: the
-// public keys are named jwt-public-key-{KEY_ID}, so the prefix enumerates
-// every key a token may legitimately be signed with, including the one being
-// phased out during a rotation.
-func (c *Client) ListIDsWithPrefix(ctx context.Context, prefix string) ([]string, error) {
-	ctx, cancel := context.WithTimeout(ctx, c.timeout)
-	defer cancel()
-
-	// Secret Manager's filter language matches on the full resource name, so
-	// the prefix is applied here rather than server-side; the project holds a
-	// handful of secrets, not a page-worth.
-	iter := c.sm.ListSecrets(ctx, &secretmanagerpb.ListSecretsRequest{
-		Parent: "projects/" + c.projectID,
-	})
-
-	var ids []string
-	for {
-		secret, err := iter.Next()
-		if errors.Is(err, iterator.Done) {
-			return ids, nil
-		}
-		if err != nil {
-			return nil, fmt.Errorf("secrets: list with prefix %q: %w", prefix, err)
-		}
-
-		id := secret.GetName()[strings.LastIndexByte(secret.GetName(), '/')+1:]
-		if strings.HasPrefix(id, prefix) {
-			ids = append(ids, id)
-		}
-	}
-}
+// This client deliberately offers no way to enumerate secrets.
+//
+// An earlier version discovered JWT key IDs by listing secrets with the
+// jwt-public-key- prefix. That cannot be granted at the right scope, and the
+// first deploy is what proved it: secretmanager.secrets.list is a *project*
+// permission — listing is a query over the project's secret collection, so
+// there is no such thing as "may list this one secret". Supporting it would
+// have meant granting roles/secretmanager.viewer project-wide, widening the
+// service's reach from four named secrets to the metadata of every secret in
+// the project, in exchange for a rotation path ADR-015 v1.1 had already
+// deferred. Keys are addressed by name instead (see auth.RemoteKeyStore).

@@ -162,10 +162,10 @@ func setup(ctx context.Context, deps server.SetupDeps) (func(context.Context) er
 
 	// The REST bridge calls the handler in-process rather than dialling this
 	// service's own gRPC port: same behaviour, one fewer connection and one
-	// fewer thing to fail. IncomingHeaderMatcher is not optional — the default
-	// renames Authorization and drops X-Device-Id and X-Forwarded-For, each
-	// silently (see internal/chatmgmt/port/header_matcher.go).
-	gwMux := runtime.NewServeMux(runtime.WithIncomingHeaderMatcher(port.IncomingHeaderMatcher))
+	// fewer thing to fail. ServeMuxOptions is not optional — it carries the
+	// header plumbing and the marshaling corrections, both of which fail
+	// silently by default (see internal/chatmgmt/port/rest_options.go).
+	gwMux := runtime.NewServeMux(port.ServeMuxOptions()...)
 	if regErr := messagingv1.RegisterAuthServiceHandlerServer(ctx, gwMux, handler); regErr != nil {
 		stopRefresher()
 		return abort(fmt.Errorf("register REST handlers: %w", regErr))
