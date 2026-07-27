@@ -41,3 +41,28 @@ resource "google_firestore_field" "sessions_ttl" {
   # `where('user_id','==',u)` depends on that field's automatic index.
   index_config {}
 }
+
+# TTL policy on otp_requests.expires_at (ADR-023 v1.2). Without it the
+# collection grows without bound: OTPs are high-churn, one document per request,
+# and nothing in the application ever deletes one — a consumed record is kept as
+# `verified` precisely so a replay is refused rather than read as never-issued.
+#
+# It is garbage collection and nothing more, and the gap is wider here than for
+# sessions: the credential is valid for five minutes while Firestore collects
+# within ~24 hours, so an expired OTP stays readable for most of a day. Both
+# OTPRequests.Create and the verify path therefore gate on expires_at in code
+# (firestore.OTPRequestDoc.IsExpired). Removing this policy would cost storage,
+# not correctness — which is exactly why its absence is easy to miss.
+resource "google_firestore_field" "otp_requests_ttl" {
+  project    = var.project_id
+  database   = google_firestore_database.main.name
+  collection = "otp_requests"
+  field      = "expires_at"
+
+  ttl_config {}
+
+  # Same reasoning as sessions: nothing queries OTPs by expiry — they are
+  # addressed by phone hash — so the automatic indexes on this monotonic
+  # timestamp are pure write cost.
+  index_config {}
+}
