@@ -21,13 +21,11 @@ import (
 // the session, and the OTP is left "pending" and re-verifiable, so a code can
 // be consumed twice. Either everything commits or nothing does.
 //
-// This is the Firestore translation of a DynamoDB TransactWriteItems, and the
-// two stores express the same guarantee differently. DynamoDB attached a
-// ConditionExpression to each item; Firestore has no per-write condition, so
-// the OTP assertions are made in Go against a document read *inside* the
-// transaction. That is equivalent, not weaker: the transaction fails and
-// retries if any document it read changed before commit, which is exactly what
-// the conditions defended against.
+// Firestore has no per-write condition, so the OTP assertions ADR-015 §5.1
+// specifies are made in Go against a document read *inside* the transaction.
+// That is not a weaker guarantee: the transaction fails and retries if any
+// document it read changed before commit, which is exactly what a conditional
+// write defends against.
 type AuthTx struct{ client *Client }
 
 // NewAuthTx returns the auth transaction writer.

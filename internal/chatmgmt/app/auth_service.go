@@ -42,15 +42,15 @@ func init() {
 }
 
 // The records below are the service's own vocabulary; adapters map them onto
-// whatever the store holds. Two DynamoDB-isms left with the substrate:
+// whatever the store holds. Two properties are worth stating because earlier
+// revisions had neither (ADR-023):
 //
-//   - Timestamps were RFC3339 strings, so every flow re-parsed them and carried
-//     an unreachable parse-error branch. They are time.Time here, and the
-//     conversion happens once, in the adapter.
-//   - Each record carried a TTL epoch second alongside its expiry, because
-//     DynamoDB's TTL read a separate numeric attribute. Firestore's TTL policy
-//     reads the timestamp field itself, so the duplicate is gone — and with it
-//     the possibility of the two disagreeing.
+//   - Timestamps are time.Time, not formatted strings, so no flow re-parses one
+//     or carries an unreachable parse-error branch. The conversion to whatever
+//     the store wants happens once, in the adapter.
+//   - Expiry is a single field. A Firestore TTL policy reads the timestamp
+//     directly, so nothing carries a second copy of the same instant in another
+//     encoding, and no two fields can disagree about when something expires.
 
 // OTPRecord represents an OTP request stored in the OTP collection.
 // Structurally mirrors the adapter record; the wiring layer converts between them.

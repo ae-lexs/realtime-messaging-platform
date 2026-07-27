@@ -79,10 +79,10 @@ func TestDocumentFieldNamesMatchTheSchema(t *testing.T) {
 	}
 }
 
-// TestSessionExpiresAtIsATimestamp guards the reason expires_at cannot go back
-// to the RFC3339 strings the DynamoDB-era records used: a Firestore TTL policy
-// only acts on timestamp-typed fields, so a string here would disable session
-// garbage collection silently.
+// TestSessionExpiresAtIsATimestamp guards the reason expires_at may never
+// become a formatted string: a Firestore TTL policy only acts on
+// timestamp-typed fields, so a string here would disable session garbage
+// collection silently.
 func TestSessionExpiresAtIsATimestamp(t *testing.T) {
 	// Act
 	field, ok := reflect.TypeOf(firestore.SessionDoc{}).FieldByName("ExpiresAt")

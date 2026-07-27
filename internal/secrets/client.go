@@ -7,11 +7,9 @@
 // internal/firestore rather than the Firestore SDK (CONTRIBUTING.md §Shared
 // packages). `make check-secretmanager-boundary` enforces it.
 //
-// AWS split this material across Secrets Manager (private key, pepper) and SSM
-// Parameter Store (public keys, current key ID). GCP has one service, so the
-// two-tier naming collapses: Secret Manager has no path hierarchy — a secret
-// ID is a flat name — and the SSM path segments become underscore- or
-// hyphen-separated components of that name.
+// Secret Manager has no path hierarchy: an ID is a flat name, so the naming
+// scheme encodes structure with hyphens (jwt-signing-key-{KEY_ID}) rather than
+// path segments. ADR-015 Appendix F has the full mapping and the reasoning.
 //
 // This package reads secrets; it never writes them. Terraform creates the
 // secret containers and scripts/auth-keys.sh adds the versions, so key

@@ -16,9 +16,9 @@ import (
 
 // The stores below implement exactly the Firestore rows of ADR-023's
 // access-pattern table and nothing beyond them. Every query is a single-field
-// equality match, which Firestore's automatic indexes serve — this schema needs
-// no composite index and no manual index configuration, which is the main thing
-// it bought over the three DynamoDB GSIs it replaced.
+// equality match, which Firestore's automatic indexes serve — so this schema
+// needs no composite index and no manual index configuration at all. ADR-023
+// records what that replaced and why.
 
 // Users reads and writes the `users` collection.
 type Users struct{ client *Client }
@@ -46,8 +46,8 @@ func (s *Users) Get(ctx context.Context, userID domain.UserID) (UserDoc, error) 
 }
 
 // FindByPhone returns the user registered with an E.164 phone number, or
-// domain.ErrNotFound. This replaced DynamoDB's phone_number-index GSI with a
-// plain equality query on an automatic index.
+// domain.ErrNotFound. A plain equality query, served by the automatic
+// single-field index on phone_number — no index configuration required.
 func (s *Users) FindByPhone(ctx context.Context, phone domain.PhoneNumber) (UserDoc, error) {
 	ctx, cancel := s.client.withTimeout(ctx)
 	defer cancel()
@@ -161,8 +161,9 @@ func (s *Memberships) ListByChat(ctx context.Context, chatID domain.ChatID) ([]M
 	return s.list(ctx, "chat_id", chatID.String())
 }
 
-// ListByUser returns the chats a user belongs to — the direction DynamoDB
-// needed the user_chats-index GSI for.
+// ListByUser returns the chats a user belongs to. The deterministic document
+// ID serves the point lookup while this equality query serves the reverse
+// direction, both off automatic indexes (ADR-023).
 func (s *Memberships) ListByUser(ctx context.Context, userID domain.UserID) ([]MembershipDoc, error) {
 	return s.list(ctx, "user_id", userID.String())
 }

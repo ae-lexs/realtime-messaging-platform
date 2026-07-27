@@ -3,11 +3,9 @@
 # versions of the Secret Manager secrets Terraform created (ADR-015 §1.2,
 # §3.2 as amended for GCP in Appendix F).
 #
-# This replaced the AWS-era generate-jwt-keys.sh (deleted), and it
-# keeps that script's central property: Terraform creates the secret
-# containers, this script creates the *versions*. Key material therefore never
-# enters Terraform state or a plan file, which is the same split M0.3 used for
-# the schema registry.
+# The split matters: Terraform creates the secret containers, this script
+# creates the *versions*. Key material therefore never enters Terraform state or
+# a plan file — the same division M0.3 used for the schema registry.
 #
 # It is idempotent by design, not by accident: a secret that already holds a
 # version is left alone. Re-running it must not mint a new signing key, because

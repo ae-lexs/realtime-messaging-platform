@@ -130,13 +130,9 @@ check-secretmanager-boundary:
 		echo "✅ Secret Manager SDK confined to internal/secrets"; \
 	fi
 
-## Gate: no AWS SDK imports may remain (M0.1, ADR-021 substrate migration)
+## Gate: the substrate is GCP — no prior-substrate imports, calls or vocabulary outside docs/ (ADR-021)
 check-no-aws:
-	@if grep -rn "aws-sdk-go" --include="*.go" . ; then \
-		echo "❌ AWS SDK imports found — M0.1 requires none"; exit 1; \
-	else \
-		echo "✅ no AWS SDK imports"; \
-	fi
+	@./scripts/check-no-aws.sh
 
 # ============================================================================
 # Terraform (Docker-only per PR0-INV-1)
@@ -304,7 +300,7 @@ help:
 	@echo "CI:"
 	@echo "  make ci-local         Run full CI pipeline locally"
 	@echo "  make ci-fast          Run fast CI (no Docker build)"
-	@echo "  make check-no-aws     Assert no AWS SDK imports remain"
+	@echo "  make check-no-aws     Assert the GCP substrate boundary (ADR-021)"
 	@echo "  make check-firestore-boundary  Assert the Firestore SDK stays in internal/firestore"
 	@echo ""
 	@echo "Terraform:"

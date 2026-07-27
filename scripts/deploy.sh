@@ -24,7 +24,7 @@ ENV_DIR="terraform/environments/dev"
 tb() { docker compose run --rm -T toolbox "$@"; }
 
 # 1. Restrict the GKE control plane to the operator's current public IP.
-OPERATOR_IP="$(curl -fsS https://checkip.amazonaws.com | tr -d '[:space:]')"
+OPERATOR_IP="$(curl -fsS https://api.ipify.org | tr -d '[:space:]')"
 CIDR_VAR="master_authorized_cidr_blocks=[{cidr_block=\"${OPERATOR_IP}/32\",display_name=\"operator\"}]"
 echo "==> Control plane will allow ${OPERATOR_IP}/32"
 

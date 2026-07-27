@@ -1,6 +1,6 @@
 # Per-service Google identities, bound to Kubernetes service accounts through
-# GKE Workload Identity — the GCP form of ADR-015 §3.2's least-privilege table,
-# which granted ECS task roles on AWS.
+# GKE Workload Identity. This is how ADR-015 §3.2's least-privilege table is
+# enforced: one identity per service, granted only what that service reads.
 #
 # Workload Identity is the mechanism that lets a pod call Google APIs with a
 # specific identity and no key file: a pod running under KSA

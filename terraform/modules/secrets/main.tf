@@ -13,8 +13,8 @@
 # script between apply and rollout so this window never reaches a deploy.
 
 locals {
-  # One secret per piece of material. Secret Manager IDs are flat, so the SSM
-  # path segments of the AWS design become name components.
+  # One secret per piece of material. Secret Manager IDs are flat names rather
+  # than paths, so structure is encoded with hyphens (ADR-015 Appendix F).
   secret_ids = {
     signing_key    = "jwt-signing-key-${var.signing_key_id}"
     public_key     = "jwt-public-key-${var.signing_key_id}"

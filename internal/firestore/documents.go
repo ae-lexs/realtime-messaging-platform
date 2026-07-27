@@ -12,7 +12,7 @@ type UserDoc struct {
 	ID string `firestore:"-"`
 
 	// PhoneNumber is E.164. Queried by equality on the automatic single-field
-	// index — this is what replaced DynamoDB's phone_number-index GSI.
+	// index, so the lookup needs no index configuration (ADR-023).
 	PhoneNumber   string    `firestore:"phone_number"`
 	PhoneVerified bool      `firestore:"phone_verified"`
 	DisplayName   string    `firestore:"display_name"`
@@ -54,9 +54,10 @@ type MembershipDoc struct {
 // SessionDoc is a document in `sessions` (ADR-023, ADR-015). Doc ID is the
 // session ID.
 //
-// ExpiresAt must be a Firestore timestamp, not a string: the TTL policy only
-// acts on timestamp-typed fields. The DynamoDB-era `ttl` attribute has no
-// counterpart here — the Terraform TTL policy on expires_at replaces it.
+// ExpiresAt must be a Firestore timestamp, not a string: a TTL policy only
+// acts on timestamp-typed fields, so a string here would disable session
+// garbage collection silently. The policy itself is declared in Terraform
+// against this field; there is no companion attribute to keep in step with it.
 //
 // PrevTokenHash and TokenGeneration are absent from ADR-023's field list but
 // required by ADR-015's refresh rotation and reuse detection, which ADR-021
@@ -128,8 +129,9 @@ func NewOTPRequestDoc(phoneHash, otpMAC string, createdAt, expiresAt time.Time) 
 
 // PhoneIndexDoc is a document in `phone_index` (ADR-023 v1.2) — the sentinel
 // that makes "one user per phone number" true under concurrency. Doc ID is the
-// SHA-256 phone hash; creating it with tx.Create is the Firestore equivalent of
-// the attribute_not_exists condition ADR-015 §5.1 used on DynamoDB.
+// SHA-256 phone hash, and `tx.Create` on that deterministic path is what
+// enforces uniqueness: it fails atomically if the document already exists
+// (ADR-015 §5.1).
 //
 // It is deliberately not a read path: FindByPhone queries users.phone_number,
 // exactly as ADR-023's access-pattern table specifies. This document exists to

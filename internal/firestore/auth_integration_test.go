@@ -283,8 +283,7 @@ func TestRegisterCommitsEverythingOrNothing(t *testing.T) {
 	})
 }
 
-// TestConcurrentRegistrationYieldsExactlyOneUser is why phone_index survived
-// the translation from DynamoDB.
+// TestConcurrentRegistrationYieldsExactlyOneUser is why phone_index exists.
 //
 // Firestore's queries are strongly consistent, which is easy to mistake for
 // enough. It is not: a transaction locks the documents it *reads*, and a query

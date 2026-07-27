@@ -152,7 +152,9 @@ The following imports are **prohibited** and enforced by `go-arch-lint` + `depgu
 - 🚫 `domain` must not import `app`, `port`, or `adapter` — **CI-enforced**
 - 🚫 `app` must not import `port` or `adapter` — **CI-enforced**
 - 🚫 `port` must not import `adapter` directly (always goes through `app`) — **CI-enforced**
-- 🚫 No package may import `aws-sdk-go` — **CI-enforced** (AWS→GCP migration, ADR-021; the `no-aws` CI job and `make check-no-aws` fail on any match). GCP client adapters land per module.
+- 🚫 **The substrate is GCP, and the code says so** — **CI-enforced** (ADR-021; `scripts/check-no-aws.sh`, run by the `no-aws` CI job and `make check-no-aws`). The gate covers Go, Terraform, shell, protobuf and manifests, and rejects prior-substrate SDK imports, CLI calls and resource ARNs **as well as prior-substrate service names in comments**. Prose counts because a comment that explains a GCP construct by what it used to be on another cloud makes the file read as though it targets that cloud — which is exactly what happened to `internal/auth/remote_keys.go` before this gate existed.
+  - **The rule:** explain what a thing **is**, and cite the ADR for what it replaced. "Secret Manager IDs are flat names, so structure is encoded with hyphens" beats "the old path segments become name components" — it is shorter, it is true on its own terms, and a reader who wants the history follows the ADR reference.
+  - **`docs/` and Markdown are exempt, deliberately.** The ADRs *are* the migration's record — ADR-007's superseded data model, ADR-015 Appendix F's secret mapping, the retired TF-0/TF-1 decisions — and scrubbing them would destroy the reasoning this project exists to keep. README's "migrated from AWS to GCP" is the headline, not a leak.
 - 🚫 Only `internal/kafka/` may import `franz-go` — **CI-enforced**
 - 🚫 Only `internal/redis/` may import `go-redis` — **CI-enforced**
 

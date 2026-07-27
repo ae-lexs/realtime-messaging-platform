@@ -1,9 +1,8 @@
 // Package main is the entrypoint for the Chat Management service.
 //
-// M1.2 restores the composition root M0.1 retired: the auth logic salvaged
-// from the AWS build is wired to Firestore (identity), Memorystore (abuse
-// control and revocation) and Secret Manager (signing key, OTP pepper), and
-// served over both gRPC and REST.
+// M1.2 restores the composition root M0.1 retired: the auth logic is wired to
+// Firestore (identity), Memorystore (abuse control and revocation) and Secret
+// Manager (signing key, OTP pepper), and served over both gRPC and REST.
 package main
 
 import (

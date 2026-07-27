@@ -13,13 +13,12 @@ var _ auth.SMSProvider = (*LogSMSProvider)(nil)
 // LogSMSProvider writes the OTP to the structured log instead of sending it.
 // It is the only SMSProvider implementation, in every environment.
 //
-// That is a decision, not a gap. ADR-015 §2.2 chose Amazon SNS because it was
-// native to the substrate and needed no vendor relationship — and GCP has no
-// first-party SMS service at all, so the reasoning that picked SNS argues
-// against any GCP-native successor. Delivering a real SMS means a third-party
-// provider (Twilio and peers) behind this same interface, which is a small
-// adapter and a large amount of A2P sender registration. Recorded as a non-goal
-// in ADR-015 v1.3 and the execution plan rather than left looking unfinished.
+// That is a decision, not a gap. GCP has no first-party programmable SMS
+// service, so there is no native provider to reach for; delivering a real SMS
+// means a third-party vendor (Twilio and peers) behind this same interface,
+// which is a small adapter and a large amount of A2P sender registration.
+// Recorded as a non-goal in ADR-015 v1.3 §2.2.1 and the execution plan, rather
+// than left looking unfinished.
 //
 // **This must not survive contact with real users.** It logs the OTP in full —
 // the phone number is masked, the code is not — into Cloud Logging, where it is
