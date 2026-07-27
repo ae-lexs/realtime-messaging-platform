@@ -294,6 +294,66 @@ func (s *Sessions) Set(ctx context.Context, doc SessionDoc) error {
 	return nil
 }
 
+// SessionRotation is the mutable field set of a refresh-token rotation
+// (ADR-015 §4.2).
+type SessionRotation struct {
+	// RefreshTokenHash is the new token's hash.
+	RefreshTokenHash string
+
+	// PrevTokenHash is the hash being replaced. It is both stored — reuse
+	// detection compares against it — and used as the write's precondition.
+	PrevTokenHash string
+
+	TokenGeneration int64
+	ExpiresAt       time.Time
+}
+
+// Rotate advances a session's refresh token, refusing the write unless the
+// stored hash is still the one being replaced. That precondition is ADR-015
+// §4.2's `ConditionExpression: refresh_token_hash = :old_hash`, and it is what
+// makes rotation single-use: if two requests arrive holding the same refresh
+// token, the first commits and the second finds a hash it does not recognise
+// and gets domain.ErrInvalidRefreshToken. Without it both would succeed, the
+// second overwriting prev_token_hash with a value that erases the evidence
+// reuse detection depends on.
+func (s *Sessions) Rotate(ctx context.Context, sessionID domain.SessionID, rotation SessionRotation) error {
+	ctx, cancel := s.client.withTimeout(ctx)
+	defer cancel()
+
+	ref := s.client.FS.Collection(CollectionSessions).Doc(sessionID.String())
+
+	return s.client.FS.RunTransaction(ctx, func(_ context.Context, tx *firestore.Transaction) error {
+		snapshot, getErr := tx.Get(ref)
+		if status.Code(getErr) == codes.NotFound {
+			return fmt.Errorf("firestore: rotate session %s: %w", sessionID.String(), domain.ErrNotFound)
+		}
+		if getErr != nil {
+			return fmt.Errorf("firestore: read session %s: %w", sessionID.String(), getErr)
+		}
+
+		var current SessionDoc
+		if decodeErr := snapshot.DataTo(&current); decodeErr != nil {
+			return fmt.Errorf("firestore: decode session %s: %w", sessionID.String(), decodeErr)
+		}
+
+		if current.RefreshTokenHash != rotation.PrevTokenHash {
+			return fmt.Errorf("firestore: session %s already rotated: %w",
+				sessionID.String(), domain.ErrInvalidRefreshToken)
+		}
+
+		if updateErr := tx.Update(ref, []firestore.Update{
+			{Path: "refresh_token_hash", Value: rotation.RefreshTokenHash},
+			{Path: "prev_token_hash", Value: rotation.PrevTokenHash},
+			{Path: "token_generation", Value: rotation.TokenGeneration},
+			{Path: "expires_at", Value: rotation.ExpiresAt},
+		}); updateErr != nil {
+			return fmt.Errorf("firestore: rotate session %s: %w", sessionID.String(), updateErr)
+		}
+
+		return nil
+	})
+}
+
 // Delete revokes a session immediately, rather than waiting for TTL.
 func (s *Sessions) Delete(ctx context.Context, sessionID domain.SessionID) error {
 	ctx, cancel := s.client.withTimeout(ctx)
