@@ -166,7 +166,7 @@ func TestRequestOTP(t *testing.T) {
 	t.Run("OTPStore failure: returns wrapped error", func(t *testing.T) {
 		h := newTestHarness(t)
 		h.otpStore.createOTPFn = func(_ context.Context, _ app.OTPRecord) error {
-			return errors.New("dynamodb timeout")
+			return errors.New("firestore timeout")
 		}
 
 		_, err := h.svc.RequestOTP(context.Background(), validPhone, clientIP)

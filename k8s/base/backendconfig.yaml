@@ -3,7 +3,8 @@ kind: BackendConfig
 metadata:
   name: gateway-backendconfig
 spec:
-  # ADR-021 Deployment Req 1: the external ALB backend-service idle timeout
+  # ADR-021 Deployment Req 1: the external Application Load Balancer's
+  # backend-service idle timeout
   # defaults to 30s and silently drops idle connections. Raise it to 24h (the
   # same order as the non-customizable 24h active-WebSocket ceiling) so the M3
   # WebSocket path is not disqualified before it exists. ADR-005's heartbeat

@@ -7,8 +7,9 @@ import (
 )
 
 // KeyStore provides access to JWT signing and verification keys.
-// Implementations load keys from Secrets Manager/SSM (production)
-// or hold them in memory (testing).
+//
+// RemoteKeyStore loads them from GCP Secret Manager and is what runs in a
+// deployed service; StaticKeyStore holds them in memory and is for tests.
 type KeyStore interface {
 	// SigningKey returns the current private signing key and its key ID.
 	SigningKey() (*rsa.PrivateKey, string, error)

@@ -1,6 +1,11 @@
 # TF-1 TBD Decisions: Auth Infrastructure
 
-- **Status**: Draft
+> [!WARNING]
+> **Retired (2026-07-24, ADR-021 AWS → GCP substrate migration).** The TF-0/TF-1 Terraform track no longer exists; infrastructure now travels with the module that needs it (EXECUTION_PLAN v2.0, Principle 5). Everything below describes AWS resources that were applied and then torn down. **Nothing here is provisioned.**
+>
+> Where the auth-secrets decisions live now: **Secrets Manager + SSM Parameter Store → GCP Secret Manager** (ADR-015 v1.1 Appendix F), created empty by `terraform/modules/secrets` and filled by `scripts/auth-keys.sh`, which replaced the `generate-jwt-keys.sh` this document specifies. **ECS task roles → GKE Workload Identity** (`terraform/modules/service-accounts`). **DynamoDB `users`/`sessions` → Firestore** (ADR-023 v1.2). This record is retained unchanged as the reasoning that produced them.
+
+- **Status**: Retired (was Draft)
 - **Date**: 2026-02-09
 - **Related ADRs**: ADR-015 (Authentication & OTP), ADR-007 §2.4/§2.8 (Users & Sessions tables), ADR-014 §7 (Secrets & Configuration Management), ADR-013 (Security & Abuse Controls)
 - **Execution Plan Reference**: TF-1 Auth Infrastructure

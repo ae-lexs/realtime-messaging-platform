@@ -10,7 +10,8 @@ option go_package = "github.com/aelexs/realtime-messaging-platform/gen/messaging
 // Called by Gateway when clients send messages.
 // Implements the 5-step persist flow from ADR-004.
 service IngestService {
-  // PersistMessage persists a message to DynamoDB and publishes to Kafka.
+  // PersistMessage persists a message to Postgres and enqueues its event in
+  // the transactional outbox, which the relay publishes to Kafka.
   // Idempotent: same client_message_id returns same sequence without re-persisting.
   // Returns the assigned sequence number and message ID.
   rpc PersistMessage(PersistMessageRequest) returns (PersistMessageResponse);

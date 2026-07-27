@@ -1,6 +1,9 @@
 # PR-1 TBD Decisions: Key Rotation & Auth TTL Values
 
-- **Status**: Approved
+> [!IMPORTANT]
+> **Partly superseded (2026-07-26, M1.2).** The **TTL values are still in force** and implemented — the 3600 s revoked-JTI TTL is `internal/chatmgmt/adapter/redis_revocation.go`, and the OTP/session lifetimes are `internal/domain/constants.go`. The **key-rotation mechanics are not**: they assume Secrets Manager + SSM Parameter Store, which became GCP Secret Manager (ADR-015 v1.1 Appendix F), and multi-key verification is not implemented at all — the M1.2 deploy found that enumerating secrets is ungrantable at the right scope, so exactly one `kid` is accepted at a time (ADR-015 v1.2). Read the numbers as current and the AWS mechanics as history.
+
+- **Status**: Approved (key-rotation mechanics superseded; see banner)
 - **Date**: 2026-02-10
 - **Related ADRs**: ADR-013 (Security & Abuse Controls), ADR-015 (Authentication & OTP Implementation)
 - **Execution Plan Reference**: TBD-PR1-1, TBD-PR1-2

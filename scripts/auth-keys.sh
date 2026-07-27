@@ -3,7 +3,7 @@
 # versions of the Secret Manager secrets Terraform created (ADR-015 §1.2,
 # §3.2 as amended for GCP in Appendix F).
 #
-# This is the GCP replacement for the retired AWS generate-jwt-keys.sh, and it
+# This replaced the AWS-era generate-jwt-keys.sh (deleted), and it
 # keeps that script's central property: Terraform creates the secret
 # containers, this script creates the *versions*. Key material therefore never
 # enters Terraform state or a plan file, which is the same split M0.3 used for
