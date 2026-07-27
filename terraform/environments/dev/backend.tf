@@ -1,5 +1,5 @@
-# Remote state — GCS bucket (native object-level locking; no separate lock
-# table is needed, unlike the retired S3 + DynamoDB backend). The bucket name
+# Remote state — GCS bucket. Object-level locking is native to GCS, so no
+# separate lock table is provisioned or needed anywhere. The bucket name
 # is project-derived, so it is supplied at init time via partial configuration
 # rather than hardcoded here:
 #

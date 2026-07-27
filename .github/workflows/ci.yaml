@@ -14,20 +14,17 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  # Substrate gate — no AWS SDK imports may remain (M0.1, ADR-021).
+  # Substrate gate (ADR-021). The check lives in scripts/check-no-aws.sh so this
+  # job and `make check-no-aws` cannot drift apart — they did before, which is
+  # how a prior-substrate CLI script survived the migration unnoticed.
   no-aws:
-    name: No AWS SDK Imports
+    name: Substrate Boundary
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
 
-      - name: Assert no aws-sdk-go imports
-        run: |
-          if grep -rn "aws-sdk-go" --include="*.go" . ; then
-            echo "AWS SDK imports found — M0.1 requires none"
-            exit 1
-          fi
-          echo "No AWS SDK imports found."
+      - name: Assert the GCP substrate boundary
+        run: ./scripts/check-no-aws.sh
 
       # Only internal/firestore may import the Firestore SDK, the same rule the
       # retired internal/dynamo held (CONTRIBUTING §Shared packages).

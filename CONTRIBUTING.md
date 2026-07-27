@@ -104,7 +104,7 @@ Each service follows the Three Dots Labs interpretation of Clean Architecture wi
 
 **`port/`** — Entry points into the service. HTTP handlers, gRPC servers, WebSocket handlers, Kafka consumer entrypoints. Translates external protocols into `app/` calls. Performs request validation, serialization/deserialization, and error mapping to protocol-specific responses.
 
-**`adapter/`** — Implementations of interfaces defined in `app/` or `domain/`. DynamoDB clients, Kafka producers, Redis operations, gRPC clients to other services. This is where I/O lives.
+**`adapter/`** — Implementations of interfaces defined in `app/` or `domain/`. Firestore and Cloud SQL stores, Kafka producers, Memorystore operations, Secret Manager reads, gRPC clients to other services. This is where I/O lives.
 
 ### Boundary vs Core Model
 
@@ -152,7 +152,9 @@ The following imports are **prohibited** and enforced by `go-arch-lint` + `depgu
 - 🚫 `domain` must not import `app`, `port`, or `adapter` — **CI-enforced**
 - 🚫 `app` must not import `port` or `adapter` — **CI-enforced**
 - 🚫 `port` must not import `adapter` directly (always goes through `app`) — **CI-enforced**
-- 🚫 No package may import `aws-sdk-go` — **CI-enforced** (AWS→GCP migration, ADR-021; the `no-aws` CI job and `make check-no-aws` fail on any match). GCP client adapters land per module.
+- 🚫 **The substrate is GCP, and the code says so** — **CI-enforced** (ADR-021; `scripts/check-no-aws.sh`, run by the `no-aws` CI job and `make check-no-aws`). The gate covers Go, Terraform, shell, protobuf and manifests, and rejects prior-substrate SDK imports, CLI calls and resource ARNs **as well as prior-substrate service names in comments**. Prose counts because a comment that explains a GCP construct by what it used to be on another cloud makes the file read as though it targets that cloud — which is exactly what happened to `internal/auth/remote_keys.go` before this gate existed.
+  - **The rule:** explain what a thing **is**, and cite the ADR for what it replaced. "Secret Manager IDs are flat names, so structure is encoded with hyphens" beats "the old path segments become name components" — it is shorter, it is true on its own terms, and a reader who wants the history follows the ADR reference.
+  - **`docs/` and Markdown are exempt, deliberately.** The ADRs *are* the migration's record — ADR-007's superseded data model, ADR-015 Appendix F's secret mapping, the retired TF-0/TF-1 decisions — and scrubbing them would destroy the reasoning this project exists to keep. README's "migrated from AWS to GCP" is the headline, not a leak.
 - 🚫 Only `internal/kafka/` may import `franz-go` — **CI-enforced**
 - 🚫 Only `internal/redis/` may import `go-redis` — **CI-enforced**
 
@@ -168,7 +170,7 @@ Constructor injection in `main.go` wires adapters to application services. No de
 
 ### Shared Packages
 
-`internal/domain/`, `internal/kafka/`, `internal/redis/`, `internal/auth/`, and `internal/observability/` are shared across services. These are infrastructure adapters and cross-cutting concerns that multiple services depend on. They live outside individual service directories to avoid duplication but remain in `internal/` to prevent external import. (The former `internal/dynamo/` was removed in the AWS→GCP migration. Its first successor, **`internal/firestore/`**, landed with M1.1 and holds the identity-tier client, documents and stores; the Cloud SQL successor arrives with Module 2.) The same SDK-isolation rule `internal/dynamo` had applies: **only `internal/firestore/` may import `cloud.google.com/go/firestore`**, enforced by `make check-firestore-boundary` and a CI step rather than by review.
+`internal/domain/`, `internal/firestore/`, `internal/redis/`, `internal/auth/`, `internal/secrets/`, and `internal/observability/` are shared across services. These are infrastructure adapters and cross-cutting concerns that multiple services depend on. They live outside individual service directories to avoid duplication but remain in `internal/` to prevent external import. (The former `internal/dynamo/` was removed in the AWS→GCP migration. Its first successor, **`internal/firestore/`**, landed with M1.1 and holds the identity-tier client, documents and stores; the Cloud SQL successor arrives with Module 2.) The same SDK-isolation rule `internal/dynamo` had applies to every cloud SDK: **only `internal/firestore/` may import `cloud.google.com/go/firestore`**, and **only `internal/secrets/` may import `cloud.google.com/go/secretmanager`** — enforced by `make check-firestore-boundary` and `make check-secretmanager-boundary`, plus CI steps, rather than by review. Each new GCP SDK gets the same treatment when its package lands.
 
 ### Domain Modeling (DDD Lite)
 
@@ -238,8 +240,8 @@ func IsPermissionDenied(err error) bool { /* membership/auth errors */ }
 
 The following DDD patterns are **not adopted** for MVP — the project's complexity lives in distributed systems coordination (sequence allocation, exactly-once delivery, three-plane failure isolation), not in business rule complexity:
 
-- **Full aggregate roots** with transactional consistency boundaries — our transactional boundaries are DynamoDB conditional writes (ADR-004) and Kafka consumer offsets (ADR-011), not domain aggregates
-- **Domain events** as first-class types emitted by entities — our events are Kafka messages produced by adapters after DynamoDB writes succeed (ADR-003)
+- **Full aggregate roots** with transactional consistency boundaries — our transactional boundaries are Postgres transactions (ADR-023), Firestore transactions (ADR-015 §5), and Kafka consumer offsets (ADR-011), not domain aggregates
+- **Domain events** as first-class types emitted by entities — our events are Kafka messages the outbox relay publishes after the Postgres write commits (ADR-022, ADR-003)
 - **CQRS command/query separation** — our read/write split is architectural (REST reads, WebSocket writes per ADR-005/ADR-006), making a separate command/query layer redundant
 - **Domain services** — our "processes" are distributed system choreography (persist → produce → consume → fanout), orchestrated by the `app/` layer
 
@@ -389,7 +391,7 @@ Use the service name or component as scope:
 
 ```
 feat(gateway): implement WebSocket connection handler
-fix(ingest): handle DynamoDB conditional check failure on duplicate sequence
+fix(ingest): handle idempotency-key conflict on duplicate sequence
 refactor(domain): extract ChatID value object validation
 docs(adr): add ADR-018 for rate limiting strategy
 test(fanout): add integration test for Kafka consumer rebalance
@@ -508,4 +510,4 @@ If a change improves correctness, observability, or failure handling but would v
 **Terraform:**
 
 - [HashiCorp Best Practices](https://developer.hashicorp.com/terraform/language/modules/develop) — Module development guide
-- [AWS Provider Documentation](https://registry.terraform.io/providers/hashicorp/aws/latest/docs) — AWS resource reference
+- [Google Provider Documentation](https://registry.terraform.io/providers/hashicorp/google/latest/docs) — GCP resource reference

@@ -1,6 +1,11 @@
 # TF-0 TBD Decisions: Infrastructure Foundation
 
-- **Status**: Approved
+> [!WARNING]
+> **Retired (2026-07-24, ADR-021 AWS → GCP substrate migration).** The TF-0/TF-1 Terraform track no longer exists; infrastructure now travels with the module that needs it (EXECUTION_PLAN v2.0, Principle 5). Everything below describes AWS resources that were applied and then torn down. **Nothing here is provisioned.**
+>
+> The GCP foundation that replaced it is M0.2: VPC, **GKE Autopilot**, Artifact Registry, a GCS state backend and a budget guard, under `terraform/`. This record is retained unchanged as the reasoning that produced the original.
+
+- **Status**: Retired (was Approved)
 - **Date**: 2026-02-06
 - **Related ADRs**: ADR-002 (Three-Plane Architecture), ADR-005 (WebSocket Protocol), ADR-014 (Technology Stack & Deployment)
 - **Execution Plan Reference**: TF-0 Foundation

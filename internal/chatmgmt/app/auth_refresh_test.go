@@ -132,7 +132,55 @@ func TestRefreshTokens(t *testing.T) {
 		refreshHash := auth.HashRefreshToken("some-token")
 		session := sampleSessionRecord("user-001", "sess-002", deviceID, refreshHash, h.clock)
 		// Expire the session.
-		session.ExpiresAt = testStart.Add(-time.Hour).Format(time.RFC3339)
+		session.ExpiresAt = testStart.Add(-time.Hour)
+
+		h.sessionStore.getByIDFn = func(_ context.Context, _ string) (*app.SessionRecord, error) {
+			return session, nil
+		}
+
+		_, err = h.svc.RefreshTokens(context.Background(), mintResult.Token, "some-token", deviceID)
+		require.Error(t, err)
+		assert.ErrorIs(t, err, domain.ErrSessionExpired)
+	})
+
+	// The ADR-023 application-enforced invariant, stated as a test rather than
+	// left to the "expired" case above: Firestore's TTL policy deletes an
+	// expired session only within ~24 hours of expires_at, so a session can be
+	// long past its expiry and still read back perfectly well. Existence must
+	// never imply validity — the code gate is the only thing standing between a
+	// day-old session and a fresh token pair.
+	t.Run("session long expired but still readable: ErrSessionExpired", func(t *testing.T) {
+		h := newTestHarness(t)
+
+		mintResult, err := h.minter.MintAccessToken("user-001", "sess-002")
+		require.NoError(t, err)
+
+		refreshHash := auth.HashRefreshToken("some-token")
+		session := sampleSessionRecord("user-001", "sess-002", deviceID, refreshHash, h.clock)
+		// Inside the TTL lag: expired, uncollected, and returned by the store.
+		session.ExpiresAt = testStart.Add(-23 * time.Hour)
+
+		h.sessionStore.getByIDFn = func(_ context.Context, _ string) (*app.SessionRecord, error) {
+			return session, nil
+		}
+
+		_, err = h.svc.RefreshTokens(context.Background(), mintResult.Token, "some-token", deviceID)
+		require.Error(t, err)
+		assert.ErrorIs(t, err, domain.ErrSessionExpired)
+	})
+
+	// Expiry is inclusive: at exactly expires_at the session is over. The two
+	// halves of the system must agree on this, or a session would refresh here
+	// and be refused by firestore.SessionDoc.IsExpired a moment later.
+	t.Run("session exactly at expiry: ErrSessionExpired", func(t *testing.T) {
+		h := newTestHarness(t)
+
+		mintResult, err := h.minter.MintAccessToken("user-001", "sess-002")
+		require.NoError(t, err)
+
+		refreshHash := auth.HashRefreshToken("some-token")
+		session := sampleSessionRecord("user-001", "sess-002", deviceID, refreshHash, h.clock)
+		session.ExpiresAt = h.clock.Now().UTC()
 
 		h.sessionStore.getByIDFn = func(_ context.Context, _ string) (*app.SessionRecord, error) {
 			return session, nil

@@ -2,9 +2,10 @@
 # All targets delegate to Docker containers per ADR-014 (PR0-INV-1).
 # No Go, buf, or lint tools are invoked directly on the host.
 
-.PHONY: all dev down logs lint fmt test test-integration proto proto-lint proto-breaking build docker ci-local ci-fast check-no-aws check-firestore-boundary clean help \
+.PHONY: all dev down logs lint fmt test test-integration proto proto-lint proto-breaking build docker ci-local ci-fast check-no-aws check-firestore-boundary check-secretmanager-boundary clean help \
 	terraform-fmt terraform-fmt-fix terraform-validate terraform-lint terraform-security terraform-docs terraform-docs-check \
-	gcp-auth gcp-bootstrap-state deploy teardown schema-register schema-verify schema-test firestore-up firestore-test firestore-down
+	gcp-auth gcp-bootstrap-state deploy teardown schema-register schema-verify schema-test firestore-up firestore-test firestore-down \
+	auth-up auth-test auth-flow auth-down
 
 # Default target
 all: ci-local
@@ -106,11 +107,11 @@ docker:
 # ============================================================================
 
 ## Run full CI pipeline locally
-ci-local: check-no-aws check-firestore-boundary proto-lint lint test build docker
+ci-local: check-no-aws check-firestore-boundary check-secretmanager-boundary proto-lint lint test build docker
 	@echo "✅ CI pipeline passed"
 
 ## Run CI pipeline without Docker build (faster)
-ci-fast: check-no-aws check-firestore-boundary proto-lint lint test
+ci-fast: check-no-aws check-firestore-boundary check-secretmanager-boundary proto-lint lint test
 	@echo "✅ Fast CI passed"
 
 ## Gate: only internal/firestore may import the Firestore SDK (CONTRIBUTING §Shared packages)
@@ -121,13 +122,17 @@ check-firestore-boundary:
 		echo "✅ Firestore SDK confined to internal/firestore"; \
 	fi
 
-## Gate: no AWS SDK imports may remain (M0.1, ADR-021 substrate migration)
-check-no-aws:
-	@if grep -rn "aws-sdk-go" --include="*.go" . ; then \
-		echo "❌ AWS SDK imports found — M0.1 requires none"; exit 1; \
+## Gate: only internal/secrets may import the Secret Manager SDK (CONTRIBUTING §Shared packages)
+check-secretmanager-boundary:
+	@if grep -rln 'cloud.google.com/go/secretmanager' --include="*.go" . | grep -v '^./internal/secrets/' ; then \
+		echo "❌ the Secret Manager SDK may only be imported by internal/secrets"; exit 1; \
 	else \
-		echo "✅ no AWS SDK imports"; \
+		echo "✅ Secret Manager SDK confined to internal/secrets"; \
 	fi
+
+## Gate: the substrate is GCP — no prior-substrate imports, calls or vocabulary outside docs/ (ADR-021)
+check-no-aws:
+	@./scripts/check-no-aws.sh
 
 # ============================================================================
 # Terraform (Docker-only per PR0-INV-1)
@@ -224,6 +229,22 @@ firestore-test:
 firestore-down:
 	./scripts/firestore.sh destroy
 
+## Apply Firestore + auth secrets and fill the keys (needs PROJECT_ID, BILLING_ACCOUNT_ID)
+auth-up:
+	./scripts/auth.sh apply
+
+## M1.2 gate, part 1: Firestore auth semantics (conditional writes, transactions, concurrency)
+auth-test:
+	./scripts/auth.sh store
+
+## M1.2 gate, part 2: full OTP -> token -> refresh -> logout flow against the deployed pod (needs make deploy)
+auth-flow:
+	./scripts/auth.sh flow
+
+## Destroy Firestore + auth secrets (the TTL field deletes take ~6 min)
+auth-down:
+	./scripts/auth.sh destroy
+
 # ============================================================================
 # Utilities
 # ============================================================================
@@ -279,7 +300,7 @@ help:
 	@echo "CI:"
 	@echo "  make ci-local         Run full CI pipeline locally"
 	@echo "  make ci-fast          Run fast CI (no Docker build)"
-	@echo "  make check-no-aws     Assert no AWS SDK imports remain"
+	@echo "  make check-no-aws     Assert the GCP substrate boundary (ADR-021)"
 	@echo "  make check-firestore-boundary  Assert the Firestore SDK stays in internal/firestore"
 	@echo ""
 	@echo "Terraform:"

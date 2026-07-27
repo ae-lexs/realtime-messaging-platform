@@ -40,3 +40,19 @@ output "services_range_name" {
   description = "Secondary range name for GKE service IPs (for ip_allocation_policy)."
   value       = var.services_range_name
 }
+
+output "private_service_access_range_name" {
+  description = "Name of the reserved range for Private Services Access; managed services take reserved_ip_range from it."
+  value       = google_compute_global_address.private_service_access.name
+}
+
+# Taking reserved_ip_range alone is not enough to order a consumer correctly:
+# that is a dependency on the address, which exists before the peering does, so
+# an instance created against the range alone fails with "no matching peering".
+# depends_on cannot reference an output, so consumers draw the edge on the
+# module — depends_on = [module.networking] — and this output stands as the
+# connection's identifier rather than as the thing depended upon.
+output "private_service_access_connection_id" {
+  description = "The service networking connection ID. Consumers order themselves after the peering with depends_on = [module.networking], since depends_on cannot reference an output."
+  value       = google_service_networking_connection.private_service_access.id
+}

@@ -8,6 +8,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/aelexs/realtime-messaging-platform/internal/domain"
 	"github.com/aelexs/realtime-messaging-platform/internal/firestore"
 )
 
@@ -47,6 +48,16 @@ func TestDocumentFieldNamesMatchTheSchema(t *testing.T) {
 				"token_generation", "created_at", "expires_at",
 			},
 		},
+		{
+			name:     "otp_requests",
+			doc:      firestore.OTPRequestDoc{},
+			wantTags: []string{"otp_mac", "status", "attempt_count", "created_at", "expires_at"},
+		},
+		{
+			name:     "phone_index",
+			doc:      firestore.PhoneIndexDoc{},
+			wantTags: []string{"user_id", "created_at"},
+		},
 	}
 
 	for _, tt := range tests {
@@ -68,10 +79,10 @@ func TestDocumentFieldNamesMatchTheSchema(t *testing.T) {
 	}
 }
 
-// TestSessionExpiresAtIsATimestamp guards the reason expires_at cannot go back
-// to the RFC3339 strings the DynamoDB-era records used: a Firestore TTL policy
-// only acts on timestamp-typed fields, so a string here would disable session
-// garbage collection silently.
+// TestSessionExpiresAtIsATimestamp guards the reason expires_at may never
+// become a formatted string: a Firestore TTL policy only acts on
+// timestamp-typed fields, so a string here would disable session garbage
+// collection silently.
 func TestSessionExpiresAtIsATimestamp(t *testing.T) {
 	// Act
 	field, ok := reflect.TypeOf(firestore.SessionDoc{}).FieldByName("ExpiresAt")
@@ -79,6 +90,103 @@ func TestSessionExpiresAtIsATimestamp(t *testing.T) {
 	// Assert
 	require.True(t, ok)
 	assert.Equal(t, reflect.TypeOf(time.Time{}), field.Type)
+}
+
+// TestOTPRequestExpiresAtIsATimestamp guards the same TTL requirement as the
+// session field: a policy only acts on timestamp-typed fields.
+func TestOTPRequestExpiresAtIsATimestamp(t *testing.T) {
+	// Act
+	field, ok := reflect.TypeOf(firestore.OTPRequestDoc{}).FieldByName("ExpiresAt")
+
+	// Assert
+	require.True(t, ok)
+	assert.Equal(t, reflect.TypeOf(time.Time{}), field.Type)
+}
+
+// TestNewOTPRequestDocTruncatesToTheSecond pins the invariant that makes OTP
+// verification work at all.
+//
+// auth.ComputeOTPMAC binds the MAC to the RFC3339 rendering of expires_at, and
+// Firestore stores timestamps at microsecond precision. A nanosecond component
+// therefore survives the write, is silently dropped somewhere in the
+// round-trip, and the MAC recomputed on verification no longer matches the one
+// stored — every OTP fails, for a reason nothing in the auth code would
+// explain. Truncating at construction makes the stored value already exact.
+func TestNewOTPRequestDocTruncatesToTheSecond(t *testing.T) {
+	// Arrange — a timestamp with sub-second precision Firestore cannot hold.
+	created := time.Date(2026, 7, 26, 12, 0, 0, 123456789, time.UTC)
+	expires := created.Add(5 * time.Minute)
+
+	// Act
+	doc := firestore.NewOTPRequestDoc("phone-hash", "mac", created, expires)
+
+	// Assert
+	assert.Equal(t, doc.CreatedAt, doc.CreatedAt.Truncate(time.Second))
+	assert.Equal(t, doc.ExpiresAt, doc.ExpiresAt.Truncate(time.Second))
+	assert.Zero(t, doc.ExpiresAt.Nanosecond())
+
+	// And the MAC input is therefore stable across a round-trip that keeps
+	// only microseconds.
+	roundTripped := doc.ExpiresAt.Truncate(time.Microsecond)
+	assert.Equal(t,
+		doc.ExpiresAt.UTC().Format(time.RFC3339),
+		roundTripped.UTC().Format(time.RFC3339),
+	)
+}
+
+// TestNewOTPRequestDocNormalizesToUTC guards the other half of the same
+// invariant: RFC3339 renders the offset, so a record built from a non-UTC
+// clock would produce a different MAC input for the same instant.
+func TestNewOTPRequestDocNormalizesToUTC(t *testing.T) {
+	// Arrange
+	zone := time.FixedZone("UTC-7", -7*60*60)
+	created := time.Date(2026, 7, 26, 5, 0, 0, 0, zone)
+
+	// Act
+	doc := firestore.NewOTPRequestDoc("phone-hash", "mac", created, created.Add(5*time.Minute))
+
+	// Assert
+	assert.Equal(t, time.UTC, doc.ExpiresAt.Location())
+	assert.Equal(t, "2026-07-26T12:05:00Z", doc.ExpiresAt.Format(time.RFC3339))
+}
+
+func TestNewOTPRequestDocStartsPending(t *testing.T) {
+	// Act
+	doc := firestore.NewOTPRequestDoc("phone-hash", "mac", time.Now(), time.Now().Add(time.Minute))
+
+	// Assert
+	assert.Equal(t, "phone-hash", doc.ID)
+	assert.Equal(t, domain.OTPStatusPending, doc.Status)
+	assert.Zero(t, doc.AttemptCount)
+}
+
+func TestOTPRequestIsExpired(t *testing.T) {
+	expiresAt := time.Date(2026, 7, 26, 12, 0, 0, 0, time.UTC)
+	otp := firestore.OTPRequestDoc{ExpiresAt: expiresAt}
+
+	tests := []struct {
+		name string
+		now  time.Time
+		want bool
+	}{
+		{name: "within the five-minute window", now: expiresAt.Add(-time.Minute), want: false},
+		{name: "exactly at expiry", now: expiresAt, want: true},
+		{
+			// The gap this gate exists for, and it is much wider here than for
+			// sessions: the credential is valid for five minutes but TTL
+			// collects the document within ~24 hours, so for nearly a day the
+			// record is expired and still readable.
+			name: "hours after expiry, still readable",
+			now:  expiresAt.Add(20 * time.Hour),
+			want: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.want, otp.IsExpired(tt.now))
+		})
+	}
 }
 
 func TestSessionIsExpired(t *testing.T) {

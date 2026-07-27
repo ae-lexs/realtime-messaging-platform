@@ -1,5 +1,8 @@
 # PR-0 TBD Decisions: Configuration, Error Taxonomy & Clock Semantics
 
+> [!NOTE]
+> **Current, with AWS service names read as history (2026-07-26).** The decisions here — config precedence, the error taxonomy, UTC-millis clock semantics — are substrate-neutral and still govern the code; CLAUDE.md points new sessions at this document for exactly that reason. Where it names an AWS service as the source of a value, substitute the GCP one (Secrets Manager/SSM → **Secret Manager**, DynamoDB → **Firestore**/**Cloud SQL**, per ADR-021 and ADR-023).
+
 - **Status**: Approved
 - **Date**: 2026-02-01
 - **Related ADRs**: ADR-009 (Failure Handling), ADR-012 (Observability), ADR-013 (Security), ADR-014 (Technology Stack)

@@ -65,6 +65,73 @@ func TestSessionDocValidate(t *testing.T) {
 	}
 }
 
+func TestOTPRequestDocValidate(t *testing.T) {
+	valid := firestore.NewOTPRequestDoc("phone-hash", "mac", time.Now(), time.Now().Add(5*time.Minute))
+
+	tests := []struct {
+		name    string
+		mutate  func(doc *firestore.OTPRequestDoc)
+		wantErr string
+	}{
+		{
+			name:    "no ID",
+			mutate:  func(doc *firestore.OTPRequestDoc) { doc.ID = "" },
+			wantErr: "document ID is required",
+		},
+		{
+			// Not merely useless: nothing could ever verify against this
+			// record, yet the conditional write would still treat it as a live
+			// OTP and refuse a replacement until it expired.
+			name:    "no MAC",
+			mutate:  func(doc *firestore.OTPRequestDoc) { doc.OTPMAC = "" },
+			wantErr: "no MAC",
+		},
+		{
+			name:    "status outside the state machine",
+			mutate:  func(doc *firestore.OTPRequestDoc) { doc.Status = "consumed" },
+			wantErr: "invalid status",
+		},
+		{
+			// A zero expires_at is never collected by TTL and never refused by
+			// IsExpired — an OTP valid forever.
+			name:    "no expiry",
+			mutate:  func(doc *firestore.OTPRequestDoc) { doc.ExpiresAt = time.Time{} },
+			wantErr: "no expires_at",
+		},
+		{
+			name:   "valid",
+			mutate: func(_ *firestore.OTPRequestDoc) {},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			doc := valid
+			tt.mutate(&doc)
+
+			err := doc.Validate()
+
+			if tt.wantErr == "" {
+				assert.NoError(t, err)
+				return
+			}
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), tt.wantErr)
+		})
+	}
+}
+
+func TestPhoneIndexDocValidate(t *testing.T) {
+	userID := domain.GenerateUserID().String()
+
+	assert.Error(t, firestore.PhoneIndexDoc{UserID: userID}.Validate(), "a sentinel with no ID claims nothing")
+	assert.Error(t,
+		firestore.PhoneIndexDoc{ID: "phone-hash"}.Validate(),
+		"a sentinel with no user_id would claim the number for nobody and block it permanently",
+	)
+	assert.NoError(t, firestore.PhoneIndexDoc{ID: "phone-hash", UserID: userID}.Validate())
+}
+
 func TestMembershipDocID(t *testing.T) {
 	chatID := domain.GenerateChatID()
 	userID := domain.GenerateUserID()

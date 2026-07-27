@@ -17,6 +17,7 @@
 | Name | Type |
 |------|------|
 | [google_firestore_database.main](https://registry.terraform.io/providers/hashicorp/google/latest/docs/resources/firestore_database) | resource |
+| [google_firestore_field.otp_requests_ttl](https://registry.terraform.io/providers/hashicorp/google/latest/docs/resources/firestore_field) | resource |
 | [google_firestore_field.sessions_ttl](https://registry.terraform.io/providers/hashicorp/google/latest/docs/resources/firestore_field) | resource |
 
 ## Inputs

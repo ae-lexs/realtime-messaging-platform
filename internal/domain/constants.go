@@ -31,10 +31,11 @@ const (
 	ConnectionTTL     = 60 * time.Second // Redis key TTL = 2x heartbeat interval
 
 	// Timeout contracts (ADR-009 §1)
-	KafkaProduceTimeout = 10 * time.Second // Max time for Kafka produce
-	RedisTimeout        = 2 * time.Second  // Max time for Redis operations
-	FirestoreTimeout    = 5 * time.Second  // Max time for a Firestore document read/write or query
-	GRPCCallTimeout     = 10 * time.Second // Max time for inter-service gRPC calls
+	KafkaProduceTimeout  = 10 * time.Second // Max time for Kafka produce
+	RedisTimeout         = 2 * time.Second  // Max time for Redis operations
+	FirestoreTimeout     = 5 * time.Second  // Max time for a Firestore document read/write or query
+	SecretManagerTimeout = 10 * time.Second // Max time for a Secret Manager access; only on the startup and refresh paths, never per-request
+	GRPCCallTimeout      = 10 * time.Second // Max time for inter-service gRPC calls
 
 	// Graceful shutdown budget (ADR-014 §4.1)
 	GracefulShutdownTimeout = 30 * time.Second // Total shutdown budget
@@ -50,10 +51,17 @@ const (
 	MaxOTPVerifyAttempts        = 5                // Max verification attempts before lockout
 	OTPLockoutDuration          = 15 * time.Minute // Lockout duration after max attempts
 
+	// OTP record status (ADR-015 §1.3 state machine). A record stays
+	// "verified" rather than being deleted so a replayed OTP is refused as
+	// already-used instead of read as never-issued.
+	OTPStatusPending  = "pending"
+	OTPStatusVerified = "verified"
+
 	// Token configuration (ADR-015)
-	AccessTokenLifetime  = 1 * time.Hour       // JWT access token validity
-	RefreshTokenLifetime = 30 * 24 * time.Hour // Refresh token validity (30 days)
-	MaxSessionsPerUser   = 5                   // Max concurrent sessions per user
+	JWTKeyRefreshInterval = 5 * time.Minute     // How often the in-memory JWT key set is reloaded (ADR-015 §3.2)
+	AccessTokenLifetime   = 1 * time.Hour       // JWT access token validity
+	RefreshTokenLifetime  = 30 * 24 * time.Hour // Refresh token validity (30 days)
+	MaxSessionsPerUser    = 5                   // Max concurrent sessions per user
 
 	// Membership cache (ADR-003 §3.2)
 	MembershipCacheTTL = 5 * time.Minute // Redis cache TTL for chat memberships

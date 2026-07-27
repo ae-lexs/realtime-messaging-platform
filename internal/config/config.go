@@ -34,6 +34,10 @@ type Config struct {
 	Kafka     KafkaConfig     `koanf:"kafka"`
 	Redis     RedisConfig     `koanf:"redis"`
 	Firestore FirestoreConfig `koanf:"firestore"`
+	Secrets   SecretsConfig   `koanf:"secrets"`
+
+	// Auth configuration (ADR-015)
+	Auth AuthConfig `koanf:"auth"`
 
 	// OpenTelemetry configuration
 	OTEL OTELConfig `koanf:"otel"`
@@ -89,6 +93,33 @@ type FirestoreConfig struct {
 	Timeout  time.Duration `koanf:"timeout"`
 }
 
+// SecretsConfig holds GCP Secret Manager configuration — the source of the
+// JWT signing key and the OTP pepper (ADR-015 §3.2, Appendix F).
+//
+// Keys are single words for the same reason FirestoreConfig's are: Load maps
+// every underscore in an env var to a key delimiter, so SECRETS_PROJECT
+// reaches `secrets.project` while SECRETS_PROJECT_ID would become
+// `secrets.project.id` and bind to nothing.
+type SecretsConfig struct {
+	ProjectID string        `koanf:"project"` // Required outside local — env SECRETS_PROJECT
+	Timeout   time.Duration `koanf:"timeout"`
+}
+
+// AuthConfig holds JWT issuance and validation parameters (ADR-015 §3).
+//
+// Issuer and Audience are validated on every token, so both halves of the
+// system must agree: a Gateway configured with a different audience will
+// reject every token Chat Mgmt mints, with an error that names neither value.
+type AuthConfig struct {
+	Issuer   string `koanf:"issuer"`   // env AUTH_ISSUER
+	Audience string `koanf:"audience"` // env AUTH_AUDIENCE
+
+	// KeyRefresh bounds how stale the in-memory key set may be (ADR-015 §3.2).
+	// It is also the upper bound on how long a freshly rotated key stays
+	// unrecognised, since the unknown-kid immediate refresh is deferred.
+	KeyRefresh time.Duration `koanf:"keyrefresh"` // env AUTH_KEYREFRESH
+}
+
 // OTELConfig holds OpenTelemetry configuration.
 type OTELConfig struct {
 	Endpoint    string `koanf:"endpoint"` // Empty disables OTLP export
@@ -129,6 +160,14 @@ func defaults() *Config {
 		},
 		Firestore: FirestoreConfig{
 			Timeout: domain.FirestoreTimeout,
+		},
+		Secrets: SecretsConfig{
+			Timeout: domain.SecretManagerTimeout,
+		},
+		Auth: AuthConfig{
+			Issuer:     "messaging-platform",
+			Audience:   "messaging-api",
+			KeyRefresh: domain.JWTKeyRefreshInterval,
 		},
 	}
 }
@@ -192,6 +231,11 @@ func validateRequired(cfg *Config) error {
 		// silently target one that was never provisioned.
 		if cfg.Firestore.Database == "" {
 			return fmt.Errorf("%w: firestore.database", domain.ErrConfigRequired)
+		}
+		// Without this the signing key cannot be located, and ADR-015 requires
+		// Chat Mgmt to refuse to start rather than serve auth it cannot sign.
+		if cfg.Secrets.ProjectID == "" {
+			return fmt.Errorf("%w: secrets.project", domain.ErrConfigRequired)
 		}
 	}
 

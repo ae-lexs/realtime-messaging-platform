@@ -269,16 +269,17 @@ func newTestHarness(t *testing.T) *testHarness {
 // sampleOTPRecord returns a valid pending OTP record for testing.
 func sampleOTPRecord(phoneHash string, clock *domaintest.FakeClock) *app.OTPRecord {
 	now := clock.Now().UTC()
-	expiresAt := now.Add(domain.OTPValidityDuration)
+	// Truncated as RequestOTP truncates it, so the fixture is the shape the
+	// store round-trips (see auth.OTPMACTime).
+	expiresAt := now.Add(domain.OTPValidityDuration).Truncate(time.Second)
 	otp := "123456"
-	mac := auth.ComputeOTPMAC(testPepper, otp, phoneHash, expiresAt.Format(time.RFC3339))
+	mac := auth.ComputeOTPMAC(testPepper, otp, phoneHash, expiresAt)
 	return &app.OTPRecord{
 		PhoneHash: phoneHash,
 		OTPMAC:    mac,
-		Status:    "pending",
-		CreatedAt: now.Format(time.RFC3339),
-		ExpiresAt: expiresAt.Format(time.RFC3339),
-		TTL:       expiresAt.Unix(),
+		Status:    domain.OTPStatusPending,
+		CreatedAt: now,
+		ExpiresAt: expiresAt,
 	}
 }
 
@@ -288,8 +289,8 @@ func sampleUserRecord() *app.UserRecord {
 		UserID:      "user-existing-001",
 		PhoneNumber: "+15551234567",
 		DisplayName: "",
-		CreatedAt:   testStart.Add(-24 * time.Hour).Format(time.RFC3339),
-		UpdatedAt:   testStart.Add(-24 * time.Hour).Format(time.RFC3339),
+		CreatedAt:   testStart.Add(-24 * time.Hour),
+		UpdatedAt:   testStart.Add(-24 * time.Hour),
 	}
 }
 
@@ -303,8 +304,7 @@ func sampleSessionRecord(userID, sessionID, deviceID, refreshHash string, clock 
 		DeviceID:         deviceID,
 		RefreshTokenHash: refreshHash,
 		TokenGeneration:  1,
-		CreatedAt:        now.Format(time.RFC3339),
-		ExpiresAt:        expiry.Format(time.RFC3339),
-		TTL:              expiry.Unix(),
+		CreatedAt:        now,
+		ExpiresAt:        expiry,
 	}
 }

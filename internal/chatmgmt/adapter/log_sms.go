@@ -10,11 +10,22 @@ import (
 // Compile-time interface satisfaction check.
 var _ auth.SMSProvider = (*LogSMSProvider)(nil)
 
-// LogSMSProvider is a fake SMSProvider (per 07_TESTING_PHILOSOPHY) that logs
-// OTP delivery instead of sending real SMS. Suitable for local development
-// and testing environments. It is the substrate-neutral SMS adapter salvaged
-// from the AWS build; the production provider (Firestore/GCP) arrives with the
-// auth re-home in M1.2.
+// LogSMSProvider writes the OTP to the structured log instead of sending it.
+// It is the only SMSProvider implementation, in every environment.
+//
+// That is a decision, not a gap. GCP has no first-party programmable SMS
+// service, so there is no native provider to reach for; delivering a real SMS
+// means a third-party vendor (Twilio and peers) behind this same interface,
+// which is a small adapter and a large amount of A2P sender registration.
+// Recorded as a non-goal in ADR-015 v1.3 §2.2.1 and the execution plan, rather
+// than left looking unfinished.
+//
+// **This must not survive contact with real users.** It logs the OTP in full —
+// the phone number is masked, the code is not — into Cloud Logging, where it is
+// retained and readable by anyone with log-viewer. Harmless for a
+// deploy-and-destroy lab whose only reader is the M1.2 flow gate; an account
+// takeover the moment someone real is on the other end. Wiring a live provider
+// means removing this from deployed environments in the same change.
 type LogSMSProvider struct {
 	logger *slog.Logger
 }

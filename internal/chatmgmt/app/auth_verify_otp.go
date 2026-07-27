@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"sort"
-	"time"
 
 	"github.com/google/uuid"
 	"go.opentelemetry.io/otel/attribute"
@@ -128,7 +127,7 @@ func (s *AuthService) validateOTPRecord(ctx context.Context, phoneHash, otpCandi
 		return nil, fmt.Errorf("get OTP: %w", err)
 	}
 
-	if record.Status == "verified" {
+	if record.Status == domain.OTPStatusVerified {
 		authFailuresTotal.Add(ctx, 1, metric.WithAttributes(attribute.String("reason", "invalid_otp")))
 		return nil, domain.ErrInvalidOTP
 	}
@@ -141,11 +140,7 @@ func (s *AuthService) validateOTPRecord(ctx context.Context, phoneHash, otpCandi
 		return nil, domain.ErrRateLimited
 	}
 
-	expiresAt, err := time.Parse(time.RFC3339, record.ExpiresAt)
-	if err != nil {
-		return nil, fmt.Errorf("parse OTP expiry: %w", err)
-	}
-	if s.clock.Now().UTC().After(expiresAt) {
+	if record.IsExpired(s.clock.Now().UTC()) {
 		authFailuresTotal.Add(ctx, 1, metric.WithAttributes(attribute.String("reason", "otp_expired")))
 		return nil, domain.ErrInvalidOTP
 	}
@@ -171,7 +166,6 @@ func (s *AuthService) verifyOTPNewUser(
 	userID := uuid.NewString()
 	sessionID := uuid.NewString()
 	now := s.clock.Now().UTC()
-	nowStr := now.Format(time.RFC3339)
 
 	refreshToken, err := auth.GenerateRefreshToken()
 	if err != nil {
@@ -187,21 +181,31 @@ func (s *AuthService) verifyOTPNewUser(
 		OTPMAC:           record.OTPMAC,
 		UserID:           userID,
 		PhoneNumber:      phone,
-		Now:              nowStr,
+		Now:              now,
 		SessionID:        sessionID,
 		DeviceID:         deviceID,
 		RefreshTokenHash: refreshHash,
-		SessionExpiresAt: sessionExpiry.Format(time.RFC3339),
-		SessionTTL:       sessionExpiry.Unix(),
+		SessionExpiresAt: sessionExpiry,
 	}
 
 	if txErr := s.transactor.VerifyOTPAndCreateUser(ctx, params); txErr != nil {
+		// The phone-number sentinel was already claimed: another first-time
+		// verification of this number committed while this one was preparing.
+		//
+		// There is nothing to salvage for this request. The winner consumed the
+		// OTP inside its transaction, so this caller's code is spent — handing
+		// it to the login transaction would only re-present a consumed code,
+		// which VerifyOTPAndCreateSession asserts against and refuses (ADR-015
+		// §5.1: one code, consumed once). Refusing here says the same thing one
+		// round trip earlier, and it is the truthful answer: the account exists,
+		// but this credential no longer opens it. The caller requests a fresh
+		// OTP and logs in.
 		if errors.Is(txErr, domain.ErrAlreadyExists) {
-			user, findErr := s.userStore.FindByPhone(ctx, phone)
-			if findErr != nil {
-				return nil, fmt.Errorf("find user after race: %w", findErr)
-			}
-			return s.verifyOTPExistingUser(ctx, phoneHash, record, user, deviceID)
+			authFailuresTotal.Add(ctx, 1, metric.WithAttributes(attribute.String("reason", "registration_race")))
+			observability.WithTraceID(ctx, s.logger).InfoContext(ctx, "auth.registration_race",
+				"phone_hash", phoneHash,
+			)
+			return nil, fmt.Errorf("phone number claimed by a concurrent registration: %w", domain.ErrInvalidOTP)
 		}
 		return nil, fmt.Errorf("register user: %w", txErr)
 	}
@@ -223,8 +227,8 @@ func (s *AuthService) verifyOTPNewUser(
 		User: UserRecord{
 			UserID:      userID,
 			PhoneNumber: phone,
-			CreatedAt:   nowStr,
-			UpdatedAt:   nowStr,
+			CreatedAt:   now,
+			UpdatedAt:   now,
 		},
 		SessionID:         sessionID,
 		AccessToken:       mintResult.Token,
@@ -275,10 +279,21 @@ func (s *AuthService) evictConflictingSessions(ctx context.Context, sessions []S
 }
 
 // enforceSessionLimit evicts the oldest sessions when the user is at the max.
+//
+// Expired sessions are not counted. ListByUser returns them — Firestore's TTL
+// collects a session only within ~24 hours of expires_at, so a lapsed document
+// stays readable for most of a day (ADR-023) — and counting them would spend
+// the user's budget on sessions no request can use. Worse, eviction orders by
+// created_at while expiry moves forward on every refresh, so an old but
+// recently-refreshed session sorts ahead of a newer dead one: the live session
+// is the one that gets evicted. IsExpired is the gate here for the same reason
+// it is in RefreshTokens.
 func (s *AuthService) enforceSessionLimit(ctx context.Context, sessions []SessionRecord, deviceID string) error {
+	now := s.clock.Now().UTC()
+
 	activeSessions := make([]SessionRecord, 0, len(sessions))
 	for _, sess := range sessions {
-		if sess.DeviceID != deviceID {
+		if sess.DeviceID != deviceID && !sess.IsExpired(now) {
 			activeSessions = append(activeSessions, sess)
 		}
 	}
@@ -288,7 +303,7 @@ func (s *AuthService) enforceSessionLimit(ctx context.Context, sessions []Sessio
 	}
 
 	sort.Slice(activeSessions, func(i, j int) bool {
-		return activeSessions[i].CreatedAt < activeSessions[j].CreatedAt
+		return activeSessions[i].CreatedAt.Before(activeSessions[j].CreatedAt)
 	})
 	evictCount := len(activeSessions) - domain.MaxSessionsPerUser + 1
 	for i := 0; i < evictCount; i++ {
@@ -331,9 +346,8 @@ func (s *AuthService) createLoginSession(
 		UserID:           user.UserID,
 		DeviceID:         deviceID,
 		RefreshTokenHash: refreshHash,
-		CreatedAt:        now.Format(time.RFC3339),
-		SessionExpiresAt: sessionExpiry.Format(time.RFC3339),
-		SessionTTL:       sessionExpiry.Unix(),
+		CreatedAt:        now,
+		SessionExpiresAt: sessionExpiry,
 	}
 
 	if txErr := s.transactor.VerifyOTPAndCreateSession(ctx, params); txErr != nil {

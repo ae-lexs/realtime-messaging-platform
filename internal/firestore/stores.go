@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
 	"cloud.google.com/go/firestore"
 	"google.golang.org/api/iterator"
@@ -15,9 +16,9 @@ import (
 
 // The stores below implement exactly the Firestore rows of ADR-023's
 // access-pattern table and nothing beyond them. Every query is a single-field
-// equality match, which Firestore's automatic indexes serve — this schema needs
-// no composite index and no manual index configuration, which is the main thing
-// it bought over the three DynamoDB GSIs it replaced.
+// equality match, which Firestore's automatic indexes serve — so this schema
+// needs no composite index and no manual index configuration at all. ADR-023
+// records what that replaced and why.
 
 // Users reads and writes the `users` collection.
 type Users struct{ client *Client }
@@ -45,8 +46,8 @@ func (s *Users) Get(ctx context.Context, userID domain.UserID) (UserDoc, error) 
 }
 
 // FindByPhone returns the user registered with an E.164 phone number, or
-// domain.ErrNotFound. This replaced DynamoDB's phone_number-index GSI with a
-// plain equality query on an automatic index.
+// domain.ErrNotFound. A plain equality query, served by the automatic
+// single-field index on phone_number — no index configuration required.
 func (s *Users) FindByPhone(ctx context.Context, phone domain.PhoneNumber) (UserDoc, error) {
 	ctx, cancel := s.client.withTimeout(ctx)
 	defer cancel()
@@ -160,8 +161,9 @@ func (s *Memberships) ListByChat(ctx context.Context, chatID domain.ChatID) ([]M
 	return s.list(ctx, "chat_id", chatID.String())
 }
 
-// ListByUser returns the chats a user belongs to — the direction DynamoDB
-// needed the user_chats-index GSI for.
+// ListByUser returns the chats a user belongs to. The deterministic document
+// ID serves the point lookup while this equality query serves the reverse
+// direction, both off automatic indexes (ADR-023).
 func (s *Memberships) ListByUser(ctx context.Context, userID domain.UserID) ([]MembershipDoc, error) {
 	return s.list(ctx, "user_id", userID.String())
 }
@@ -293,6 +295,66 @@ func (s *Sessions) Set(ctx context.Context, doc SessionDoc) error {
 	return nil
 }
 
+// SessionRotation is the mutable field set of a refresh-token rotation
+// (ADR-015 §4.2).
+type SessionRotation struct {
+	// RefreshTokenHash is the new token's hash.
+	RefreshTokenHash string
+
+	// PrevTokenHash is the hash being replaced. It is both stored — reuse
+	// detection compares against it — and used as the write's precondition.
+	PrevTokenHash string
+
+	TokenGeneration int64
+	ExpiresAt       time.Time
+}
+
+// Rotate advances a session's refresh token, refusing the write unless the
+// stored hash is still the one being replaced. That precondition is ADR-015
+// §4.2's `ConditionExpression: refresh_token_hash = :old_hash`, and it is what
+// makes rotation single-use: if two requests arrive holding the same refresh
+// token, the first commits and the second finds a hash it does not recognise
+// and gets domain.ErrInvalidRefreshToken. Without it both would succeed, the
+// second overwriting prev_token_hash with a value that erases the evidence
+// reuse detection depends on.
+func (s *Sessions) Rotate(ctx context.Context, sessionID domain.SessionID, rotation SessionRotation) error {
+	ctx, cancel := s.client.withTimeout(ctx)
+	defer cancel()
+
+	ref := s.client.FS.Collection(CollectionSessions).Doc(sessionID.String())
+
+	return s.client.FS.RunTransaction(ctx, func(_ context.Context, tx *firestore.Transaction) error {
+		snapshot, getErr := tx.Get(ref)
+		if status.Code(getErr) == codes.NotFound {
+			return fmt.Errorf("firestore: rotate session %s: %w", sessionID.String(), domain.ErrNotFound)
+		}
+		if getErr != nil {
+			return fmt.Errorf("firestore: read session %s: %w", sessionID.String(), getErr)
+		}
+
+		var current SessionDoc
+		if decodeErr := snapshot.DataTo(&current); decodeErr != nil {
+			return fmt.Errorf("firestore: decode session %s: %w", sessionID.String(), decodeErr)
+		}
+
+		if current.RefreshTokenHash != rotation.PrevTokenHash {
+			return fmt.Errorf("firestore: session %s already rotated: %w",
+				sessionID.String(), domain.ErrInvalidRefreshToken)
+		}
+
+		if updateErr := tx.Update(ref, []firestore.Update{
+			{Path: "refresh_token_hash", Value: rotation.RefreshTokenHash},
+			{Path: "prev_token_hash", Value: rotation.PrevTokenHash},
+			{Path: "token_generation", Value: rotation.TokenGeneration},
+			{Path: "expires_at", Value: rotation.ExpiresAt},
+		}); updateErr != nil {
+			return fmt.Errorf("firestore: rotate session %s: %w", sessionID.String(), updateErr)
+		}
+
+		return nil
+	})
+}
+
 // Delete revokes a session immediately, rather than waiting for TTL.
 func (s *Sessions) Delete(ctx context.Context, sessionID domain.SessionID) error {
 	ctx, cancel := s.client.withTimeout(ctx)
@@ -302,6 +364,116 @@ func (s *Sessions) Delete(ctx context.Context, sessionID domain.SessionID) error
 		return fmt.Errorf("firestore: delete session %s: %w", sessionID.String(), err)
 	}
 	return nil
+}
+
+// OTPRequests reads and writes the `otp_requests` collection. Callers must
+// treat OTPRequestDoc.IsExpired as the expiry gate; the TTL policy only
+// collects garbage, and for a five-minute credential it lags by up to a day
+// (ADR-023 v1.2).
+type OTPRequests struct{ client *Client }
+
+// NewOTPRequests returns the OTP request store.
+func NewOTPRequests(client *Client) *OTPRequests { return &OTPRequests{client: client} }
+
+// Get returns the OTP request for a phone hash, or domain.ErrNotFound. An
+// expired record is returned normally — expiry is the caller's check.
+func (s *OTPRequests) Get(ctx context.Context, phoneHash string) (OTPRequestDoc, error) {
+	ctx, cancel := s.client.withTimeout(ctx)
+	defer cancel()
+
+	snapshot, err := s.client.FS.Collection(CollectionOTPRequests).Doc(phoneHash).Get(ctx)
+	if err != nil {
+		return OTPRequestDoc{}, wrapErr("get OTP request", phoneHash, err)
+	}
+
+	return otpRequestFrom(snapshot)
+}
+
+// Create issues an OTP, refusing only to overwrite one that is still usable —
+// present, unconsumed, and unexpired. That is ADR-015 §1.2's condition, whose
+// three disjuncts (absent, verified, or past expires_at) all mean "no active,
+// unverified OTP is in flight"; anything else returns domain.ErrAlreadyExists.
+//
+// Both of the permissive cases matter, and each is a bug if dropped:
+//
+//   - Expired. TTL removes a lapsed OTP only within ~24 hours of its expiry,
+//     so the document outlives its five-minute validity by nearly a day. Were
+//     expiry not checked, the phone number would be locked out for that whole
+//     window with nothing to explain it.
+//   - Verified. Once consumed, the code is spent and cannot be replayed, so
+//     nothing is protected by keeping it. Were consumption not checked, a user
+//     who just logged in could not request another OTP until their previous one
+//     timed out — which the live gate caught. Re-request abuse is the rate
+//     limiter's job (ADR-013 §4.1), not this write's.
+//
+// It is a transaction rather than a plain Create() because Create() can only
+// express "the document is absent", which is the strictest of the three
+// disjuncts and not the one the ADR asks for. Firestore's optimistic-
+// concurrency retry is what makes the read-then-write atomic against a second
+// request for the same number.
+func (s *OTPRequests) Create(ctx context.Context, doc OTPRequestDoc, now time.Time) error {
+	ctx, cancel := s.client.withTimeout(ctx)
+	defer cancel()
+
+	if err := doc.Validate(); err != nil {
+		return err
+	}
+
+	ref := s.client.FS.Collection(CollectionOTPRequests).Doc(doc.ID)
+
+	return s.client.FS.RunTransaction(ctx, func(_ context.Context, tx *firestore.Transaction) error {
+		snapshot, getErr := tx.Get(ref)
+		switch {
+		case status.Code(getErr) == codes.NotFound:
+			// No record at all — the common first-request path.
+		case getErr != nil:
+			return fmt.Errorf("firestore: read OTP request %s: %w", doc.ID, getErr)
+		default:
+			existing, decodeErr := otpRequestFrom(snapshot)
+			if decodeErr != nil {
+				return decodeErr
+			}
+			if existing.Status == domain.OTPStatusPending && !existing.IsExpired(now) {
+				return fmt.Errorf("firestore: OTP request %s is still live: %w", doc.ID, domain.ErrAlreadyExists)
+			}
+			// Consumed, or expired and not yet collected. Either way no
+			// unverified code is in flight, so overwriting is correct — and it
+			// resets attempt_count along with the code.
+		}
+
+		if setErr := tx.Set(ref, doc); setErr != nil {
+			return fmt.Errorf("firestore: set OTP request %s: %w", doc.ID, setErr)
+		}
+		return nil
+	})
+}
+
+// IncrementAttempts records a failed verification (ADR-015 §1.4).
+//
+// firestore.Increment is a server-side atomic operation, not a read-modify-
+// write: two wrong guesses arriving together both count, where a
+// read-then-write would let one overwrite the other and silently extend the
+// attacker's budget past MaxOTPVerifyAttempts.
+func (s *OTPRequests) IncrementAttempts(ctx context.Context, phoneHash string) error {
+	ctx, cancel := s.client.withTimeout(ctx)
+	defer cancel()
+
+	_, err := s.client.FS.Collection(CollectionOTPRequests).Doc(phoneHash).Update(ctx, []firestore.Update{
+		{Path: "attempt_count", Value: firestore.Increment(1)},
+	})
+	if err != nil {
+		return wrapErr("increment OTP attempts", phoneHash, err)
+	}
+	return nil
+}
+
+func otpRequestFrom(snapshot *firestore.DocumentSnapshot) (OTPRequestDoc, error) {
+	var doc OTPRequestDoc
+	if err := snapshot.DataTo(&doc); err != nil {
+		return OTPRequestDoc{}, fmt.Errorf("firestore: decode OTP request %s: %w", snapshot.Ref.ID, err)
+	}
+	doc.ID = snapshot.Ref.ID
+	return doc, nil
 }
 
 func membershipFrom(snapshot *firestore.DocumentSnapshot) (MembershipDoc, error) {

@@ -1,8 +1,9 @@
-# Execution Plan — Realtime Messaging Platform (v2.0, GCP substrate)
+# Execution Plan — Realtime Messaging Platform (v2.5, GCP substrate)
 
 - **Status**: Active
 - **Created**: 2026-02-01
 - **Re-split**: 2026-07-24 (v2.0 — modules → granular PRs on the GCP substrate)
+- **Last amended**: 2026-07-26 (v2.5 — M1.2 done; see Document Revision History)
 
 > [!IMPORTANT]
 > **This v2.0 plan supersedes the v1 (AWS) plan.** The substrate migration (ADR-021), analytics data lake (ADR-022), and two-store data model (ADR-023) changed the target from AWS (DynamoDB, MSK, ECS, ALB, LocalStack) to GCP (Cloud SQL Postgres + Firestore, Managed Kafka + Schema Registry, GKE Autopilot, Memorystore, BigQuery). The v1 PR/TF/IT structure is retired; work is now organized as **Modules → small vertical-slice PRs** (the v1 PRs were too large). The git history of the v1 build is preserved; nothing is deleted.
@@ -88,10 +89,22 @@ Eight modules. Each PR lists what it delivers, the ADRs it implements, its scope
 - **ADRs:** ADR-023 (Firestore model), ADR-021 (Decision A entity tier).
 - **Gate:** CRUD round-trip against the dev Firestore; deterministic `memberships/{chat}__{user}` doc-id helper enforces the 54-byte bound.
 
-**M1.2 — Auth re-home (OTP, tokens, sessions) to Firestore**
-- **Delivers:** port the merged v1 auth logic from DynamoDB to Firestore; **auth validates `sessions.expires_at` in code** (ADR-023 invariant — TTL is GC, not the gate); OTP + JWT issue/verify/refresh/logout.
-- **ADRs:** ADR-015 (auth), ADR-013 (abuse controls), ADR-006 (auth REST), ADR-023 (`sessions`, `users`).
+**M1.2 — Auth re-home (OTP, tokens, sessions) to Firestore** — ✅ **Done**
+- **Status:** ✅ **Done**. Both halves of the gate met live against `aelexs-rtm` in `us-central1`. **Firestore half:** the conditional OTP write refuses a live code and accepts once it has lapsed (the case a bare `Create()` gets wrong for the ~24 h until TTL runs); attempt increments are atomic under five concurrent guesses; registration commits user + session + sentinel + consumed OTP or nothing; a replayed or expired OTP leaves no user and no session behind; **five goroutines racing one valid OTP produce exactly one user**; rotation is single-use and a refused rotation preserves `prev_token_hash`; and `expires_at` survives the round-trip byte-identically, so the MAC still verifies against what Firestore returns. **Flow half:** OTP → registration → replay refused → login from a second device → refresh → reuse detected and the *session* revoked → logout → per-phone rate limit enforced through Memorystore. Infrastructure deployed from scratch and torn down.
+- **Three defects the live run found**, none reachable from unit tests (all fixed in-PR):
+  1. **Key discovery was ungrantable.** `RemoteKeyStore` listed secrets by prefix to discover valid `kid` values, and the pod crash-looped on `PermissionDenied` for `secretmanager.secrets.list`. That permission **cannot be scoped to a secret** — listing is a query over the project's whole secret collection — so the per-secret accessor bindings could never satisfy it, and supporting it would have meant `roles/secretmanager.viewer` project-wide. Keys are resolved by name instead; the cost is one accepted `kid` at a time, so a rotation forces re-auth bounded by the 1 h access-token lifetime. **Workload Identity itself was correct on the first deploy** — the pod reached Secret Manager as its own service account, and the failure was one missing permission, not a missing identity.
+  2. **A consumed OTP blocked reissue** for the rest of its five-minute window. ADR-015 §1.2's condition has three disjuncts (absent, verified, expired) and the implementation had two. The ADR was right; the code was wrong.
+  3. **False bools vanished from REST responses.** protojson omits zero values, so a returning user's `VerifyOTP` carried no `is_new_user` at all — a client reading "absent" as "false" cannot distinguish that from a field the server never set. The mux now sets `EmitUnpopulated`.
+- **Two provisioning notes:** Private Services Access peering created in **1m3s** and Memorystore attached over it in **4m25s**, so the `PRIVATE_SERVICE_ACCESS` connect mode chosen to avoid Autopilot's `ip-masq-agent` limitation works without further configuration. `kubectl wait` lost its HTTP/2 connection during the rollout and failed the deploy script even though every pod became healthy — a client-side flake, not a deploy failure.
+- **Delivers:** port the merged v1 auth logic from DynamoDB to Firestore; **auth validates `sessions.expires_at` in code** (ADR-023 invariant — TTL is GC, not the gate); OTP + JWT issue/verify/refresh/logout; the ChatMgmt composition root returns (gRPC + grpc-gateway), retired at M0.1.
+- **ADRs:** ADR-015 (auth, amended v1.1 for GCP), ADR-013 (abuse controls), ADR-006 (auth REST), ADR-023 v1.2 (`sessions`, `users`, `otp_requests`, `phone_index`).
 - **Gate:** full OTP → token → refresh → logout flow green against dev Firestore; expired session rejected in code even if the doc still exists.
+- **Four scope decisions settled here** (each recorded in the ADR it amends, not only in this plan):
+  1. **`otp_requests` lands in Firestore** with its own TTL policy — ADR-023 had deferred its home to "when auth is re-implemented", which is this PR (ADR-023 v1.2). The conditional put becomes a **transaction**, not a `Create()`: TTL lag (≤24 h) against a 5-minute credential means an expired OTP document is still present, and a bare `Create()` would lock a phone number out for a day.
+  2. **The `PHONE#` uniqueness sentinel survives as `phone_index/{phone_hash}`.** Firestore's strong consistency does *not* retire ADR-015 §5.1's argument — a transaction locks documents it reads, and a query matching nothing locks nothing, so concurrent first-time registrations would both commit. `tx.Create` restores `attribute_not_exists`.
+  3. **`otp_ciphertext` / KMS same-OTP re-send is dropped** (ADR-015 v1.1 Appendix F) — never implemented, needs Cloud KMS on the OTP path, and the in-flight-SMS property it protected holds anyway when nothing is re-sent.
+  4. **Memorystore moves forward from M3.1 into this PR.** Rate limiting and revocation are Redis-backed and ADR-013 requires the revocation check to fail closed, so the gate cannot run without it — Principle 5, code and infra travel together.
+- **Testing consequence of decision 4:** Memorystore has **no public endpoint** (private VPC IP), unlike Firestore's public API. The M1.1 pattern of driving a live gate from the toolbox therefore only covers the Firestore half. The flow gate runs against the **deployed pod** via `kubectl port-forward` — the first module where the gate must execute inside the cluster's network, which M3.x and M7 will need regardless.
 
 **M1.3 — Chat & membership lifecycle (Chat Mgmt)**
 - **Delivers:** `internal/chatmgmt` REST/gRPC — create chat (direct dedup + group), add/remove/leave member, role change, mute, list chats, get chat; writes `chats`/`memberships` to Firestore; publishes `chats.created` / `memberships.changed` (at-least-once, ADR-022 D4).
@@ -123,8 +136,8 @@ Eight modules. Each PR lists what it delivers, the ADRs it implements, its scope
 
 ### Module 3 — Connection Plane (Gateway on GKE)
 
-**M3.1 — Memorystore adapter & presence infra**
-- **Delivers:** Terraform for **Memorystore (Redis)**; `internal/redis` presence adapter — atomic register/deregister Lua scripts, connection/user/gateway key families with TTL (ADR-010).
+**M3.1 — Presence adapter** *(Memorystore infra moved to M1.2)*
+- **Delivers:** the `internal/redis` presence adapter — atomic register/deregister Lua scripts, connection/user/gateway key families with TTL (ADR-010). **The Memorystore instance itself, and the private-services-access range it connects over, ship in M1.2**, which needs Redis for ADR-013's fail-closed rate limiting and revocation and therefore owns the Terraform under Principle 5. This PR adds no infrastructure.
 - **ADRs:** ADR-010 (presence/routing), ADR-021 (Decision D).
 - **Gate:** register/deregister atomicity; TTL = 2× heartbeat; Redis wipe → re-register, no auth/data loss.
 
@@ -192,7 +205,7 @@ flowchart TD
     M13 --> M22
     M22 --> M23["M2.3 Outbox relay"]
     M03 --> M23
-    M02 --> M31["M3.1 Memorystore"]
+    M12 --> M31["M3.1 Presence adapter"]
     M31 --> M32["M3.2 Gateway WS"]
     M12 --> M32
     M23 --> M41["M4.1 Fanout"]
@@ -214,7 +227,9 @@ flowchart TD
 
 `M0.1 → M0.2 → M1.1 → M1.2 → M1.3 → M2.2 → M2.3 → M4.1 → M5.1 → M5.2`
 
-**What actually parallelizes:** M2.1 (Cloud SQL infra + migrations) and M3.x (connection plane) run alongside the M1 chain — but M2.2 waits on M1.3. If a second contributor needs M1 and M2 fully independent, split M2.2 into (a) the pure persist transaction with membership behind an interface (tested with a fake), then (b) a small PR wiring the real Firestore membership check. For the single-developer default this false-parallelism costs nothing, but the graph edge `M1.3 → M2.2` is the real constraint.
+**M3.x no longer parallelizes with the M1 chain.** M1.2 owns the Memorystore Terraform (see its scope note), so M3.1 depends on M1.2 rather than on M0.2. This costs nothing on the single-developer default — M3.2 already waited on M1.2 for JWT validation — but it removes M3.1 from the list of work a second contributor could start early.
+
+**What actually parallelizes:** M2.1 (Cloud SQL infra + migrations) runs alongside the M1 chain — but M2.2 waits on M1.3. If a second contributor needs M1 and M2 fully independent, split M2.2 into (a) the pure persist transaction with membership behind an interface (tested with a fake), then (b) a small PR wiring the real Firestore membership check. For the single-developer default this false-parallelism costs nothing, but the graph edge `M1.3 → M2.2` is the real constraint.
 
 ---
 
@@ -231,7 +246,7 @@ flowchart TD
 | ADR-007 | Data model (superseded → ADR-023) | see ADR-023 |
 | ADR-008 | Delivery acks / watermarks | M4.1, M5.2 |
 | ADR-009 | Failure handling / backpressure | M3.2, M4.1, M7.4 |
-| ADR-010 | Presence & routing (Memorystore) | M3.1, M3.2, M4.1 |
+| ADR-010 | Presence & routing (Memorystore) | M3.1, M3.2, M4.1 (instance provisioned in M1.2) |
 | ADR-011 | Kafka topics (Managed Kafka) | M0.3, M2.3, M4.1 |
 | ADR-012 | Observability (Managed Prometheus/Trace) | all modules |
 | ADR-013 | Security & abuse | M1.2, M3.2 |
@@ -241,7 +256,7 @@ flowchart TD
 | ADR-017 | Test pyramid | M7.1–M7.4 |
 | **ADR-021** | GCP substrate | M0.2, M2.1, M3.1, all infra |
 | **ADR-022** | Analytics data lake | M0.3, M2.3, M6.1 |
-| **ADR-023** | Two-store data model | M1.1, M2.1, M2.2, M4.1 |
+| **ADR-023** | Two-store data model | M1.1, M1.2, M2.1, M2.2, M4.1 |
 
 ---
 
@@ -268,7 +283,7 @@ Deploy-and-destroy per session throughout — no environment persists between wo
 
 Deliberate scope boundaries, carried from v1 and updated for the GCP substrate.
 
-**Delivery:** no exactly-once delivery (at-most-once push + at-least-once sync; client dedupes by `message_id`); no read receipts. **Ordering:** per-chat total order only — no global or causal cross-chat ordering. **Features:** no push notifications (APNs/FCM), media/attachments, message edit/delete, or E2E encryption. **Infrastructure (GCP-updated):** single-region GCP; **no push-triggered CD** (manual `terraform apply`/`destroy`, ADR-021); **no local cloud emulation** (Docker toolchain only); **data lake is metadata-only** (no message content, ADR-022 D3). **Analytics history:** entity mutation/deletion history beyond `memberships.changed` is a deferred v2 lake addition (ADR-022 G2).
+**Delivery:** no exactly-once delivery (at-most-once push + at-least-once sync; client dedupes by `message_id`); no read receipts. **Ordering:** per-chat total order only — no global or causal cross-chat ordering. **Features:** no push notifications (APNs/FCM), media/attachments, message edit/delete, or E2E encryption. **No SMS delivery** — `LogSMSProvider` writes the OTP to the structured log and is the only implementation in every environment (ADR-015 v1.3 §2.2.1). GCP has no first-party SMS service, so this is a third-party integration whose cost is A2P sender registration rather than code; ⚠ **`LogSMSProvider` logs the OTP in full and must be removed from deployed environments in the same change that ever wires a live provider.** **Infrastructure (GCP-updated):** single-region GCP; **no push-triggered CD** (manual `terraform apply`/`destroy`, ADR-021); **no local cloud emulation** (Docker toolchain only); **data lake is metadata-only** (no message content, ADR-022 D3). **Analytics history:** entity mutation/deletion history beyond `memberships.changed` is a deferred v2 lake addition (ADR-022 G2).
 
 | Tradeoff | Chosen | Gave up | Why |
 |---|---|---|---|
@@ -298,4 +313,6 @@ Deliberate scope boundaries, carried from v1 and updated for the GCP substrate.
 | 2026-07-24 | **v2.0 re-split (GCP substrate).** Retired the v1 PR/TF/IT structure; reorganized into Modules 0–7 with granular vertical-slice PRs on the GCP substrate (ADR-021/022/023). Folded infra into each PR (code + Terraform travel together; no separate TF track; no CD). Added Migration Context (salvage/re-home map), GCP traceability, and updated Non-Goals/Tradeoffs (Postgres counter, metadata-only lake, single-region GCP, no CD, no local emulation). Preserved Guiding Principles and correctness-invariant discipline. | Alexis + Claude |
 | 2026-07-24 | **v2.1 review response.** Fixed three under-specified invariants the plan asserted but did not guarantee: (Issue 2, most urgent) **M2.3 relay must be single-replica or advisory-lock-per-`chat_id`** — `SKIP LOCKED` alone does not preserve per-chat Kafka order under N replicas; (Issue 1) corrected the **critical path** to route through the M1 chain since M2.2 validates membership against Firestore (M1.3), with a split option for a second contributor; (Issue 3) **M6.1 sink starts from `earliest` offset**, backfilling to Kafka's 7-day retention, beyond which is ADR-022 G1. Clarified: M4.1 watermark-write-failure lags safely (re-sync + client dedup) and max-wins is commutative under rebalance; the **`outbox` sweep deletes only `published_at IS NOT NULL` rows** (a slow relay cannot lose messages); M7.4 uses Toxiproxy + pod-kill (no service mesh); `pg_cron` is supported on Cloud SQL PG12+. | Alexis + Claude |
 | 2026-07-25 | **v2.3 (implementation status + M0.3 substrate correction).** Marked **M0.2 Done** (PR #12 — deploy-and-destroy validated live; five first-deploy bugs recorded). Amended **M0.3**: the Managed Kafka **schema registry has no Terraform resource** in either Google provider, so it is created/deleted in the deploy/teardown scripts rather than by Terraform; and because GCP requires an **active Kafka cluster in-region before a registry can exist**, the minimum cluster (3 vCPU / 3 GiB, no topics) moves from M2.3 into M0.3. Sequencing change only — ADR-021 Acceptance Condition §1 was already discharged by ADR-022. | Alexis + Claude |
+| 2026-07-26 | **v2.5 (M1.2 done).** Marked **M1.2 Done** — both halves of the gate met live: the Firestore semantics (conditional OTP write across the TTL-lag window, transaction atomicity, five-way concurrent registration yielding exactly one user, single-use rotation, byte-exact `expires_at` round-trip) and the full deployed flow (OTP → registration → login → refresh → reuse-revokes-session → logout → Memorystore rate limit). Recorded three defects only a deploy could surface — **key enumeration is ungrantable** (`secretmanager.secrets.list` is project-scoped, so per-secret bindings cannot satisfy it; keys are resolved by name, ADR-015 v1.2), a **consumed OTP blocked reissue** (ADR-015 §1.2 has three disjuncts, the code had two), and **protojson omitting false bools** from REST responses. Also recorded that **Workload Identity was correct on the first deploy**, that Private Services Access + Memorystore came up in 1m3s and 4m25s, and that `kubectl wait` can drop its HTTP/2 connection and fail the deploy script while every pod is in fact healthy. | Alexis + Claude |
+| 2026-07-26 | **v2.4 (M1.2 scope decisions).** Recorded the four decisions the auth re-home had to settle, each amended into its governing ADR rather than living only here: `otp_requests` and the `phone_index` uniqueness sentinel land in Firestore (**ADR-023 v1.2**), the KMS-backed same-OTP re-send is **dropped** and the unknown-`kid` refresh **deferred** (**ADR-015 v1.1**), and **Memorystore moves forward from M3.1 into M1.2** because ADR-013's fail-closed rate limiting and revocation are on the critical path of M1.2's own gate (Principle 5). M3.1 is consequently reduced to the presence adapter and now depends on M1.2; the dependency graph and the parallelization note are updated. Also named the testing consequence: Memorystore has no public endpoint, so from M1.2 onward a live gate must run inside the cluster's network (`kubectl port-forward` against the deployed pod), not from the toolbox as M1.1's Firestore gate did. | Alexis + Claude |
 | 2026-07-24 | **v2.2 (approved; knowledge-capture only).** Added the M7.4 **relay-resume gate** (measure/assert publish-resume time after a relay pod-kill) and an out-of-scope future note on M2.3 (advisory-lock hash-bucket limits → partitioned-consumer relay as the eventual scale-out). No structural change; plan is ready as the implementation document. | Alexis + Claude |

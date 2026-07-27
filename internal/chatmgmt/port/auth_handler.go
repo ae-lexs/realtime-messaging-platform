@@ -63,7 +63,7 @@ func (h *AuthHandler) VerifyOTP(ctx context.Context, req *messagingv1.VerifyOTPR
 			PhoneNumber:   result.User.PhoneNumber,
 			DisplayName:   result.User.DisplayName,
 			PhoneVerified: true,
-			CreatedAt:     timeStringToProtoTimestamp(result.User.CreatedAt),
+			CreatedAt:     timeToProtoTimestamp(result.User.CreatedAt),
 		},
 		SessionId:            result.SessionID,
 		AccessToken:          result.AccessToken,
@@ -168,15 +168,5 @@ func clampInt32(v int) int32 {
 
 // timeToProtoTimestamp converts a time.Time to a proto Timestamp (millis since epoch).
 func timeToProtoTimestamp(t time.Time) *messagingv1.Timestamp {
-	return &messagingv1.Timestamp{Millis: t.UnixMilli()}
-}
-
-// timeStringToProtoTimestamp parses an RFC3339 string and converts to proto Timestamp.
-// Returns a zero-millis timestamp if the string is not valid RFC3339.
-func timeStringToProtoTimestamp(s string) *messagingv1.Timestamp {
-	t, err := time.Parse(time.RFC3339, s)
-	if err != nil {
-		return &messagingv1.Timestamp{Millis: 0}
-	}
 	return &messagingv1.Timestamp{Millis: t.UnixMilli()}
 }

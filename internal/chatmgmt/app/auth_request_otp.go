@@ -84,23 +84,29 @@ func (s *AuthService) RequestOTP(ctx context.Context, phone, clientIP string) (*
 	}
 
 	now := s.clock.Now().UTC()
-	expiresAt := now.Add(domain.OTPValidityDuration)
-	expiresAtStr := expiresAt.Format(time.RFC3339)
 
-	mac := auth.ComputeOTPMAC(s.pepper, otp, phoneHash, expiresAtStr)
+	// Truncated to the second because that is what the store holds and what
+	// the MAC is computed over (auth.OTPMACTime): keeping sub-second precision
+	// here would only make the expiry reported to the client disagree with the
+	// one the OTP is actually bound to.
+	expiresAt := now.Add(domain.OTPValidityDuration).Truncate(time.Second)
 
-	// 5. Store OTP record (conditional put — fails if active OTP exists).
+	mac := auth.ComputeOTPMAC(s.pepper, otp, phoneHash, expiresAt)
+
+	// 5. Store OTP record (conditional write — fails if a live OTP exists).
 	record := OTPRecord{
 		PhoneHash: phoneHash,
 		OTPMAC:    mac,
-		Status:    "pending",
-		CreatedAt: now.Format(time.RFC3339),
-		ExpiresAt: expiresAtStr,
-		TTL:       expiresAt.Unix(),
+		Status:    domain.OTPStatusPending,
+		CreatedAt: now,
+		ExpiresAt: expiresAt,
 	}
 
 	if err := s.otpStore.CreateOTP(ctx, record); err != nil {
-		// 6. Active OTP exists — return existing expiry (KMS fallback per ADR-015).
+		// 6. A live OTP already exists. Report when it expires and send
+		//    nothing: the code already in flight stays the valid one, which is
+		//    the property ADR-015 §1.2 wanted from re-sending, without the
+		//    recoverable-ciphertext machinery it dropped in v1.1.
 		if errors.Is(err, domain.ErrAlreadyExists) {
 			existing, getErr := s.otpStore.GetOTP(ctx, phoneHash)
 			if getErr != nil {
@@ -108,15 +114,9 @@ func (s *AuthService) RequestOTP(ctx context.Context, phone, clientIP string) (*
 				span.SetStatus(codes.Error, getErr.Error())
 				return nil, fmt.Errorf("get existing OTP: %w", getErr)
 			}
-			parsedExpiry, parseErr := time.Parse(time.RFC3339, existing.ExpiresAt)
-			if parseErr != nil {
-				span.RecordError(parseErr)
-				span.SetStatus(codes.Error, parseErr.Error())
-				return nil, fmt.Errorf("parse existing OTP expiry: %w", parseErr)
-			}
 			otpRequestsTotal.Add(ctx, 1, metric.WithAttributes(attribute.String("status", "existing")))
 			return &RequestOTPResult{
-				ExpiresAt:         parsedExpiry,
+				ExpiresAt:         existing.ExpiresAt,
 				RetryAfterSeconds: otpRetryAfterSeconds,
 			}, nil
 		}

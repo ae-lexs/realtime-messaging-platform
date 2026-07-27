@@ -3,6 +3,7 @@ package config_test
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/aelexs/realtime-messaging-platform/internal/config"
 	"github.com/aelexs/realtime-messaging-platform/internal/domain"
@@ -135,12 +136,30 @@ func TestValidateRequired_ProdRequiresFirestoreDatabase(t *testing.T) {
 	assert.Contains(t, err.Error(), "firestore.database")
 }
 
+// Without a secrets project the JWT signing key cannot be located, and
+// ADR-015's signing_key_required_for_startup says Chat Mgmt must refuse to
+// start rather than serve auth it cannot sign.
+func TestValidateRequired_ProdRequiresSecretsProject(t *testing.T) {
+	t.Setenv("ENVIRONMENT", "prod")
+	t.Setenv("KAFKA_BROKERS", "broker1:9092")
+	t.Setenv("REDIS_ADDR", "redis:6379")
+	t.Setenv("FIRESTORE_PROJECT", "aelexs-rtm")
+	t.Setenv("FIRESTORE_DATABASE", "messaging-dev")
+
+	_, err := config.Load(context.Background())
+
+	require.Error(t, err)
+	assert.ErrorIs(t, err, domain.ErrConfigRequired)
+	assert.Contains(t, err.Error(), "secrets.project")
+}
+
 func TestLoadWithEnvOverride(t *testing.T) {
 	t.Setenv("ENVIRONMENT", "prod")
 	t.Setenv("REDIS_ADDR", "redis:6379")
 	t.Setenv("KAFKA_BROKERS", "broker1:9092")
 	t.Setenv("FIRESTORE_PROJECT", "aelexs-rtm")
 	t.Setenv("FIRESTORE_DATABASE", "messaging-dev")
+	t.Setenv("SECRETS_PROJECT", "aelexs-rtm")
 
 	cfg, err := config.Load(context.Background())
 
@@ -150,4 +169,35 @@ func TestLoadWithEnvOverride(t *testing.T) {
 	assert.Equal(t, "aelexs-rtm", cfg.Firestore.ProjectID)
 	assert.Equal(t, "messaging-dev", cfg.Firestore.Database)
 	assert.Equal(t, domain.FirestoreTimeout, cfg.Firestore.Timeout)
+	assert.Equal(t, "aelexs-rtm", cfg.Secrets.ProjectID)
+	assert.Equal(t, domain.SecretManagerTimeout, cfg.Secrets.Timeout)
+}
+
+// The single-word koanf key rule again (see FirestoreConfig): Load turns every
+// underscore into a delimiter, so AUTH_KEYREFRESH reaches auth.keyrefresh
+// while AUTH_KEY_REFRESH would become auth.key.refresh and bind to nothing —
+// leaving the default silently in place.
+func TestAuthConfigBindsFromEnv(t *testing.T) {
+	t.Setenv("AUTH_ISSUER", "messaging-test")
+	t.Setenv("AUTH_AUDIENCE", "messaging-test-api")
+	t.Setenv("AUTH_KEYREFRESH", "30s")
+
+	cfg, err := config.Load(context.Background())
+
+	require.NoError(t, err)
+	assert.Equal(t, "messaging-test", cfg.Auth.Issuer)
+	assert.Equal(t, "messaging-test-api", cfg.Auth.Audience)
+	assert.Equal(t, 30*time.Second, cfg.Auth.KeyRefresh)
+}
+
+func TestAuthConfigDefaults(t *testing.T) {
+	cfg, err := config.Load(context.Background())
+
+	require.NoError(t, err)
+	// Issuer and audience are validated on every token, so both halves of the
+	// system must agree on them; the defaults are what makes that true without
+	// configuration in local runs.
+	assert.Equal(t, "messaging-platform", cfg.Auth.Issuer)
+	assert.Equal(t, "messaging-api", cfg.Auth.Audience)
+	assert.Equal(t, domain.JWTKeyRefreshInterval, cfg.Auth.KeyRefresh)
 }

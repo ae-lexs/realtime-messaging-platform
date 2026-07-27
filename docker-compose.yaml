@@ -1,8 +1,8 @@
 # Development workspace — GCP-targeting (ADR-021 Axis F).
 #
-# There is no local cloud emulation: LocalStack, Redpanda, and local Redis were
-# removed with the AWS→GCP substrate migration. Dev targets a real GCP project
-# via Terraform (M0.2+); unit tests are hermetic and run in the toolbox.
+# There is no local cloud emulation of any kind — no fake cloud APIs, no local
+# broker, no local Redis (ADR-021 Axis F). Dev targets a real GCP project via
+# Terraform (M0.2+); unit tests are hermetic and run in the toolbox.
 #
 #   make dev            # start the four health-only services with hot reload
 #   make toolbox CMD=.. # run any command in the toolbox
@@ -18,9 +18,10 @@ services:
       - .:/app
       - go-mod-cache:/go/pkg/mod
       - go-build-cache-toolbox:/root/.cache/go-build
-      # gcloud/ADC + kubeconfig live on the host and are mounted :rw so tokens
-      # refreshed in-container persist (per the AWS-SSO mount lesson). Run
-      # `make gcp-auth` once to populate them.
+      # gcloud/ADC + kubeconfig live on the host and are mounted :rw, not :ro —
+      # the SDK rewrites these files when it refreshes a token, so a read-only
+      # mount works until the first expiry and then fails. Run `make gcp-auth`
+      # once to populate them.
       - ${HOME}/.config/gcloud:/root/.config/gcloud:rw
       - ${HOME}/.kube:/root/.kube:rw
     working_dir: /app

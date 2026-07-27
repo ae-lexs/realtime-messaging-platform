@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Bootstrap the GCS bucket that holds Terraform remote state. Idempotent.
 #
-# GCS provides native object-level locking, so — unlike the retired S3 +
-# DynamoDB backend — no separate lock table is needed.
+# GCS provides native object-level locking, so no separate lock table is
+# provisioned or needed.
 #
 # Runs gcloud inside the toolbox container (nothing on the host but Docker).
 # Authenticate first with: make gcp-auth
