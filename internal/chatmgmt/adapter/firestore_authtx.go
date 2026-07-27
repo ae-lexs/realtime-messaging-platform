@@ -30,8 +30,9 @@ func NewAuthTransactor(tx *firestore.AuthTx) *AuthTransactor {
 // sentinel, the user, their first session and the OTP consumption, all or none.
 //
 // Returns domain.ErrAlreadyExists when the number was claimed by a concurrent
-// registration. The caller treats that as "someone else won" and continues as
-// a login (ADR-015 §5.1).
+// registration. The winner consumed the OTP in the same write set, so there is
+// no login for the loser to continue into — the caller refuses the request and
+// the client requests a fresh code (ADR-015 §10.2 as corrected in v1.4).
 func (t *AuthTransactor) VerifyOTPAndCreateUser(ctx context.Context, params app.RegistrationParams) error {
 	ctx, span := tracer.Start(ctx, "firestore.auth.register")
 	defer span.End()

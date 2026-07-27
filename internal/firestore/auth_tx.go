@@ -73,8 +73,13 @@ type Login struct {
 // user via users.phone_number, because a Firestore query that matches nothing
 // locks nothing and so offers no phantom protection. tx.Create on a
 // deterministic document path is the only thing in the store that can make one
-// of them lose. The caller resolves the loss by re-reading the winner's user
-// and continuing as a login (ADR-015 §5.1).
+// of them lose.
+//
+// The loser cannot recover into a login. The winner consumed the OTP in the
+// same write set, so the loser now holds a spent code and Login would refuse it
+// on the status assertion — a code is consumed once (ADR-015 §5.1, and §10.2 as
+// corrected in v1.4). The caller refuses the request and the client asks for a
+// fresh OTP.
 func (t *AuthTx) Register(ctx context.Context, params Registration) error {
 	if err := params.PhoneIndex.Validate(); err != nil {
 		return err

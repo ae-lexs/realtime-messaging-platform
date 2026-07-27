@@ -191,14 +191,21 @@ func (s *AuthService) verifyOTPNewUser(
 	if txErr := s.transactor.VerifyOTPAndCreateUser(ctx, params); txErr != nil {
 		// The phone-number sentinel was already claimed: another first-time
 		// verification of this number committed while this one was preparing.
-		// The winner's user is what both callers wanted, so continue as a
-		// login (ADR-015 §5.1).
+		//
+		// There is nothing to salvage for this request. The winner consumed the
+		// OTP inside its transaction, so this caller's code is spent — handing
+		// it to the login transaction would only re-present a consumed code,
+		// which VerifyOTPAndCreateSession asserts against and refuses (ADR-015
+		// §5.1: one code, consumed once). Refusing here says the same thing one
+		// round trip earlier, and it is the truthful answer: the account exists,
+		// but this credential no longer opens it. The caller requests a fresh
+		// OTP and logs in.
 		if errors.Is(txErr, domain.ErrAlreadyExists) {
-			user, findErr := s.userStore.FindByPhone(ctx, phone)
-			if findErr != nil {
-				return nil, fmt.Errorf("find user after race: %w", findErr)
-			}
-			return s.verifyOTPExistingUser(ctx, phoneHash, record, user, deviceID)
+			authFailuresTotal.Add(ctx, 1, metric.WithAttributes(attribute.String("reason", "registration_race")))
+			observability.WithTraceID(ctx, s.logger).InfoContext(ctx, "auth.registration_race",
+				"phone_hash", phoneHash,
+			)
+			return nil, fmt.Errorf("phone number claimed by a concurrent registration: %w", domain.ErrInvalidOTP)
 		}
 		return nil, fmt.Errorf("register user: %w", txErr)
 	}
@@ -272,10 +279,21 @@ func (s *AuthService) evictConflictingSessions(ctx context.Context, sessions []S
 }
 
 // enforceSessionLimit evicts the oldest sessions when the user is at the max.
+//
+// Expired sessions are not counted. ListByUser returns them — Firestore's TTL
+// collects a session only within ~24 hours of expires_at, so a lapsed document
+// stays readable for most of a day (ADR-023) — and counting them would spend
+// the user's budget on sessions no request can use. Worse, eviction orders by
+// created_at while expiry moves forward on every refresh, so an old but
+// recently-refreshed session sorts ahead of a newer dead one: the live session
+// is the one that gets evicted. IsExpired is the gate here for the same reason
+// it is in RefreshTokens.
 func (s *AuthService) enforceSessionLimit(ctx context.Context, sessions []SessionRecord, deviceID string) error {
+	now := s.clock.Now().UTC()
+
 	activeSessions := make([]SessionRecord, 0, len(sessions))
 	for _, sess := range sessions {
-		if sess.DeviceID != deviceID {
+		if sess.DeviceID != deviceID && !sess.IsExpired(now) {
 			activeSessions = append(activeSessions, sess)
 		}
 	}

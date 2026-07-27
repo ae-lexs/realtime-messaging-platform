@@ -126,38 +126,38 @@ func TestVerifyOTP(t *testing.T) {
 		assert.True(t, lockoutSet, "lockout should be set on max attempts")
 	})
 
-	t.Run("phone sentinel race: falls back to existing user flow", func(t *testing.T) {
+	t.Run("phone sentinel race: the spent OTP is refused, not retried as a login", func(t *testing.T) {
 		h := newTestHarness(t)
 		record := sampleOTPRecord(testPhoneHash, h.clock)
-		user := sampleUserRecord()
 
 		h.otpStore.getOTPFn = func(_ context.Context, _ string) (*app.OTPRecord, error) {
 			return record, nil
 		}
 
-		// First call: not found (new user path), second call: found (after race).
 		findCalls := 0
 		h.userStore.findByPhoneFn = func(_ context.Context, _ string) (*app.UserRecord, error) {
 			findCalls++
-			if findCalls == 1 {
-				return nil, domain.ErrNotFound
-			}
-			return user, nil
+			return nil, domain.ErrNotFound
 		}
 
-		// Registration transaction fails with ErrAlreadyExists (phone sentinel conflict).
+		// Registration loses the sentinel to a concurrent first-time verify.
+		// That winner also consumed the OTP, which is why there is no login to
+		// fall back to — the real transaction asserts the code is still pending
+		// and would refuse it (ADR-015 §5.1).
 		h.transactor.verifyOTPAndCreateUserFn = func(_ context.Context, _ app.RegistrationParams) error {
 			return domain.ErrAlreadyExists
 		}
-		h.sessionStore.listByUserFn = func(_ context.Context, _ string) ([]app.SessionRecord, error) {
-			return nil, nil
+		loginCalled := false
+		h.transactor.verifyOTPAndCreateSessionFn = func(_ context.Context, _ app.LoginParams) error {
+			loginCalled = true
+			return nil
 		}
 
-		result, err := h.svc.VerifyOTP(context.Background(), testPhone, testOTP, testDeviceID)
-		require.NoError(t, err)
-		require.NotNil(t, result)
-		assert.False(t, result.IsNewUser, "should fall back to existing user flow")
-		assert.Equal(t, user.UserID, result.User.UserID)
+		_, err := h.svc.VerifyOTP(context.Background(), testPhone, testOTP, testDeviceID)
+		require.Error(t, err)
+		assert.ErrorIs(t, err, domain.ErrInvalidOTP)
+		assert.False(t, loginCalled, "a consumed OTP must not be presented to the login transaction")
+		assert.Equal(t, 1, findCalls, "the loser has nothing to re-read")
 	})
 
 	t.Run("session limit enforcement: oldest session evicted", func(t *testing.T) {
@@ -198,6 +198,49 @@ func TestVerifyOTP(t *testing.T) {
 		require.NotNil(t, result)
 		// Oldest session should be evicted.
 		assert.Contains(t, deletedSessions, "sess-A", "oldest session should be evicted")
+	})
+
+	t.Run("session limit: expired sessions occupy no budget", func(t *testing.T) {
+		h := newTestHarness(t)
+		record := sampleOTPRecord(testPhoneHash, h.clock)
+		user := sampleUserRecord()
+
+		h.otpStore.getOTPFn = func(_ context.Context, _ string) (*app.OTPRecord, error) {
+			return record, nil
+		}
+		h.userStore.findByPhoneFn = func(_ context.Context, _ string) (*app.UserRecord, error) {
+			return user, nil
+		}
+
+		// A full quota of sessions, every one of them past expires_at and every
+		// one still readable: Firestore's TTL collects them only within ~24
+		// hours, so this is what ListByUser returns for a user who has been away
+		// (ADR-023). None of them can serve a request, so none may cost the user
+		// a session slot.
+		sessions := make([]app.SessionRecord, domain.MaxSessionsPerUser)
+		for i := range sessions {
+			sessions[i] = app.SessionRecord{
+				SessionID: "expired-" + string(rune('A'+i)),
+				UserID:    user.UserID,
+				DeviceID:  "other-device-" + string(rune('A'+i)),
+				CreatedAt: testStart.Add(-31 * 24 * time.Hour).Add(time.Duration(i) * time.Hour),
+				ExpiresAt: testStart.Add(-time.Hour),
+			}
+		}
+		h.sessionStore.listByUserFn = func(_ context.Context, _ string) ([]app.SessionRecord, error) {
+			return sessions, nil
+		}
+
+		deletedSessions := make([]string, 0)
+		h.sessionStore.deleteFn = func(_ context.Context, sessionID string) error {
+			deletedSessions = append(deletedSessions, sessionID)
+			return nil
+		}
+
+		result, err := h.svc.VerifyOTP(context.Background(), testPhone, testOTP, testDeviceID)
+		require.NoError(t, err)
+		require.NotNil(t, result)
+		assert.Empty(t, deletedSessions, "an expired session is not a session to evict")
 	})
 
 	t.Run("device replacement: existing session with same device deleted", func(t *testing.T) {
@@ -426,31 +469,6 @@ func TestVerifyOTP(t *testing.T) {
 		_, err := h.svc.VerifyOTP(context.Background(), testPhone, testOTP, testDeviceID)
 		require.Error(t, err)
 		assert.ErrorIs(t, err, errTx)
-	})
-
-	t.Run("find user after registration race: returns wrapped error", func(t *testing.T) {
-		h := newTestHarness(t)
-		record := sampleOTPRecord(testPhoneHash, h.clock)
-		errDB := errors.New("db unavailable")
-
-		h.otpStore.getOTPFn = func(_ context.Context, _ string) (*app.OTPRecord, error) {
-			return record, nil
-		}
-		findCalls := 0
-		h.userStore.findByPhoneFn = func(_ context.Context, _ string) (*app.UserRecord, error) {
-			findCalls++
-			if findCalls == 1 {
-				return nil, domain.ErrNotFound
-			}
-			return nil, errDB
-		}
-		h.transactor.verifyOTPAndCreateUserFn = func(_ context.Context, _ app.RegistrationParams) error {
-			return domain.ErrAlreadyExists
-		}
-
-		_, err := h.svc.VerifyOTP(context.Background(), testPhone, testOTP, testDeviceID)
-		require.Error(t, err)
-		assert.ErrorIs(t, err, errDB)
 	})
 
 	t.Run("invalid phone number: returns error", func(t *testing.T) {
