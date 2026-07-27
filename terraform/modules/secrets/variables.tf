@@ -23,9 +23,17 @@ variable "signing_key_id" {
 }
 
 variable "accessor_members" {
-  description = "IAM members granted roles/secretmanager.secretAccessor on the auth secrets, as serviceAccount:{email}."
-  type        = list(string)
-  default     = []
+  description = "IAM members granted roles/secretmanager.secretAccessor, keyed by secret: signing_key, public_key, current_key_id, otp_pepper. Members are serviceAccount:{email}. Keyed rather than flat because a flat list is a cross product — every member would hold every secret, and a service that only validates tokens would be handed the key that signs them (ADR-015 §3.2)."
+  type        = map(list(string))
+  default     = {}
+
+  validation {
+    condition = alltrue([
+      for secret in keys(var.accessor_members) :
+      contains(["signing_key", "public_key", "current_key_id", "otp_pepper"], secret)
+    ])
+    error_message = "accessor_members keys must be signing_key, public_key, current_key_id or otp_pepper."
+  }
 }
 
 variable "labels" {

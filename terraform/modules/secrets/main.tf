@@ -38,16 +38,22 @@ resource "google_secret_manager_secret" "auth" {
   labels = var.labels
 }
 
-# Accessor bindings are per-secret rather than project-wide, so a service that
-# only needs to verify tokens can be granted the public key without also being
-# handed the key that signs them (ADR-015 §3.2's least-privilege table).
+# Accessor bindings are granted per secret, not per service: the caller names
+# which secrets each member may read, so a service that only verifies tokens can
+# be granted the public key without also being handed the key that signs them
+# (ADR-015 §3.2's least-privilege table).
+#
+# The keyed input is the whole point. An earlier revision took a flat member
+# list and crossed it with every secret, which made the least-privilege claim
+# above unenforceable — the first token-validating service added to the list
+# would silently gain token-minting capability.
 resource "google_secret_manager_secret_iam_member" "accessors" {
   for_each = {
-    for pair in setproduct(keys(local.secret_ids), var.accessor_members) :
-    "${pair[0]}:${pair[1]}" => {
-      secret = pair[0]
-      member = pair[1]
-    }
+    for binding in flatten([
+      for secret, members in var.accessor_members : [
+        for member in members : { secret = secret, member = member }
+      ]
+    ]) : "${binding.secret}:${binding.member}" => binding
   }
 
   project   = var.project_id

@@ -9,7 +9,7 @@ output "signing_key_secret_id" {
 }
 
 output "public_key_secret_id" {
-  description = "Secret ID holding the RSA public key (PEM). Listing by the jwt-public-key- prefix is how token-validating services discover acceptable `kid` values."
+  description = "Secret ID holding the RSA public key (PEM). Read by name, never discovered: secretmanager.secrets.list is a project-wide permission, so enumerating by prefix cannot be granted at this scope and the active `kid` comes from jwt-current-key-id instead (ADR-015 v1.2, Appendix F)."
   value       = google_secret_manager_secret.auth["public_key"].secret_id
 }
 

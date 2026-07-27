@@ -62,7 +62,7 @@ module "networking" {
 | network\_id | The VPC network self-link/ID, for attaching the GKE cluster. |
 | network\_name | The VPC network name. |
 | pods\_range\_name | Secondary range name for GKE pod IPs (for ip\_allocation\_policy). |
-| private\_service\_access\_connection\_id | The service networking connection ID, for consumers to depend\_on. |
+| private\_service\_access\_connection\_id | The service networking connection ID. Consumers order themselves after the peering with depends\_on = [module.networking], since depends\_on cannot reference an output. |
 | private\_service\_access\_range\_name | Name of the reserved range for Private Services Access; managed services take reserved\_ip\_range from it. |
 | router\_name | The Cloud Router name backing egress NAT. |
 | services\_range\_name | Secondary range name for GKE service IPs (for ip\_allocation\_policy). |

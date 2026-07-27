@@ -59,9 +59,25 @@ module "service_accounts" {
 # Secret containers only — scripts/auth-keys.sh adds the versions, so no key
 # material reaches Terraform state.
 module "secrets" {
-  source           = "../../modules/secrets"
-  project_id       = var.project_id
-  accessor_members = [module.service_accounts.chatmgmt_member]
+  source     = "../../modules/secrets"
+  project_id = var.project_id
+
+  # ChatMgmt mints tokens, so it reads all four: the private key, the ID naming
+  # the active key, the OTP pepper — and the published public key, which is not
+  # redundant with the private one. RemoteKeyStore prefers the published copy so
+  # that a mismatch between the two fails at startup instead of minting tokens
+  # nothing else can verify, and it only falls back to deriving when the secret
+  # is *absent*. A PermissionDenied is not an absence: it takes the error branch
+  # and the pod refuses to start.
+  #
+  # Services that only validate tokens — Gateway (M3.2), Ingest (M2.2) — belong
+  # under public_key alone, which is what the keyed input exists to express.
+  accessor_members = {
+    signing_key    = [module.service_accounts.chatmgmt_member]
+    public_key     = [module.service_accounts.chatmgmt_member]
+    current_key_id = [module.service_accounts.chatmgmt_member]
+    otp_pepper     = [module.service_accounts.chatmgmt_member]
+  }
 
   depends_on = [module.project_services]
 }
@@ -74,9 +90,13 @@ module "memorystore" {
   network_id        = module.networking.network_id
   reserved_ip_range = module.networking.private_service_access_range_name
 
-  # The reserved range exists before the peering does; an instance created
-  # against the range alone fails with "no matching peering", so the dependency
-  # is on the connection rather than on the networking module as a whole.
+  # reserved_ip_range gives an implicit dependency on the *address* only, and
+  # the address exists before the peering does — an instance created against the
+  # range alone fails with "no matching peering". The connection is what must
+  # exist, but depends_on takes resource and module references, not outputs, so
+  # the edge is drawn on the module as a whole. It is coarser than the real
+  # requirement and correct for the same reason: everything the connection needs
+  # is inside it.
   depends_on = [module.networking]
 }
 
