@@ -2,7 +2,7 @@
 # All targets delegate to Docker containers per ADR-014 (PR0-INV-1).
 # No Go, buf, or lint tools are invoked directly on the host.
 
-.PHONY: all dev down logs lint fmt test test-integration proto proto-lint proto-breaking build docker ci-local ci-fast check-no-aws check-firestore-boundary clean help \
+.PHONY: all dev down logs lint fmt test test-integration proto proto-lint proto-breaking build docker ci-local ci-fast check-no-aws check-firestore-boundary check-secretmanager-boundary clean help \
 	terraform-fmt terraform-fmt-fix terraform-validate terraform-lint terraform-security terraform-docs terraform-docs-check \
 	gcp-auth gcp-bootstrap-state deploy teardown schema-register schema-verify schema-test firestore-up firestore-test firestore-down
 
@@ -106,11 +106,11 @@ docker:
 # ============================================================================
 
 ## Run full CI pipeline locally
-ci-local: check-no-aws check-firestore-boundary proto-lint lint test build docker
+ci-local: check-no-aws check-firestore-boundary check-secretmanager-boundary proto-lint lint test build docker
 	@echo "✅ CI pipeline passed"
 
 ## Run CI pipeline without Docker build (faster)
-ci-fast: check-no-aws check-firestore-boundary proto-lint lint test
+ci-fast: check-no-aws check-firestore-boundary check-secretmanager-boundary proto-lint lint test
 	@echo "✅ Fast CI passed"
 
 ## Gate: only internal/firestore may import the Firestore SDK (CONTRIBUTING §Shared packages)
@@ -119,6 +119,14 @@ check-firestore-boundary:
 		echo "❌ the Firestore SDK may only be imported by internal/firestore"; exit 1; \
 	else \
 		echo "✅ Firestore SDK confined to internal/firestore"; \
+	fi
+
+## Gate: only internal/secrets may import the Secret Manager SDK (CONTRIBUTING §Shared packages)
+check-secretmanager-boundary:
+	@if grep -rln 'cloud.google.com/go/secretmanager' --include="*.go" . | grep -v '^./internal/secrets/' ; then \
+		echo "❌ the Secret Manager SDK may only be imported by internal/secrets"; exit 1; \
+	else \
+		echo "✅ Secret Manager SDK confined to internal/secrets"; \
 	fi
 
 ## Gate: no AWS SDK imports may remain (M0.1, ADR-021 substrate migration)
