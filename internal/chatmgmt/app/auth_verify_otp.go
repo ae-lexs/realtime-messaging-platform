@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"sort"
-	"time"
 
 	"github.com/google/uuid"
 	"go.opentelemetry.io/otel/attribute"
@@ -128,7 +127,7 @@ func (s *AuthService) validateOTPRecord(ctx context.Context, phoneHash, otpCandi
 		return nil, fmt.Errorf("get OTP: %w", err)
 	}
 
-	if record.Status == "verified" {
+	if record.Status == domain.OTPStatusVerified {
 		authFailuresTotal.Add(ctx, 1, metric.WithAttributes(attribute.String("reason", "invalid_otp")))
 		return nil, domain.ErrInvalidOTP
 	}
@@ -141,11 +140,7 @@ func (s *AuthService) validateOTPRecord(ctx context.Context, phoneHash, otpCandi
 		return nil, domain.ErrRateLimited
 	}
 
-	expiresAt, err := time.Parse(time.RFC3339, record.ExpiresAt)
-	if err != nil {
-		return nil, fmt.Errorf("parse OTP expiry: %w", err)
-	}
-	if s.clock.Now().UTC().After(expiresAt) {
+	if record.IsExpired(s.clock.Now().UTC()) {
 		authFailuresTotal.Add(ctx, 1, metric.WithAttributes(attribute.String("reason", "otp_expired")))
 		return nil, domain.ErrInvalidOTP
 	}
@@ -171,7 +166,6 @@ func (s *AuthService) verifyOTPNewUser(
 	userID := uuid.NewString()
 	sessionID := uuid.NewString()
 	now := s.clock.Now().UTC()
-	nowStr := now.Format(time.RFC3339)
 
 	refreshToken, err := auth.GenerateRefreshToken()
 	if err != nil {
@@ -187,15 +181,18 @@ func (s *AuthService) verifyOTPNewUser(
 		OTPMAC:           record.OTPMAC,
 		UserID:           userID,
 		PhoneNumber:      phone,
-		Now:              nowStr,
+		Now:              now,
 		SessionID:        sessionID,
 		DeviceID:         deviceID,
 		RefreshTokenHash: refreshHash,
-		SessionExpiresAt: sessionExpiry.Format(time.RFC3339),
-		SessionTTL:       sessionExpiry.Unix(),
+		SessionExpiresAt: sessionExpiry,
 	}
 
 	if txErr := s.transactor.VerifyOTPAndCreateUser(ctx, params); txErr != nil {
+		// The phone-number sentinel was already claimed: another first-time
+		// verification of this number committed while this one was preparing.
+		// The winner's user is what both callers wanted, so continue as a
+		// login (ADR-015 §5.1).
 		if errors.Is(txErr, domain.ErrAlreadyExists) {
 			user, findErr := s.userStore.FindByPhone(ctx, phone)
 			if findErr != nil {
@@ -223,8 +220,8 @@ func (s *AuthService) verifyOTPNewUser(
 		User: UserRecord{
 			UserID:      userID,
 			PhoneNumber: phone,
-			CreatedAt:   nowStr,
-			UpdatedAt:   nowStr,
+			CreatedAt:   now,
+			UpdatedAt:   now,
 		},
 		SessionID:         sessionID,
 		AccessToken:       mintResult.Token,
@@ -288,7 +285,7 @@ func (s *AuthService) enforceSessionLimit(ctx context.Context, sessions []Sessio
 	}
 
 	sort.Slice(activeSessions, func(i, j int) bool {
-		return activeSessions[i].CreatedAt < activeSessions[j].CreatedAt
+		return activeSessions[i].CreatedAt.Before(activeSessions[j].CreatedAt)
 	})
 	evictCount := len(activeSessions) - domain.MaxSessionsPerUser + 1
 	for i := 0; i < evictCount; i++ {
@@ -331,9 +328,8 @@ func (s *AuthService) createLoginSession(
 		UserID:           user.UserID,
 		DeviceID:         deviceID,
 		RefreshTokenHash: refreshHash,
-		CreatedAt:        now.Format(time.RFC3339),
-		SessionExpiresAt: sessionExpiry.Format(time.RFC3339),
-		SessionTTL:       sessionExpiry.Unix(),
+		CreatedAt:        now,
+		SessionExpiresAt: sessionExpiry,
 	}
 
 	if txErr := s.transactor.VerifyOTPAndCreateSession(ctx, params); txErr != nil {

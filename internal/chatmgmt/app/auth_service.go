@@ -41,80 +41,101 @@ func init() {
 		metric.WithDescription("Total session revocations"))
 }
 
-// OTPRecord represents an OTP request stored in the OTP table.
+// The records below are the service's own vocabulary; adapters map them onto
+// whatever the store holds. Two DynamoDB-isms left with the substrate:
+//
+//   - Timestamps were RFC3339 strings, so every flow re-parsed them and carried
+//     an unreachable parse-error branch. They are time.Time here, and the
+//     conversion happens once, in the adapter.
+//   - Each record carried a TTL epoch second alongside its expiry, because
+//     DynamoDB's TTL read a separate numeric attribute. Firestore's TTL policy
+//     reads the timestamp field itself, so the duplicate is gone — and with it
+//     the possibility of the two disagreeing.
+
+// OTPRecord represents an OTP request stored in the OTP collection.
 // Structurally mirrors the adapter record; the wiring layer converts between them.
 type OTPRecord struct {
-	PhoneHash     string
-	OTPMAC        string
-	OTPCiphertext string
-	CreatedAt     string
-	ExpiresAt     string
-	Status        string
-	AttemptCount  int
-	TTL           int64
+	PhoneHash    string
+	OTPMAC       string
+	CreatedAt    time.Time
+	ExpiresAt    time.Time
+	Status       string
+	AttemptCount int
 }
 
-// UserRecord represents a user stored in the users table.
+// IsExpired reports whether the OTP is past its expiry at now.
+//
+// Existence is not validity: the store's TTL collects an expired OTP only
+// within ~24 hours, so a lapsed record stays readable for most of a day
+// (ADR-023 v1.2). This is the gate.
+func (r OTPRecord) IsExpired(now time.Time) bool {
+	return !now.Before(r.ExpiresAt)
+}
+
+// UserRecord represents a user stored in the users collection.
 type UserRecord struct {
 	UserID      string
 	PhoneNumber string
 	DisplayName string
-	CreatedAt   string
-	UpdatedAt   string
+	CreatedAt   time.Time
+	UpdatedAt   time.Time
 }
 
-// SessionRecord represents an active session stored in the sessions table.
+// SessionRecord represents an active session stored in the sessions collection.
 type SessionRecord struct {
 	SessionID        string
 	UserID           string
 	DeviceID         string
 	RefreshTokenHash string
 	PrevTokenHash    string
-	CreatedAt        string
-	ExpiresAt        string
+	CreatedAt        time.Time
+	ExpiresAt        time.Time
 	TokenGeneration  int64
-	TTL              int64
+}
+
+// IsExpired reports whether the session is past its expiry at now — the
+// ADR-023 application-enforced invariant. TTL is garbage collection; this is
+// the correctness gate, and it must be consulted on every session read.
+func (r SessionRecord) IsExpired(now time.Time) bool {
+	return !now.Before(r.ExpiresAt)
 }
 
 // SessionUpdate holds the mutable fields for a session rotation.
 type SessionUpdate struct {
 	RefreshTokenHash string
 	PrevTokenHash    string
-	ExpiresAt        string
+	ExpiresAt        time.Time
 	TokenGeneration  int64
-	TTL              int64
 }
 
 // RegistrationParams holds the inputs for a transactional new-user registration.
 type RegistrationParams struct {
 	PhoneHash    string
-	OTPExpiresAt string
+	OTPExpiresAt time.Time
 	OTPMAC       string
 
 	UserID      string
 	PhoneNumber string
-	Now         string
+	Now         time.Time
 
 	SessionID        string
 	DeviceID         string
 	RefreshTokenHash string
-	SessionExpiresAt string
-	SessionTTL       int64
+	SessionExpiresAt time.Time
 }
 
 // LoginParams holds the inputs for a transactional existing-user login.
 type LoginParams struct {
 	PhoneHash    string
-	OTPExpiresAt string
+	OTPExpiresAt time.Time
 	OTPMAC       string
 
 	SessionID        string
 	UserID           string
 	DeviceID         string
 	RefreshTokenHash string
-	CreatedAt        string
-	SessionExpiresAt string
-	SessionTTL       int64
+	CreatedAt        time.Time
+	SessionExpiresAt time.Time
 }
 
 // OTPStore persists and retrieves OTP requests.
@@ -139,7 +160,8 @@ type SessionStore interface {
 	Delete(ctx context.Context, sessionID string) error
 }
 
-// AuthTransactor executes multi-item DynamoDB transactions for auth flows.
+// AuthTransactor executes the multi-document transactions the auth flows
+// require to be atomic (ADR-015 §5).
 type AuthTransactor interface {
 	VerifyOTPAndCreateUser(ctx context.Context, params RegistrationParams) error
 	VerifyOTPAndCreateSession(ctx context.Context, params LoginParams) error

@@ -135,7 +135,7 @@ func TestRequestOTP(t *testing.T) {
 		}
 		h.otpStore.getOTPFn = func(_ context.Context, _ string) (*app.OTPRecord, error) {
 			return &app.OTPRecord{
-				ExpiresAt: existingExpiry.Format(time.RFC3339),
+				ExpiresAt: existingExpiry,
 			}, nil
 		}
 

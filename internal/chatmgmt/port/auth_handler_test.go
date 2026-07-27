@@ -141,7 +141,7 @@ func TestAuthHandler_VerifyOTP(t *testing.T) {
 						UserID:      "user-001",
 						PhoneNumber: "+14155552671",
 						DisplayName: "Alice",
-						CreatedAt:   "2026-02-10T12:00:00Z",
+						CreatedAt:   time.Date(2026, 2, 10, 12, 0, 0, 0, time.UTC),
 					},
 					SessionID:         "session-001",
 					AccessToken:       "access-jwt",
@@ -356,14 +356,7 @@ func TestTimeToProtoTimestamp(t *testing.T) {
 	assert.Equal(t, fixedTime.UnixMilli(), ts.Millis)
 }
 
-func TestTimeStringToProtoTimestamp(t *testing.T) {
-	t.Run("valid RFC3339", func(t *testing.T) {
-		ts := timeStringToProtoTimestamp("2026-02-10T12:00:00Z")
-		assert.Equal(t, fixedTime.UnixMilli(), ts.Millis)
-	})
-
-	t.Run("invalid string returns zero millis", func(t *testing.T) {
-		ts := timeStringToProtoTimestamp("not-a-date")
-		assert.Equal(t, int64(0), ts.Millis)
-	})
-}
+// timeStringToProtoTimestamp is gone with the RFC3339-string records: the
+// service now hands the handler a time.Time, so there is no string to reparse
+// and no "not a date" case to fall back from. Its silent zero-millis fallback
+// went with it — a malformed timestamp can no longer reach this layer at all.

@@ -179,8 +179,8 @@ func TestVerifyOTP(t *testing.T) {
 				SessionID: "sess-" + string(rune('A'+i)),
 				UserID:    user.UserID,
 				DeviceID:  "other-device-" + string(rune('A'+i)),
-				CreatedAt: testStart.Add(time.Duration(i) * time.Hour).Format(time.RFC3339),
-				ExpiresAt: testStart.Add(30 * 24 * time.Hour).Format(time.RFC3339),
+				CreatedAt: testStart.Add(time.Duration(i) * time.Hour),
+				ExpiresAt: testStart.Add(30 * 24 * time.Hour),
 			}
 		}
 		h.sessionStore.listByUserFn = func(_ context.Context, _ string) ([]app.SessionRecord, error) {
@@ -219,7 +219,7 @@ func TestVerifyOTP(t *testing.T) {
 					SessionID: "old-session",
 					UserID:    user.UserID,
 					DeviceID:  testDeviceID,
-					CreatedAt: testStart.Add(-time.Hour).Format(time.RFC3339),
+					CreatedAt: testStart.Add(-time.Hour),
 				},
 			}, nil
 		}
@@ -525,8 +525,8 @@ func TestVerifyOTP(t *testing.T) {
 				SessionID: "sess-" + string(rune('A'+i)),
 				UserID:    user.UserID,
 				DeviceID:  "other-device-" + string(rune('A'+i)),
-				CreatedAt: testStart.Add(time.Duration(i) * time.Hour).Format(time.RFC3339),
-				ExpiresAt: testStart.Add(30 * 24 * time.Hour).Format(time.RFC3339),
+				CreatedAt: testStart.Add(time.Duration(i) * time.Hour),
+				ExpiresAt: testStart.Add(30 * 24 * time.Hour),
 			}
 		}
 		h.sessionStore.listByUserFn = func(_ context.Context, _ string) ([]app.SessionRecord, error) {
@@ -560,8 +560,8 @@ func TestVerifyOTP(t *testing.T) {
 				SessionID: "sess-" + string(rune('A'+i)),
 				UserID:    user.UserID,
 				DeviceID:  "other-device-" + string(rune('A'+i)),
-				CreatedAt: testStart.Add(time.Duration(i) * time.Hour).Format(time.RFC3339),
-				ExpiresAt: testStart.Add(30 * 24 * time.Hour).Format(time.RFC3339),
+				CreatedAt: testStart.Add(time.Duration(i) * time.Hour),
+				ExpiresAt: testStart.Add(30 * 24 * time.Hour),
 			}
 		}
 		h.sessionStore.listByUserFn = func(_ context.Context, _ string) ([]app.SessionRecord, error) {

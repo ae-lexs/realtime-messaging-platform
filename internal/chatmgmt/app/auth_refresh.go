@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"time"
 
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
@@ -52,14 +51,12 @@ func (s *AuthService) RefreshTokens(ctx context.Context, accessToken, refreshTok
 		return nil, domain.ErrDeviceMismatch
 	}
 
-	// 4. Check session expiry.
-	sessionExpiry, err := time.Parse(time.RFC3339, session.ExpiresAt)
-	if err != nil {
-		span.RecordError(err)
-		span.SetStatus(codes.Error, err.Error())
-		return nil, fmt.Errorf("parse session expiry: %w", err)
-	}
-	if s.clock.Now().UTC().After(sessionExpiry) {
+	// 4. Check session expiry in code. This is the ADR-023 invariant, not a
+	//    belt-and-braces check: Firestore's TTL policy deletes an expired
+	//    session only within ~24 hours of expires_at, so the document is still
+	//    readable — and would still refresh — for up to a day after it stopped
+	//    being valid. TTL is garbage collection; this line is the gate.
+	if session.IsExpired(s.clock.Now().UTC()) {
 		authFailuresTotal.Add(ctx, 1, metric.WithAttributes(attribute.String("reason", "session_expired")))
 		span.SetStatus(codes.Error, "session expired")
 		return nil, domain.ErrSessionExpired
@@ -122,8 +119,7 @@ func (s *AuthService) rotateRefreshToken(
 		RefreshTokenHash: newHash,
 		PrevTokenHash:    session.RefreshTokenHash,
 		TokenGeneration:  session.TokenGeneration + 1,
-		ExpiresAt:        newExpiry.Format(time.RFC3339),
-		TTL:              newExpiry.Unix(),
+		ExpiresAt:        newExpiry,
 	}
 
 	if updateErr := s.sessionStore.Update(ctx, sessionID, update); updateErr != nil {
