@@ -1,3 +1,20 @@
+# Chat Management — the auth service (M1.2). The only service so far with a
+# GCP identity, because it is the only one that talks to Firestore and Secret
+# Manager.
+#
+# The annotation below is one half of GKE Workload Identity; the other is the
+# IAM binding in terraform/modules/service-accounts. Both must name the same
+# {namespace}/{name} pair. If they disagree the pod starts normally and every
+# Google API call fails with PermissionDenied and nothing pointing at the
+# cause, so scripts/deploy.sh substitutes the email from a Terraform output
+# rather than leaving it to be typed in two places.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: chatmgmt
+  annotations:
+    iam.gke.io/gcp-service-account: CHATMGMT-SA-PLACEHOLDER
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -12,6 +29,7 @@ spec:
       labels:
         app: chatmgmt
     spec:
+      serviceAccountName: chatmgmt
       securityContext:
         runAsNonRoot: true
         runAsUser: 1000
@@ -23,11 +41,34 @@ spec:
           ports:
             - name: http
               containerPort: 8083
+            - name: grpc
+              containerPort: 9093
           env:
             - name: ENVIRONMENT
               value: dev
             - name: CHATMGMT_HTTP_PORT
               value: "8083"
+            - name: CHATMGMT_GRPC_PORT
+              value: "9093"
+            # Firestore and Secret Manager each resolve their own project; the
+            # database is the named one Terraform provisions, as this project
+            # has no "(default)".
+            - name: FIRESTORE_PROJECT
+              value: PROJECT-ID-PLACEHOLDER
+            - name: FIRESTORE_DATABASE
+              value: FIRESTORE-DATABASE-PLACEHOLDER
+            - name: SECRETS_PROJECT
+              value: PROJECT-ID-PLACEHOLDER
+            - name: REDIS_ADDR
+              value: REDIS-ADDR-PLACEHOLDER
+            # The Memorystore AUTH string, written as a Secret by
+            # scripts/deploy.sh from a Terraform output. Never a literal in
+            # this manifest, never baked into an image.
+            - name: REDIS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: redis-auth
+                  key: password
           resources:
             requests:
               cpu: 250m
@@ -62,3 +103,6 @@ spec:
     - name: http
       port: 80
       targetPort: http
+    - name: grpc
+      port: 9093
+      targetPort: grpc

@@ -20,6 +20,11 @@ variable "services" {
     "artifactregistry.googleapis.com",
     "managedkafka.googleapis.com",
     "firestore.googleapis.com",
+    "redis.googleapis.com",
+    "secretmanager.googleapis.com",
+    # Required for the Private Services Access peering the networking module
+    # reserves and Memorystore (M1.2) and Cloud SQL (M2.1) connect over.
+    "servicenetworking.googleapis.com",
     "cloudresourcemanager.googleapis.com",
     "billingbudgets.googleapis.com",
     "iam.googleapis.com",

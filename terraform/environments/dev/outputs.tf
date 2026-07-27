@@ -28,6 +28,27 @@ output "kafka_cluster_id" {
   value       = module.kafka.cluster_id
 }
 
+output "redis_address" {
+  description = "host:port of the Memorystore instance; ChatMgmt reads it as REDIS_ADDR. Reachable only from inside the VPC."
+  value       = module.memorystore.address
+}
+
+output "redis_auth_string" {
+  description = "Memorystore AUTH string. scripts/deploy.sh reads it into a Kubernetes secret rather than a manifest or an image."
+  value       = module.memorystore.auth_string
+  sensitive   = true
+}
+
+output "chatmgmt_service_account" {
+  description = "ChatMgmt's Google service account email — the value of the KSA's iam.gke.io/gcp-service-account annotation."
+  value       = module.service_accounts.chatmgmt_email
+}
+
+output "jwt_signing_key_id" {
+  description = "Active JWT key ID. scripts/auth-keys.sh fills the secrets named after it."
+  value       = module.secrets.signing_key_id
+}
+
 output "budget_name" {
   description = "The billing budget display name guarding this environment."
   value       = module.budget.budget_name

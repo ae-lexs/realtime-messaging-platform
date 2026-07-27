@@ -40,3 +40,16 @@ output "services_range_name" {
   description = "Secondary range name for GKE service IPs (for ip_allocation_policy)."
   value       = var.services_range_name
 }
+
+output "private_service_access_range_name" {
+  description = "Name of the reserved range for Private Services Access; managed services take reserved_ip_range from it."
+  value       = google_compute_global_address.private_service_access.name
+}
+
+# Consumers must depend on the *connection*, not just the range: the address
+# exists before the peering does, so a Memorystore instance created against the
+# range alone would fail with "no matching peering".
+output "private_service_access_connection_id" {
+  description = "The service networking connection ID, for consumers to depend_on."
+  value       = google_service_networking_connection.private_service_access.id
+}

@@ -48,6 +48,38 @@ module "firestore" {
   depends_on = [module.project_services]
 }
 
+module "service_accounts" {
+  source      = "../../modules/service-accounts"
+  project_id  = var.project_id
+  name_prefix = local.name_prefix
+
+  depends_on = [module.project_services]
+}
+
+# Secret containers only — scripts/auth-keys.sh adds the versions, so no key
+# material reaches Terraform state.
+module "secrets" {
+  source           = "../../modules/secrets"
+  project_id       = var.project_id
+  accessor_members = [module.service_accounts.chatmgmt_member]
+
+  depends_on = [module.project_services]
+}
+
+module "memorystore" {
+  source            = "../../modules/memorystore"
+  project_id        = var.project_id
+  region            = var.region
+  name_prefix       = local.name_prefix
+  network_id        = module.networking.network_id
+  reserved_ip_range = module.networking.private_service_access_range_name
+
+  # The reserved range exists before the peering does; an instance created
+  # against the range alone fails with "no matching peering", so the dependency
+  # is on the connection rather than on the networking module as a whole.
+  depends_on = [module.networking]
+}
+
 module "kafka" {
   source      = "../../modules/kafka"
   project_id  = var.project_id

@@ -39,7 +39,7 @@ module "project_services" {
 | Name | Description | Type | Default | Required |
 |------|-------------|------|---------|:--------:|
 | project\_id | GCP project ID in which to enable the APIs. | `string` | n/a | yes |
-| services | Google Cloud APIs to enable for the platform. | `list(string)` | <pre>[<br/>  "compute.googleapis.com",<br/>  "container.googleapis.com",<br/>  "artifactregistry.googleapis.com",<br/>  "managedkafka.googleapis.com",<br/>  "firestore.googleapis.com",<br/>  "cloudresourcemanager.googleapis.com",<br/>  "billingbudgets.googleapis.com",<br/>  "iam.googleapis.com",<br/>  "logging.googleapis.com",<br/>  "monitoring.googleapis.com"<br/>]</pre> | no |
+| services | Google Cloud APIs to enable for the platform. | `list(string)` | <pre>[<br/>  "compute.googleapis.com",<br/>  "container.googleapis.com",<br/>  "artifactregistry.googleapis.com",<br/>  "managedkafka.googleapis.com",<br/>  "firestore.googleapis.com",<br/>  "redis.googleapis.com",<br/>  "secretmanager.googleapis.com",<br/>  "servicenetworking.googleapis.com",<br/>  "cloudresourcemanager.googleapis.com",<br/>  "billingbudgets.googleapis.com",<br/>  "iam.googleapis.com",<br/>  "logging.googleapis.com",<br/>  "monitoring.googleapis.com"<br/>]</pre> | no |
 
 ## Outputs
 

@@ -50,3 +50,14 @@ variable "services_cidr" {
   type        = string
   default     = "10.30.0.0/20"
 }
+
+variable "private_service_access_prefix_length" {
+  description = "Prefix length of the range reserved for Private Services Access. Google allocates the address itself; /16 is their recommended size and leaves room for Memorystore (M1.2) and Cloud SQL (M2.1) to coexist without a second reservation."
+  type        = number
+  default     = 16
+
+  validation {
+    condition     = var.private_service_access_prefix_length >= 16 && var.private_service_access_prefix_length <= 24
+    error_message = "Private Services Access requires a prefix length between /16 and /24."
+  }
+}
