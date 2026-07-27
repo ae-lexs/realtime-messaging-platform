@@ -168,7 +168,7 @@ Constructor injection in `main.go` wires adapters to application services. No de
 
 ### Shared Packages
 
-`internal/domain/`, `internal/kafka/`, `internal/redis/`, `internal/auth/`, and `internal/observability/` are shared across services. These are infrastructure adapters and cross-cutting concerns that multiple services depend on. They live outside individual service directories to avoid duplication but remain in `internal/` to prevent external import. (The former `internal/dynamo/` was removed in the AWS→GCP migration; its Firestore/Cloud SQL successors arrive with Modules 1–2.)
+`internal/domain/`, `internal/kafka/`, `internal/redis/`, `internal/auth/`, and `internal/observability/` are shared across services. These are infrastructure adapters and cross-cutting concerns that multiple services depend on. They live outside individual service directories to avoid duplication but remain in `internal/` to prevent external import. (The former `internal/dynamo/` was removed in the AWS→GCP migration. Its first successor, **`internal/firestore/`**, landed with M1.1 and holds the identity-tier client, documents and stores; the Cloud SQL successor arrives with Module 2.) The same SDK-isolation rule `internal/dynamo` had applies: **only `internal/firestore/` may import `cloud.google.com/go/firestore`**, enforced by `make check-firestore-boundary` and a CI step rather than by review.
 
 ### Domain Modeling (DDD Lite)
 

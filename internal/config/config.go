@@ -31,8 +31,9 @@ type Config struct {
 	ChatMgmt ChatMgmtConfig `koanf:"chatmgmt"`
 
 	// Infrastructure configurations
-	Kafka KafkaConfig `koanf:"kafka"`
-	Redis RedisConfig `koanf:"redis"`
+	Kafka     KafkaConfig     `koanf:"kafka"`
+	Redis     RedisConfig     `koanf:"redis"`
+	Firestore FirestoreConfig `koanf:"firestore"`
 
 	// OpenTelemetry configuration
 	OTEL OTELConfig `koanf:"otel"`
@@ -75,6 +76,19 @@ type RedisConfig struct {
 	Timeout  time.Duration `koanf:"timeout"`
 }
 
+// FirestoreConfig holds Firestore configuration (ADR-023 identity tier).
+//
+// Keys are single words on purpose: Load maps every underscore in an env var to
+// a key delimiter, so FIRESTORE_PROJECT reaches `firestore.project` while
+// FIRESTORE_PROJECT_ID would become `firestore.project.id` and bind to nothing.
+type FirestoreConfig struct {
+	ProjectID string `koanf:"project"` // Required outside local — env FIRESTORE_PROJECT
+	// Database is the named database Terraform provisions; there is no
+	// "(default)" database in this project.
+	Database string        `koanf:"database"` // Required outside local — env FIRESTORE_DATABASE
+	Timeout  time.Duration `koanf:"timeout"`
+}
+
 // OTELConfig holds OpenTelemetry configuration.
 type OTELConfig struct {
 	Endpoint    string `koanf:"endpoint"` // Empty disables OTLP export
@@ -112,6 +126,9 @@ func defaults() *Config {
 			Addr:    "localhost:6379",
 			DB:      0,
 			Timeout: domain.RedisTimeout,
+		},
+		Firestore: FirestoreConfig{
+			Timeout: domain.FirestoreTimeout,
 		},
 	}
 }
@@ -167,6 +184,14 @@ func validateRequired(cfg *Config) error {
 		}
 		if cfg.Redis.Addr == "" {
 			return fmt.Errorf("%w: redis.addr", domain.ErrConfigRequired)
+		}
+		if cfg.Firestore.ProjectID == "" {
+			return fmt.Errorf("%w: firestore.project", domain.ErrConfigRequired)
+		}
+		// There is no "(default)" database in this project; a missing ID would
+		// silently target one that was never provisioned.
+		if cfg.Firestore.Database == "" {
+			return fmt.Errorf("%w: firestore.database", domain.ErrConfigRequired)
 		}
 	}
 

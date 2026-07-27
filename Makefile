@@ -2,9 +2,9 @@
 # All targets delegate to Docker containers per ADR-014 (PR0-INV-1).
 # No Go, buf, or lint tools are invoked directly on the host.
 
-.PHONY: all dev down logs lint fmt test test-integration proto proto-lint proto-breaking build docker ci-local ci-fast check-no-aws clean help \
+.PHONY: all dev down logs lint fmt test test-integration proto proto-lint proto-breaking build docker ci-local ci-fast check-no-aws check-firestore-boundary clean help \
 	terraform-fmt terraform-fmt-fix terraform-validate terraform-lint terraform-security terraform-docs terraform-docs-check \
-	gcp-auth gcp-bootstrap-state deploy teardown schema-register schema-verify schema-test
+	gcp-auth gcp-bootstrap-state deploy teardown schema-register schema-verify schema-test firestore-up firestore-test firestore-down
 
 # Default target
 all: ci-local
@@ -106,12 +106,20 @@ docker:
 # ============================================================================
 
 ## Run full CI pipeline locally
-ci-local: check-no-aws proto-lint lint test build docker
+ci-local: check-no-aws check-firestore-boundary proto-lint lint test build docker
 	@echo "✅ CI pipeline passed"
 
 ## Run CI pipeline without Docker build (faster)
-ci-fast: check-no-aws proto-lint lint test
+ci-fast: check-no-aws check-firestore-boundary proto-lint lint test
 	@echo "✅ Fast CI passed"
+
+## Gate: only internal/firestore may import the Firestore SDK (CONTRIBUTING §Shared packages)
+check-firestore-boundary:
+	@if grep -rln '"cloud.google.com/go/firestore"' --include="*.go" . | grep -v '^./internal/firestore/' ; then \
+		echo "❌ the Firestore SDK may only be imported by internal/firestore"; exit 1; \
+	else \
+		echo "✅ Firestore SDK confined to internal/firestore"; \
+	fi
 
 ## Gate: no AWS SDK imports may remain (M0.1, ADR-021 substrate migration)
 check-no-aws:
@@ -204,6 +212,18 @@ schema-verify:
 schema-test:
 	./scripts/schema.sh test
 
+## Apply Firestore on its own (skips GKE/Kafka — needs PROJECT_ID, BILLING_ACCOUNT_ID)
+firestore-up:
+	./scripts/firestore.sh apply
+
+## M1.1 gate: Firestore CRUD round-trip against the dev database
+firestore-test:
+	./scripts/firestore.sh test
+
+## Destroy Firestore on its own (the TTL field delete takes ~6 min)
+firestore-down:
+	./scripts/firestore.sh destroy
+
 # ============================================================================
 # Utilities
 # ============================================================================
@@ -260,6 +280,7 @@ help:
 	@echo "  make ci-local         Run full CI pipeline locally"
 	@echo "  make ci-fast          Run fast CI (no Docker build)"
 	@echo "  make check-no-aws     Assert no AWS SDK imports remain"
+	@echo "  make check-firestore-boundary  Assert the Firestore SDK stays in internal/firestore"
 	@echo ""
 	@echo "Terraform:"
 	@echo "  make terraform-fmt      Check Terraform formatting"
@@ -277,6 +298,9 @@ help:
 	@echo "  make schema-register     Create the schema registry + publish events/v1"
 	@echo "  make schema-verify       Show the registered event subjects"
 	@echo "  make schema-test         Live encode/register/decode round-trip"
+	@echo "  make firestore-up        Apply Firestore alone (no GKE/Kafka)"
+	@echo "  make firestore-test      Live Firestore CRUD round-trip (M1.1 gate)"
+	@echo "  make firestore-down      Destroy Firestore alone"
 	@echo ""
 	@echo "Utilities:"
 	@echo "  make toolbox CMD=...  Run command in toolbox"

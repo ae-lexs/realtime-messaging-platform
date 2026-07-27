@@ -19,6 +19,7 @@ variable "services" {
     "container.googleapis.com",
     "artifactregistry.googleapis.com",
     "managedkafka.googleapis.com",
+    "firestore.googleapis.com",
     "cloudresourcemanager.googleapis.com",
     "billingbudgets.googleapis.com",
     "iam.googleapis.com",
