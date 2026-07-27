@@ -15,12 +15,13 @@ import (
 	"github.com/aelexs/realtime-messaging-platform/internal/domain"
 )
 
-// Secret ID conventions (ADR-015 Appendix F). AWS held these across Secrets
-// Manager and SSM under a path hierarchy; Secret Manager IDs are flat, so the
-// path segments become name components.
-// These are secret *names*, never secret values — the material they address
-// lives in Secret Manager and is fetched at runtime. gosec's G101 heuristic
-// cannot tell the two apart, hence the suppressions.
+// Secret IDs (ADR-015 Appendix F). GCP Secret Manager's namespace is flat — an
+// ID is a plain name, not a path — so the active key is named by
+// jwt-current-key-id and its key pair is named after whatever that resolves to.
+//
+// These are secret *names*, never secret values: the material they address is
+// fetched at runtime. gosec's G101 heuristic cannot tell the two apart, hence
+// the suppressions.
 const (
 	// SecretCurrentKeyID names the secret holding the active signing key's ID.
 	SecretCurrentKeyID = "jwt-current-key-id" //nolint:gosec // a secret's name, not its value
@@ -80,7 +81,8 @@ type RemoteKeyStoreConfig struct {
 // honest instead of paying for it in IAM.
 //
 // Scope note, unchanged: §3.2's unknown-`kid` immediate refresh with a
-// 30-second cooldown is not implemented, and was not implemented on AWS either.
+// 30-second cooldown is not implemented, and never has been — the v1 build
+// shipped only the KeyStore interface and StaticKeyStore.
 type RemoteKeyStore struct {
 	fetcher  SecretFetcher
 	interval time.Duration
