@@ -10,6 +10,15 @@ const (
 	CollectionChats       = "chats"
 	CollectionMemberships = "memberships"
 	CollectionSessions    = "sessions"
+
+	// CollectionOTPRequests holds pending and recently-consumed OTPs
+	// (ADR-023 v1.2, ADR-015 §1.1). Keyed by the SHA-256 phone hash.
+	CollectionOTPRequests = "otp_requests"
+
+	// CollectionPhoneIndex holds one document per claimed phone number — the
+	// uniqueness sentinel, not a lookup index despite the name it inherits
+	// from ADR-015 §5.1. Reads by phone go to users.phone_number.
+	CollectionPhoneIndex = "phone_index"
 )
 
 const (

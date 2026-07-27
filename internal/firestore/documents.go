@@ -78,6 +78,69 @@ type SessionDoc struct {
 	ExpiresAt time.Time `firestore:"expires_at"`
 }
 
+// OTPRequestDoc is a document in `otp_requests` (ADR-023 v1.2, ADR-015 §1.1).
+// Doc ID is the SHA-256 hash of the E.164 number: this collection is
+// high-churn and short-lived, and holding raw phone numbers here would widen
+// the blast radius of a leak for no access-pattern gain — the hash is an exact
+// match key, which is the only pattern the collection serves.
+//
+// The OTP itself is stored in no form at all. OTPMAC verifies a candidate;
+// ADR-015 v1.1 dropped the KMS-encrypted copy that existed only so a repeat
+// request could re-send the same code.
+type OTPRequestDoc struct {
+	ID string `firestore:"-"`
+
+	// OTPMAC is HMAC-SHA256(pepper, otp || phone_hash || expires_at).
+	OTPMAC string `firestore:"otp_mac"`
+
+	// Status is domain.OTPStatusPending or domain.OTPStatusVerified.
+	Status string `firestore:"status"`
+
+	// AttemptCount is verification attempts against this OTP. Incremented
+	// server-side so concurrent wrong guesses cannot both read the same value
+	// and lose an increment between them.
+	AttemptCount int `firestore:"attempt_count"`
+
+	CreatedAt time.Time `firestore:"created_at"`
+
+	// ExpiresAt carries the collection's TTL policy and MUST be stored
+	// truncated to the second. auth.ComputeOTPMAC binds the MAC to this
+	// value's RFC3339 rendering, and Firestore stores timestamps at
+	// microsecond precision: a sub-second component would survive the write
+	// and not the read, changing the MAC input and failing every subsequent
+	// verification. Truncating makes the round-trip exact. NewOTPRequestDoc
+	// applies it; do not construct this struct by hand.
+	ExpiresAt time.Time `firestore:"expires_at"`
+}
+
+// NewOTPRequestDoc builds a pending OTP record, applying the second-truncation
+// the MAC depends on (see OTPRequestDoc.ExpiresAt).
+func NewOTPRequestDoc(phoneHash, otpMAC string, createdAt, expiresAt time.Time) OTPRequestDoc {
+	return OTPRequestDoc{
+		ID:           phoneHash,
+		OTPMAC:       otpMAC,
+		Status:       domain.OTPStatusPending,
+		AttemptCount: 0,
+		CreatedAt:    createdAt.UTC().Truncate(time.Second),
+		ExpiresAt:    expiresAt.UTC().Truncate(time.Second),
+	}
+}
+
+// PhoneIndexDoc is a document in `phone_index` (ADR-023 v1.2) — the sentinel
+// that makes "one user per phone number" true under concurrency. Doc ID is the
+// SHA-256 phone hash; creating it with tx.Create is the Firestore equivalent of
+// the attribute_not_exists condition ADR-015 §5.1 used on DynamoDB.
+//
+// It is deliberately not a read path: FindByPhone queries users.phone_number,
+// exactly as ADR-023's access-pattern table specifies. This document exists to
+// be contended for, not to be looked up.
+type PhoneIndexDoc struct {
+	ID string `firestore:"-"`
+
+	UserID    string    `firestore:"user_id"`
+	CreatedAt time.Time `firestore:"created_at"`
+}
+
 // Validate reports whether the document can be written. Each Validate covers
 // what its collection's write actually requires, so the checks are testable
 // without a Firestore connection and are enforced in one place.
@@ -123,6 +186,51 @@ func (d SessionDoc) Validate() error {
 		// A zero expires_at is never collected by the TTL policy and never
 		// refused by IsExpired — a session that would live forever, silently.
 		return fmt.Errorf("firestore: session %s has no expires_at", d.ID)
+	}
+	return nil
+}
+
+// Validate reports whether the OTP request can be written.
+func (d OTPRequestDoc) Validate() error {
+	if d.ID == "" {
+		return fmt.Errorf("firestore: OTP request document ID is required")
+	}
+	if d.OTPMAC == "" {
+		// Without a MAC nothing can ever verify against this record, but the
+		// conditional write would still refuse a fresh OTP for the phone
+		// number until it expired.
+		return fmt.Errorf("firestore: OTP request %s has no MAC", d.ID)
+	}
+	if d.Status != domain.OTPStatusPending && d.Status != domain.OTPStatusVerified {
+		return fmt.Errorf("firestore: OTP request %s has invalid status %q", d.ID, d.Status)
+	}
+	if d.ExpiresAt.IsZero() {
+		return fmt.Errorf("firestore: OTP request %s has no expires_at", d.ID)
+	}
+	return nil
+}
+
+// IsExpired reports whether the OTP is past its expiry at now.
+//
+// This is the correctness gate, and it matters more here than it does for
+// sessions: an OTP is valid for five minutes, while Firestore's TTL collects
+// the document within ~24 hours of expires_at. For nearly a full day the
+// record is expired but still readable, so nothing may infer validity from the
+// document's existence — neither verification nor the conditional write in
+// OTPRequests.Create.
+func (d OTPRequestDoc) IsExpired(now time.Time) bool {
+	return !now.Before(d.ExpiresAt)
+}
+
+// Validate reports whether the phone-index sentinel can be written.
+func (d PhoneIndexDoc) Validate() error {
+	if d.ID == "" {
+		return fmt.Errorf("firestore: phone index document ID is required")
+	}
+	if d.UserID == "" {
+		// A sentinel with no user_id would claim a phone number for nobody and
+		// permanently block its registration.
+		return fmt.Errorf("firestore: phone index %s has no user ID", d.ID)
 	}
 	return nil
 }

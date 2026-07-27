@@ -50,6 +50,12 @@ const (
 	MaxOTPVerifyAttempts        = 5                // Max verification attempts before lockout
 	OTPLockoutDuration          = 15 * time.Minute // Lockout duration after max attempts
 
+	// OTP record status (ADR-015 §1.3 state machine). A record stays
+	// "verified" rather than being deleted so a replayed OTP is refused as
+	// already-used instead of read as never-issued.
+	OTPStatusPending  = "pending"
+	OTPStatusVerified = "verified"
+
 	// Token configuration (ADR-015)
 	AccessTokenLifetime  = 1 * time.Hour       // JWT access token validity
 	RefreshTokenLifetime = 30 * 24 * time.Hour // Refresh token validity (30 days)

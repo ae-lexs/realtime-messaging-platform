@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
 	"cloud.google.com/go/firestore"
 	"google.golang.org/api/iterator"
@@ -302,6 +303,105 @@ func (s *Sessions) Delete(ctx context.Context, sessionID domain.SessionID) error
 		return fmt.Errorf("firestore: delete session %s: %w", sessionID.String(), err)
 	}
 	return nil
+}
+
+// OTPRequests reads and writes the `otp_requests` collection. Callers must
+// treat OTPRequestDoc.IsExpired as the expiry gate; the TTL policy only
+// collects garbage, and for a five-minute credential it lags by up to a day
+// (ADR-023 v1.2).
+type OTPRequests struct{ client *Client }
+
+// NewOTPRequests returns the OTP request store.
+func NewOTPRequests(client *Client) *OTPRequests { return &OTPRequests{client: client} }
+
+// Get returns the OTP request for a phone hash, or domain.ErrNotFound. An
+// expired record is returned normally — expiry is the caller's check.
+func (s *OTPRequests) Get(ctx context.Context, phoneHash string) (OTPRequestDoc, error) {
+	ctx, cancel := s.client.withTimeout(ctx)
+	defer cancel()
+
+	snapshot, err := s.client.FS.Collection(CollectionOTPRequests).Doc(phoneHash).Get(ctx)
+	if err != nil {
+		return OTPRequestDoc{}, wrapErr("get OTP request", phoneHash, err)
+	}
+
+	return otpRequestFrom(snapshot)
+}
+
+// Create issues an OTP, refusing to overwrite one that is still live: it
+// returns domain.ErrAlreadyExists when a record exists and has not yet passed
+// expires_at, which is ADR-015 §1.2's ConditionalCheckFailed branch.
+//
+// This is a transaction rather than a plain Create() for one reason, and it is
+// not a stylistic one. Firestore's Create() fails with AlreadyExists whenever
+// the document is present, and TTL removes an expired OTP only within ~24
+// hours of its expiry — so a bare Create() would refuse every new OTP for
+// almost a full day after one five-minute code lapsed, locking the phone
+// number out. The transaction asks the question that actually matters, "is
+// there a *live* OTP?", and Firestore's optimistic-concurrency retry makes the
+// read-then-write atomic against a second request for the same number.
+func (s *OTPRequests) Create(ctx context.Context, doc OTPRequestDoc, now time.Time) error {
+	ctx, cancel := s.client.withTimeout(ctx)
+	defer cancel()
+
+	if err := doc.Validate(); err != nil {
+		return err
+	}
+
+	ref := s.client.FS.Collection(CollectionOTPRequests).Doc(doc.ID)
+
+	return s.client.FS.RunTransaction(ctx, func(_ context.Context, tx *firestore.Transaction) error {
+		snapshot, getErr := tx.Get(ref)
+		switch {
+		case status.Code(getErr) == codes.NotFound:
+			// No record at all — the common first-request path.
+		case getErr != nil:
+			return fmt.Errorf("firestore: read OTP request %s: %w", doc.ID, getErr)
+		default:
+			existing, decodeErr := otpRequestFrom(snapshot)
+			if decodeErr != nil {
+				return decodeErr
+			}
+			if !existing.IsExpired(now) {
+				return fmt.Errorf("firestore: OTP request %s is still live: %w", doc.ID, domain.ErrAlreadyExists)
+			}
+			// Expired but not yet collected: overwriting is correct, and
+			// resets attempt_count along with the code.
+		}
+
+		if setErr := tx.Set(ref, doc); setErr != nil {
+			return fmt.Errorf("firestore: set OTP request %s: %w", doc.ID, setErr)
+		}
+		return nil
+	})
+}
+
+// IncrementAttempts records a failed verification (ADR-015 §1.4).
+//
+// firestore.Increment is a server-side atomic operation, not a read-modify-
+// write: two wrong guesses arriving together both count, where a
+// read-then-write would let one overwrite the other and silently extend the
+// attacker's budget past MaxOTPVerifyAttempts.
+func (s *OTPRequests) IncrementAttempts(ctx context.Context, phoneHash string) error {
+	ctx, cancel := s.client.withTimeout(ctx)
+	defer cancel()
+
+	_, err := s.client.FS.Collection(CollectionOTPRequests).Doc(phoneHash).Update(ctx, []firestore.Update{
+		{Path: "attempt_count", Value: firestore.Increment(1)},
+	})
+	if err != nil {
+		return wrapErr("increment OTP attempts", phoneHash, err)
+	}
+	return nil
+}
+
+func otpRequestFrom(snapshot *firestore.DocumentSnapshot) (OTPRequestDoc, error) {
+	var doc OTPRequestDoc
+	if err := snapshot.DataTo(&doc); err != nil {
+		return OTPRequestDoc{}, fmt.Errorf("firestore: decode OTP request %s: %w", snapshot.Ref.ID, err)
+	}
+	doc.ID = snapshot.Ref.ID
+	return doc, nil
 }
 
 func membershipFrom(snapshot *firestore.DocumentSnapshot) (MembershipDoc, error) {
