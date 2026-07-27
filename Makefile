@@ -4,7 +4,8 @@
 
 .PHONY: all dev down logs lint fmt test test-integration proto proto-lint proto-breaking build docker ci-local ci-fast check-no-aws check-firestore-boundary check-secretmanager-boundary clean help \
 	terraform-fmt terraform-fmt-fix terraform-validate terraform-lint terraform-security terraform-docs terraform-docs-check \
-	gcp-auth gcp-bootstrap-state deploy teardown schema-register schema-verify schema-test firestore-up firestore-test firestore-down
+	gcp-auth gcp-bootstrap-state deploy teardown schema-register schema-verify schema-test firestore-up firestore-test firestore-down \
+	auth-up auth-test auth-flow auth-down
 
 # Default target
 all: ci-local
@@ -231,6 +232,22 @@ firestore-test:
 ## Destroy Firestore on its own (the TTL field delete takes ~6 min)
 firestore-down:
 	./scripts/firestore.sh destroy
+
+## Apply Firestore + auth secrets and fill the keys (needs PROJECT_ID, BILLING_ACCOUNT_ID)
+auth-up:
+	./scripts/auth.sh apply
+
+## M1.2 gate, part 1: Firestore auth semantics (conditional writes, transactions, concurrency)
+auth-test:
+	./scripts/auth.sh store
+
+## M1.2 gate, part 2: full OTP -> token -> refresh -> logout flow against the deployed pod (needs make deploy)
+auth-flow:
+	./scripts/auth.sh flow
+
+## Destroy Firestore + auth secrets (the TTL field deletes take ~6 min)
+auth-down:
+	./scripts/auth.sh destroy
 
 # ============================================================================
 # Utilities

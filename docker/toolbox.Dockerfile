@@ -14,7 +14,8 @@ FROM golang:1.26-bookworm AS base
 ARG TERRAFORM_VERSION=1.15.8
 
 # Base OS tooling. gnupg/apt-transport-https are needed to add the Google and
-# HashiCorp apt repositories; python3 is a gcloud runtime dependency.
+# HashiCorp apt repositories; python3 is a gcloud runtime dependency; jq parses
+# the JSON the auth flow gate reads back from the service and out of pod logs.
 RUN apt-get update && apt-get install -y --no-install-recommends \
         ca-certificates \
         curl \
@@ -24,6 +25,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         apt-transport-https \
         unzip \
         python3 \
+        jq \
     && rm -rf /var/lib/apt/lists/*
 
 # Google Cloud CLI (gcloud) — via the official apt repository.
