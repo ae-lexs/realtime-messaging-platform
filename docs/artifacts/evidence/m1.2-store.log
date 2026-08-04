@@ -1,0 +1,127 @@
+# m1.2-store — captured gate output
+# captured:  2026-08-04T18:18:43Z
+# commit:    cdf3c09bc56a60e56b0864369ae7b72a42cc8bb5
+# database:  messaging-dev (us-central1)
+# project:   redacted
+#
+# Re-running requires re-provisioning — the infrastructure this ran
+# against was destroyed at end of session. See docs/artifacts/README.md.
+
+ Container realtime-messaging-platform-toolbox-run-827029f2d684 Creating 
+ Container realtime-messaging-platform-toolbox-run-827029f2d684 Created 
+=== RUN   TestOTPCreateRefusesALiveOTPButNotAnExpiredOne
+--- PASS: TestOTPCreateRefusesALiveOTPButNotAnExpiredOne (2.30s)
+=== RUN   TestOTPCreateReplacesAConsumedOTP
+--- PASS: TestOTPCreateReplacesAConsumedOTP (2.09s)
+=== RUN   TestOTPExpiresAtSurvivesTheRoundTripExactly
+--- PASS: TestOTPExpiresAtSurvivesTheRoundTripExactly (0.97s)
+=== RUN   TestOTPIncrementAttemptsIsAtomic
+--- PASS: TestOTPIncrementAttemptsIsAtomic (1.26s)
+=== RUN   TestRegisterCommitsEverythingOrNothing
+=== RUN   TestRegisterCommitsEverythingOrNothing/a_valid_OTP_commits_the_whole_write_set
+=== RUN   TestRegisterCommitsEverythingOrNothing/a_consumed_OTP_cannot_be_replayed,_and_nothing_is_written
+=== RUN   TestRegisterCommitsEverythingOrNothing/an_expired_OTP_is_refused_even_though_the_document_still_exists
+--- PASS: TestRegisterCommitsEverythingOrNothing (3.28s)
+    --- PASS: TestRegisterCommitsEverythingOrNothing/a_valid_OTP_commits_the_whole_write_set (1.76s)
+    --- PASS: TestRegisterCommitsEverythingOrNothing/a_consumed_OTP_cannot_be_replayed,_and_nothing_is_written (1.00s)
+    --- PASS: TestRegisterCommitsEverythingOrNothing/an_expired_OTP_is_refused_even_though_the_document_still_exists (0.52s)
+=== RUN   TestConcurrentRegistrationYieldsExactlyOneUser
+--- PASS: TestConcurrentRegistrationYieldsExactlyOneUser (2.91s)
+=== RUN   TestSessionRotationIsSingleUse
+--- PASS: TestSessionRotationIsSingleUse (1.79s)
+=== RUN   TestMembershipDocIDIsDeterministic
+--- PASS: TestMembershipDocIDIsDeterministic (0.00s)
+=== RUN   TestMembershipDocIDIsOrderSensitive
+--- PASS: TestMembershipDocIDIsOrderSensitive (0.00s)
+=== RUN   TestMembershipDocIDFitsBound
+--- PASS: TestMembershipDocIDFitsBound (0.00s)
+=== RUN   TestDocumentFieldNamesMatchTheSchema
+=== RUN   TestDocumentFieldNamesMatchTheSchema/users
+=== RUN   TestDocumentFieldNamesMatchTheSchema/chats
+=== RUN   TestDocumentFieldNamesMatchTheSchema/memberships
+=== RUN   TestDocumentFieldNamesMatchTheSchema/sessions
+=== RUN   TestDocumentFieldNamesMatchTheSchema/otp_requests
+=== RUN   TestDocumentFieldNamesMatchTheSchema/phone_index
+--- PASS: TestDocumentFieldNamesMatchTheSchema (0.00s)
+    --- PASS: TestDocumentFieldNamesMatchTheSchema/users (0.00s)
+    --- PASS: TestDocumentFieldNamesMatchTheSchema/chats (0.00s)
+    --- PASS: TestDocumentFieldNamesMatchTheSchema/memberships (0.00s)
+    --- PASS: TestDocumentFieldNamesMatchTheSchema/sessions (0.00s)
+    --- PASS: TestDocumentFieldNamesMatchTheSchema/otp_requests (0.00s)
+    --- PASS: TestDocumentFieldNamesMatchTheSchema/phone_index (0.00s)
+=== RUN   TestSessionExpiresAtIsATimestamp
+--- PASS: TestSessionExpiresAtIsATimestamp (0.00s)
+=== RUN   TestOTPRequestExpiresAtIsATimestamp
+--- PASS: TestOTPRequestExpiresAtIsATimestamp (0.00s)
+=== RUN   TestNewOTPRequestDocTruncatesToTheSecond
+--- PASS: TestNewOTPRequestDocTruncatesToTheSecond (0.00s)
+=== RUN   TestNewOTPRequestDocNormalizesToUTC
+--- PASS: TestNewOTPRequestDocNormalizesToUTC (0.00s)
+=== RUN   TestNewOTPRequestDocStartsPending
+--- PASS: TestNewOTPRequestDocStartsPending (0.00s)
+=== RUN   TestOTPRequestIsExpired
+=== RUN   TestOTPRequestIsExpired/within_the_five-minute_window
+=== RUN   TestOTPRequestIsExpired/exactly_at_expiry
+=== RUN   TestOTPRequestIsExpired/hours_after_expiry,_still_readable
+--- PASS: TestOTPRequestIsExpired (0.00s)
+    --- PASS: TestOTPRequestIsExpired/within_the_five-minute_window (0.00s)
+    --- PASS: TestOTPRequestIsExpired/exactly_at_expiry (0.00s)
+    --- PASS: TestOTPRequestIsExpired/hours_after_expiry,_still_readable (0.00s)
+=== RUN   TestSessionIsExpired
+=== RUN   TestSessionIsExpired/well_before_expiry
+=== RUN   TestSessionIsExpired/one_nanosecond_before
+=== RUN   TestSessionIsExpired/exactly_at_expiry
+=== RUN   TestSessionIsExpired/after_expiry
+=== RUN   TestSessionIsExpired/a_day_after_expiry,_still_readable
+--- PASS: TestSessionIsExpired (0.00s)
+    --- PASS: TestSessionIsExpired/well_before_expiry (0.00s)
+    --- PASS: TestSessionIsExpired/one_nanosecond_before (0.00s)
+    --- PASS: TestSessionIsExpired/exactly_at_expiry (0.00s)
+    --- PASS: TestSessionIsExpired/after_expiry (0.00s)
+    --- PASS: TestSessionIsExpired/a_day_after_expiry,_still_readable (0.00s)
+=== RUN   TestUsersRoundTrip
+--- PASS: TestUsersRoundTrip (1.12s)
+=== RUN   TestChatsRoundTrip
+--- PASS: TestChatsRoundTrip (0.96s)
+=== RUN   TestMembershipsRoundTrip
+--- PASS: TestMembershipsRoundTrip (1.63s)
+=== RUN   TestSessionsRoundTrip
+--- PASS: TestSessionsRoundTrip (1.48s)
+=== RUN   TestUserDocValidate
+--- PASS: TestUserDocValidate (0.00s)
+=== RUN   TestChatDocValidate
+--- PASS: TestChatDocValidate (0.00s)
+=== RUN   TestSessionDocValidate
+=== RUN   TestSessionDocValidate/no_ID
+=== RUN   TestSessionDocValidate/no_expiry
+=== RUN   TestSessionDocValidate/valid
+--- PASS: TestSessionDocValidate (0.00s)
+    --- PASS: TestSessionDocValidate/no_ID (0.00s)
+    --- PASS: TestSessionDocValidate/no_expiry (0.00s)
+    --- PASS: TestSessionDocValidate/valid (0.00s)
+=== RUN   TestOTPRequestDocValidate
+=== RUN   TestOTPRequestDocValidate/no_ID
+=== RUN   TestOTPRequestDocValidate/no_MAC
+=== RUN   TestOTPRequestDocValidate/status_outside_the_state_machine
+=== RUN   TestOTPRequestDocValidate/no_expiry
+=== RUN   TestOTPRequestDocValidate/valid
+--- PASS: TestOTPRequestDocValidate (0.00s)
+    --- PASS: TestOTPRequestDocValidate/no_ID (0.00s)
+    --- PASS: TestOTPRequestDocValidate/no_MAC (0.00s)
+    --- PASS: TestOTPRequestDocValidate/status_outside_the_state_machine (0.00s)
+    --- PASS: TestOTPRequestDocValidate/no_expiry (0.00s)
+    --- PASS: TestOTPRequestDocValidate/valid (0.00s)
+=== RUN   TestPhoneIndexDocValidate
+--- PASS: TestPhoneIndexDocValidate (0.00s)
+=== RUN   TestMembershipDocID
+=== RUN   TestMembershipDocID/derives_the_ID_from_the_fields
+=== RUN   TestMembershipDocID/rejects_identifiers_that_do_not_parse
+=== RUN   TestMembershipDocID/rejects_identifiers_that_do_not_parse/chat_ID_not_a_UUID
+=== RUN   TestMembershipDocID/rejects_identifiers_that_do_not_parse/user_ID_empty
+--- PASS: TestMembershipDocID (0.00s)
+    --- PASS: TestMembershipDocID/derives_the_ID_from_the_fields (0.00s)
+    --- PASS: TestMembershipDocID/rejects_identifiers_that_do_not_parse (0.00s)
+        --- PASS: TestMembershipDocID/rejects_identifiers_that_do_not_parse/chat_ID_not_a_UUID (0.00s)
+        --- PASS: TestMembershipDocID/rejects_identifiers_that_do_not_parse/user_ID_empty (0.00s)
+PASS
+ok  	github.com/aelexs/realtime-messaging-platform/internal/firestore	20.813s

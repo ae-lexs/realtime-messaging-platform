@@ -8,7 +8,7 @@ Each file carries a provenance header: capture time, the commit the code was at,
 
 A log here is what upgrades a claim in the ledger from *Implemented* to *Measured-and-logged*. See [../README.md](../README.md) for the status vocabulary.
 
-| File | Gate | Claims it evidences |
-|---|---|---|
-| `m1.2-store.log` | `make auth-test` — Firestore auth semantics | [RTM-04](../RTM-04.md) C2, C5 — *pending capture; M1.2 ran before this mechanism existed* |
-| `m1.2-flow.log` | `make auth-flow` — full OTP → token → refresh → logout against the deployed pod | *pending capture* |
+| File | Gate | Captured | Claims it evidences |
+|---|---|---|---|
+| `m1.2-store.log` | `make auth-test` — Firestore auth semantics | 2026-08-04 | [RTM-04](../RTM-04.md) C2, C5 — ten tests, all PASS, 20.8s against `messaging-dev` |
+| `m1.2-flow.log` | `make auth-flow` — full OTP → token → refresh → logout against the deployed pod | *pending* — needs a full `make deploy` (GKE + Memorystore), unlike the store half |

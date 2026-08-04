@@ -35,7 +35,7 @@ A document whose ID is derived from the contended value — `phone_index/{sha256
 | **Pinned** | [`internal/firestore/auth_tx.go#L83-L112`](https://github.com/ae-lexs/realtime-messaging-platform/blob/a74aaed4a9ddd10ecb195a2a61dec9ec801c7f71/internal/firestore/auth_tx.go#L83-L112) — `Register`, the four-document write set<br>[`internal/firestore/documents.go#L139-L144`](https://github.com/ae-lexs/realtime-messaging-platform/blob/a74aaed4a9ddd10ecb195a2a61dec9ec801c7f71/internal/firestore/documents.go#L139-L144) — `PhoneIndexDoc`, written and never read<br>[`internal/firestore/collections.go#L18-L21`](https://github.com/ae-lexs/realtime-messaging-platform/blob/a74aaed4a9ddd10ecb195a2a61dec9ec801c7f71/internal/firestore/collections.go#L18-L21) — the collection, and why the name it inherits is misleading |
 | **Living** | `internal/firestore/auth_tx.go` → `AuthTx.Register` |
 | **Proof** | [`internal/firestore/auth_integration_test.go#L294-L351`](https://github.com/ae-lexs/realtime-messaging-platform/blob/a74aaed4a9ddd10ecb195a2a61dec9ec801c7f71/internal/firestore/auth_integration_test.go#L294-L351) — `TestConcurrentRegistrationYieldsExactlyOneUser`, `racers = 5`, build tag `integration`, run against a live database via `make auth-test` |
-| **Captured run** | ⏳ `evidence/m1.2-store.log` — pending the next live gate run; see *Evidence gap* below |
+| **Captured run** | [`evidence/m1.2-store.log`](evidence/m1.2-store.log) — `--- PASS: TestConcurrentRegistrationYieldsExactlyOneUser (2.91s)`, captured 2026-08-04 against `messaging-dev` in `us-central1`, code at `cdf3c09` |
 
 ### RTM-04-C3 — The same construction generalises to direct-pair uniqueness
 
@@ -77,20 +77,20 @@ Firestore deletes expired documents within roughly 24 hours of the timestamp, no
 | **Pinned** | [`internal/firestore/stores.go#L414-L449`](https://github.com/ae-lexs/realtime-messaging-platform/blob/a74aaed4a9ddd10ecb195a2a61dec9ec801c7f71/internal/firestore/stores.go#L414-L449) — `OTPRequests.Create` as a transaction, with the reasoning for each disjunct<br>[`internal/firestore/documents.go#L223-L225`](https://github.com/ae-lexs/realtime-messaging-platform/blob/a74aaed4a9ddd10ecb195a2a61dec9ec801c7f71/internal/firestore/documents.go#L223-L225) — `OTPRequestDoc.IsExpired`, the gate TTL is not |
 | **Living** | `internal/firestore/stores.go` → `OTPRequests.Create` |
 | **Proof** | [`internal/firestore/auth_integration_test.go#L47-L91`](https://github.com/ae-lexs/realtime-messaging-platform/blob/a74aaed4a9ddd10ecb195a2a61dec9ec801c7f71/internal/firestore/auth_integration_test.go#L47-L91) — `TestOTPCreateRefusesALiveOTPButNotAnExpiredOne`, whose second half is precisely the lockout case |
+| **Captured run** | [`evidence/m1.2-store.log`](evidence/m1.2-store.log) — `--- PASS: TestOTPCreateRefusesALiveOTPButNotAnExpiredOne (2.30s)`, with `TestOTPCreateReplacesAConsumedOTP (2.09s)` covering the third disjunct that was missing before v1.2 |
 
 ---
 
-## Evidence gap — stated rather than papered over
+## Evidence provenance
 
-Module 1.2's gates ran live, and their output was **not captured**, because the capture mechanism landed with this ledger and not before. The Firestore database they ran against was destroyed at end of session, so those specific runs cannot be reproduced.
+Module 1.2's original gates ran in July against a database that was destroyed at end of session, and their output was not captured — the capture mechanism landed with this ledger, not before. Rather than cite those lost runs, **the store gate was re-run on 2026-08-04** against freshly provisioned infrastructure, with capture in place, and that run is the evidence behind C2 and C5.
 
-What this means for each claim:
+Two things follow, and both are properties of the deploy-and-destroy discipline rather than accidents:
 
-- **C2 and C5** cite test source and the merged PR, which show what was asserted. They do not yet carry a log showing it passing against live infrastructure.
-- Re-running the store half is cheap — `make auth-up && make auth-test && make auth-down` targets Firestore alone, roughly two minutes of provisioning, no GKE and no Kafka.
-- From Module 1.3 onward, `scripts/auth.sh` writes `evidence/` automatically, so this gap does not recur.
+- The captured log's provenance header names commit `cdf3c09` — the ledger branch, not the M1.2 merge — because that is the code that actually executed. The claims are about `internal/firestore`, which is byte-identical between the two; the capture mechanism is the only difference.
+- The infrastructure is destroyed again. This log is not a convenience copy of something re-runnable; it is the record, and re-running requires re-provisioning (~2 minutes, Firestore and secrets only).
 
-The essay must not describe C2 as measured-and-logged until that run exists. It may describe it as measured, because it was — the gap is in the durability of the record, not in whether the gate ran.
+Nine of the ten tests in that file exercise live Firestore; the remaining pair are pure doc-ID functions that run without a database. The whole gate took 20.8s of wall clock, which is itself evidence it was not served from Go's test cache — `-count=1` in `scripts/auth.sh` forbids that, for exactly this reason.
 
 ## Reproducing these claims
 
@@ -110,4 +110,5 @@ PROJECT_ID=<your-project> make auth-down
 
 | Version | Date | Changes |
 |---|---|---|
+| v0.2 | 2026-08-04 | Evidence gap closed. The store gate was re-provisioned and re-run with capture in place; C2 and C5 now cite `evidence/m1.2-store.log` rather than test source alone, and the *Evidence gap* section became *Evidence provenance*, recording why the log's header names the ledger branch instead of the M1.2 merge. Infrastructure destroyed after the run. |
 | v0.1 | 2026-08-04 | Initial ledger for the *Lock What Isn't There* draft. Five claims: the phantom (C1), the measured five-racer uniqueness gate (C2), the direct-chat generalisation as an explicit design claim (C3), the unreachable race recovery and the over-permissive fake (C4), and TTL-as-garbage-collection with the missing third disjunct (C5). Evidence gap for M1.2's live runs recorded rather than hidden; capture lands with this commit for M1.3 onward. |
