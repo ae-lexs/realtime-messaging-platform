@@ -37,6 +37,41 @@ DEVICE="${AUTH_TEST_DEVICE:-gate-device-1}"
 
 tb() { docker compose run --rm -T toolbox "$@"; }
 
+EVIDENCE_DIR="docs/artifacts/evidence"
+
+# capture <name> <command...> — run a gate and keep its output.
+#
+# The infrastructure a gate runs against does not survive the session: teardown
+# is mandatory (ADR-021), so a run cannot be repeated later to satisfy a reader,
+# and the log is the only durable evidence that it happened. Output is written
+# as well as shown, and committed deliberately — it appears in `git status`
+# rather than being staged by a script.
+#
+# The project ID is redacted because these logs are published (docs/artifacts).
+# `set -o pipefail` is already in force, so a failing gate still fails the
+# script despite the pipe.
+capture() {
+  local name="$1"
+  shift
+
+  mkdir -p "${EVIDENCE_DIR}"
+  local out="${EVIDENCE_DIR}/${name}.log"
+
+  {
+    echo "# ${name} — captured gate output"
+    echo "# captured:  $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+    echo "# commit:    $(git rev-parse HEAD)"
+    echo "# database:  ${DATABASE} (${REGION})"
+    echo "# project:   redacted"
+    echo "#"
+    echo "# Re-running requires re-provisioning — the infrastructure this ran"
+    echo "# against was destroyed at end of session. See docs/artifacts/README.md."
+    echo
+  } >"${out}"
+
+  "$@" 2>&1 | sed -e "s/${PROJECT_ID}/PROJECT_ID/g" | tee -a "${out}"
+}
+
 terraform_cmd() {
   : "${BILLING_ACCOUNT_ID:?set BILLING_ACCOUNT_ID}"
 
@@ -64,7 +99,8 @@ case "${1:-}" in
     echo "==> Firestore auth semantics against ${PROJECT_ID}/${DATABASE} (${REGION})"
     # -count=1 disables Go's test cache: a cached "ok" would report success
     # without touching Firestore, which is worthless for a live gate.
-    docker compose run --rm -T \
+    capture m1.2-store \
+      docker compose run --rm -T \
       -e FIRESTORE_PROJECT="${PROJECT_ID}" \
       -e FIRESTORE_DATABASE="${DATABASE}" \
       toolbox go test -race -count=1 -tags=integration -v ./internal/firestore/...
@@ -74,7 +110,8 @@ case "${1:-}" in
     echo "==> full auth flow against the deployed chatmgmt in ${NAMESPACE}"
     # Everything runs inside one toolbox container so the port-forward and the
     # curls share a network namespace.
-    docker compose run --rm -T \
+    capture m1.2-flow \
+      docker compose run --rm -T \
       -e NAMESPACE="${NAMESPACE}" \
       -e PHONE="${PHONE}" \
       -e DEVICE="${DEVICE}" \
