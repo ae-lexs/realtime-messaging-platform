@@ -5,7 +5,7 @@
 .PHONY: all dev down logs lint fmt test test-integration proto proto-lint proto-breaking build docker ci-local ci-fast check-no-aws check-firestore-boundary check-secretmanager-boundary clean help \
 	terraform-fmt terraform-fmt-fix terraform-validate terraform-lint terraform-security terraform-docs terraform-docs-check \
 	gcp-auth gcp-bootstrap-state deploy teardown schema-register schema-verify schema-test firestore-up firestore-test firestore-down \
-	auth-up auth-test auth-flow auth-down
+	auth-up auth-test auth-negative-control auth-flow auth-down
 
 # Default target
 all: ci-local
@@ -236,6 +236,10 @@ auth-up:
 ## M1.2 gate, part 1: Firestore auth semantics (conditional writes, transactions, concurrency)
 auth-test:
 	./scripts/auth.sh store
+
+## RTM-04 negative control: does an empty query lock anything? (own log, does not touch the M1.2 evidence)
+auth-negative-control:
+	./scripts/auth.sh negative-control
 
 ## M1.2 gate, part 2: full OTP -> token -> refresh -> logout flow against the deployed pod (needs make deploy)
 auth-flow:
