@@ -173,6 +173,10 @@ docker/                  # toolbox.Dockerfile (gcloud/terraform/kubectl/buf/Go) 
 
 > The `internal/postgres` and `internal/firestore` adapters replace the AWS-era `internal/dynamo` per ADR-023; this re-homing is tracked in EXECUTION_PLAN Module 1–2.
 
+## Published artifacts
+
+Essays about this system make claims about it. [`docs/artifacts/`](docs/artifacts/README.md) is the ledger tying each claim to the decision that made it, the code that implements it — pinned to a commit, not a branch — and the run that proves it, with claims graded from *Specified* to *Measured*. If you arrived here from an essay, that is where its citations resolve.
+
 ## Architecture Decision Records
 
 Every non-trivial decision is an ADR (`docs/adr/`). Read the relevant ADRs before proposing changes to architecture, data flow, or consistency guarantees.
