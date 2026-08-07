@@ -1,0 +1,316 @@
+# rtm-04-negative-control-pessimistic-recheck — captured gate output
+# captured:  2026-08-07T04:12:56Z
+# commit:    96905ed52ab9ae15308aef54afae3236dd0df802
+# database:  messaging-dev (us-central1)
+# project:   redacted
+#
+# Re-running requires re-provisioning — the infrastructure this ran
+# against was destroyed at end of session. See docs/artifacts/README.md.
+
+ Container realtime-messaging-platform-toolbox-run-93b9e83eb09f Creating 
+ Container realtime-messaging-platform-toolbox-run-93b9e83eb09f Created 
+=== RUN   TestConcurrentInsertsBehindAnEmptyQuery
+    phantom_integration_test.go:198: 
+        === MEASURED: ARM A — concurrent inserts behind an empty query ===
+        phone_number:        +521541343011
+        racers:              5
+        users created:       1   <-- the quantity under test
+        racer 0: attempts=1 saw-existing=false err=<nil>
+        racer 1: attempts=2 saw-existing=true err=<nil>
+        racer 2: attempts=1 saw-existing=true err=<nil>
+        racer 3: attempts=1 saw-existing=true err=<nil>
+        racer 4: attempts=1 saw-existing=true err=<nil>
+        racers retried:      1   <-- store-detected conflicts
+        racers that declined: 4  <-- query found a user in time
+        === END: ARM A — concurrent inserts behind an empty query ===
+--- PASS: TestConcurrentInsertsBehindAnEmptyQuery (1.75s)
+=== RUN   TestConcurrentInsertsWithNoQueryAtAll
+    phantom_integration_test.go:287: 
+        === MEASURED: ARM D — positive control: the same inserts with no query ===
+        phone_number:  +522289965012
+        racers:        5
+        users created: 5   <-- expected 5: nothing here can conflict
+        racer 0: attempts=1 err=<nil>
+        racer 1: attempts=1 err=<nil>
+        racer 2: attempts=1 err=<nil>
+        racer 3: attempts=1 err=<nil>
+        racer 4: attempts=1 err=<nil>
+        racers retried: 0   <-- must be 0, or arm A's aborts are not the query's doing
+        === END: ARM D — positive control: the same inserts with no query ===
+--- PASS: TestConcurrentInsertsWithNoQueryAtAll (1.02s)
+=== RUN   TestConcurrentRegistrationWithoutTheSentinel
+    phantom_integration_test.go:365: 
+        === MEASURED: ARM B — registration with the sentinel removed ===
+        phone_number:  +523312894637
+        racers:        5
+        users created: 1   <-- the quantity under test
+        racer 0: err=firestore: OTP 6d4926209b77a9fc3b33e54839078110fa5d6eef92c947e90f3ac08916bcb3cd already consumed: invalid OTP
+        racer 1: err=<nil>
+        racer 2: err=firestore: OTP 6d4926209b77a9fc3b33e54839078110fa5d6eef92c947e90f3ac08916bcb3cd already consumed: invalid OTP
+        racer 3: err=firestore: OTP 6d4926209b77a9fc3b33e54839078110fa5d6eef92c947e90f3ac08916bcb3cd already consumed: invalid OTP
+        racer 4: err=firestore: OTP 6d4926209b77a9fc3b33e54839078110fa5d6eef92c947e90f3ac08916bcb3cd already consumed: invalid OTP
+        racers returning nil: 1
+        === END: ARM B — registration with the sentinel removed ===
+--- PASS: TestConcurrentRegistrationWithoutTheSentinel (2.86s)
+=== RUN   TestConcurrentRegistrationLoserErrors
+    phantom_integration_test.go:439: 
+        === MEASURED: ARM C — which document refuses the losers ===
+        racers: 5
+        racer 0: UNEXPECTED (rpc error: code = InvalidArgument desc = Transaction options should be the same as specified previous transaction.)
+        racer 1: refused by the OTP assertion (firestore: OTP 3151417d2e5ba88e1369609ee40898903dc41d100d0f342f0e1ba3be6fcbf28f already consumed: invalid OTP)
+        racer 2: refused by the OTP assertion (firestore: OTP 3151417d2e5ba88e1369609ee40898903dc41d100d0f342f0e1ba3be6fcbf28f already consumed: invalid OTP)
+        racer 3: WON
+        racer 4: refused by the OTP assertion (firestore: OTP 3151417d2e5ba88e1369609ee40898903dc41d100d0f342f0e1ba3be6fcbf28f already consumed: invalid OTP)
+        winners:            1
+        sentinel refusals:  0   <-- how often phone_index did the work
+        OTP refusals:       3   <-- how often the OTP document did it instead
+        unexpected:         1
+        === END: ARM C — which document refuses the losers ===
+    phantom_integration_test.go:443: 
+        	Error Trace:	/app/internal/firestore/phantom_integration_test.go:443
+        	Error:      	Should be zero, but was 1
+        	Test:       	TestConcurrentRegistrationLoserErrors
+        	Messages:   	a loser failed for a reason neither document explains
+--- FAIL: TestConcurrentRegistrationLoserErrors (3.49s)
+=== RUN   TestConcurrentInsertsBehindAnEmptyQuery
+    phantom_integration_test.go:198: 
+        === MEASURED: ARM A — concurrent inserts behind an empty query ===
+        phone_number:        +525674370001
+        racers:              5
+        users created:       1   <-- the quantity under test
+        racer 0: attempts=1 saw-existing=false err=<nil>
+        racer 1: attempts=2 saw-existing=true err=<nil>
+        racer 2: attempts=2 saw-existing=true err=<nil>
+        racer 3: attempts=1 saw-existing=false err=rpc error: code = InvalidArgument desc = Transaction options should be the same as specified previous transaction.
+        racer 4: attempts=2 saw-existing=true err=<nil>
+        racers retried:      3   <-- store-detected conflicts
+        racers that declined: 3  <-- query found a user in time
+        === END: ARM A — concurrent inserts behind an empty query ===
+    phantom_integration_test.go:203: 
+        	Error Trace:	/app/internal/firestore/phantom_integration_test.go:203
+        	Error:      	Received unexpected error:
+        	            	rpc error: code = InvalidArgument desc = Transaction options should be the same as specified previous transaction.
+        	Test:       	TestConcurrentInsertsBehindAnEmptyQuery
+        	Messages:   	racer 3 failed for an unexpected reason
+--- FAIL: TestConcurrentInsertsBehindAnEmptyQuery (2.94s)
+=== RUN   TestConcurrentInsertsWithNoQueryAtAll
+    phantom_integration_test.go:287: 
+        === MEASURED: ARM D — positive control: the same inserts with no query ===
+        phone_number:  +526612972377
+        racers:        5
+        users created: 5   <-- expected 5: nothing here can conflict
+        racer 0: attempts=1 err=<nil>
+        racer 1: attempts=1 err=<nil>
+        racer 2: attempts=1 err=<nil>
+        racer 3: attempts=1 err=<nil>
+        racer 4: attempts=1 err=<nil>
+        racers retried: 0   <-- must be 0, or arm A's aborts are not the query's doing
+        === END: ARM D — positive control: the same inserts with no query ===
+--- PASS: TestConcurrentInsertsWithNoQueryAtAll (0.93s)
+=== RUN   TestConcurrentRegistrationWithoutTheSentinel
+    phantom_integration_test.go:365: 
+        === MEASURED: ARM B — registration with the sentinel removed ===
+        phone_number:  +527547128836
+        racers:        5
+        users created: 1   <-- the quantity under test
+        racer 0: err=firestore: OTP c1c7c66260d78ee5db48b09a4fbc6445883015e36fdcb9d1f1f13700fc939e83 already consumed: invalid OTP
+        racer 1: err=firestore: OTP c1c7c66260d78ee5db48b09a4fbc6445883015e36fdcb9d1f1f13700fc939e83 already consumed: invalid OTP
+        racer 2: err=firestore: OTP c1c7c66260d78ee5db48b09a4fbc6445883015e36fdcb9d1f1f13700fc939e83 already consumed: invalid OTP
+        racer 3: err=<nil>
+        racer 4: err=firestore: OTP c1c7c66260d78ee5db48b09a4fbc6445883015e36fdcb9d1f1f13700fc939e83 already consumed: invalid OTP
+        racers returning nil: 1
+        === END: ARM B — registration with the sentinel removed ===
+--- PASS: TestConcurrentRegistrationWithoutTheSentinel (1.84s)
+=== RUN   TestConcurrentRegistrationLoserErrors
+    phantom_integration_test.go:439: 
+        === MEASURED: ARM C — which document refuses the losers ===
+        racers: 5
+        racer 0: refused by the OTP assertion (firestore: OTP e522e354f168766a0ed34f931c1380da057f4913ff86fecaae995d7496364d32 already consumed: invalid OTP)
+        racer 1: refused by the OTP assertion (firestore: OTP e522e354f168766a0ed34f931c1380da057f4913ff86fecaae995d7496364d32 already consumed: invalid OTP)
+        racer 2: refused by the OTP assertion (firestore: OTP e522e354f168766a0ed34f931c1380da057f4913ff86fecaae995d7496364d32 already consumed: invalid OTP)
+        racer 3: WON
+        racer 4: refused by the OTP assertion (firestore: OTP e522e354f168766a0ed34f931c1380da057f4913ff86fecaae995d7496364d32 already consumed: invalid OTP)
+        winners:            1
+        sentinel refusals:  0   <-- how often phone_index did the work
+        OTP refusals:       4   <-- how often the OTP document did it instead
+        unexpected:         0
+        === END: ARM C — which document refuses the losers ===
+--- PASS: TestConcurrentRegistrationLoserErrors (3.22s)
+=== RUN   TestConcurrentInsertsBehindAnEmptyQuery
+    phantom_integration_test.go:198: 
+        === MEASURED: ARM A — concurrent inserts behind an empty query ===
+        phone_number:        +529618402297
+        racers:              5
+        users created:       1   <-- the quantity under test
+        racer 0: attempts=2 saw-existing=true err=<nil>
+        racer 1: attempts=2 saw-existing=true err=<nil>
+        racer 2: attempts=2 saw-existing=true err=<nil>
+        racer 3: attempts=1 saw-existing=false err=<nil>
+        racer 4: attempts=2 saw-existing=true err=<nil>
+        racers retried:      4   <-- store-detected conflicts
+        racers that declined: 4  <-- query found a user in time
+        === END: ARM A — concurrent inserts behind an empty query ===
+--- PASS: TestConcurrentInsertsBehindAnEmptyQuery (2.53s)
+=== RUN   TestConcurrentInsertsWithNoQueryAtAll
+    phantom_integration_test.go:287: 
+        === MEASURED: ARM D — positive control: the same inserts with no query ===
+        phone_number:  +520146914298
+        racers:        5
+        users created: 5   <-- expected 5: nothing here can conflict
+        racer 0: attempts=1 err=<nil>
+        racer 1: attempts=1 err=<nil>
+        racer 2: attempts=1 err=<nil>
+        racer 3: attempts=1 err=<nil>
+        racer 4: attempts=1 err=<nil>
+        racers retried: 0   <-- must be 0, or arm A's aborts are not the query's doing
+        === END: ARM D — positive control: the same inserts with no query ===
+--- PASS: TestConcurrentInsertsWithNoQueryAtAll (1.10s)
+=== RUN   TestConcurrentRegistrationWithoutTheSentinel
+    phantom_integration_test.go:365: 
+        === MEASURED: ARM B — registration with the sentinel removed ===
+        phone_number:  +521244100132
+        racers:        5
+        users created: 1   <-- the quantity under test
+        racer 0: err=<nil>
+        racer 1: err=firestore: OTP e0d5e0ceeb37772dc81f059c0c86455559ef814bdd2d921bcfe57b57e3ab0581 already consumed: invalid OTP
+        racer 2: err=firestore: OTP e0d5e0ceeb37772dc81f059c0c86455559ef814bdd2d921bcfe57b57e3ab0581 already consumed: invalid OTP
+        racer 3: err=firestore: OTP e0d5e0ceeb37772dc81f059c0c86455559ef814bdd2d921bcfe57b57e3ab0581 already consumed: invalid OTP
+        racer 4: err=firestore: OTP e0d5e0ceeb37772dc81f059c0c86455559ef814bdd2d921bcfe57b57e3ab0581 already consumed: invalid OTP
+        racers returning nil: 1
+        === END: ARM B — registration with the sentinel removed ===
+--- PASS: TestConcurrentRegistrationWithoutTheSentinel (2.93s)
+=== RUN   TestConcurrentRegistrationLoserErrors
+    phantom_integration_test.go:439: 
+        === MEASURED: ARM C — which document refuses the losers ===
+        racers: 5
+        racer 0: refused by the OTP assertion (firestore: OTP 97c6e25ed9ed36eabebae1cbdf38079909b501abfa768c3bec792964f3e757f0 already consumed: invalid OTP)
+        racer 1: refused by the OTP assertion (firestore: OTP 97c6e25ed9ed36eabebae1cbdf38079909b501abfa768c3bec792964f3e757f0 already consumed: invalid OTP)
+        racer 2: refused by the OTP assertion (firestore: OTP 97c6e25ed9ed36eabebae1cbdf38079909b501abfa768c3bec792964f3e757f0 already consumed: invalid OTP)
+        racer 3: WON
+        racer 4: refused by the OTP assertion (firestore: OTP 97c6e25ed9ed36eabebae1cbdf38079909b501abfa768c3bec792964f3e757f0 already consumed: invalid OTP)
+        winners:            1
+        sentinel refusals:  0   <-- how often phone_index did the work
+        OTP refusals:       4   <-- how often the OTP document did it instead
+        unexpected:         0
+        === END: ARM C — which document refuses the losers ===
+--- PASS: TestConcurrentRegistrationLoserErrors (2.64s)
+=== RUN   TestConcurrentInsertsBehindAnEmptyQuery
+    phantom_integration_test.go:198: 
+        === MEASURED: ARM A — concurrent inserts behind an empty query ===
+        phone_number:        +523824132010
+        racers:              5
+        users created:       1   <-- the quantity under test
+        racer 0: attempts=2 saw-existing=true err=<nil>
+        racer 1: attempts=1 saw-existing=false err=<nil>
+        racer 2: attempts=2 saw-existing=true err=<nil>
+        racer 3: attempts=1 saw-existing=true err=<nil>
+        racer 4: attempts=1 saw-existing=true err=<nil>
+        racers retried:      2   <-- store-detected conflicts
+        racers that declined: 4  <-- query found a user in time
+        === END: ARM A — concurrent inserts behind an empty query ===
+--- PASS: TestConcurrentInsertsBehindAnEmptyQuery (2.33s)
+=== RUN   TestConcurrentInsertsWithNoQueryAtAll
+    phantom_integration_test.go:287: 
+        === MEASURED: ARM D — positive control: the same inserts with no query ===
+        phone_number:  +524150014636
+        racers:        5
+        users created: 5   <-- expected 5: nothing here can conflict
+        racer 0: attempts=1 err=<nil>
+        racer 1: attempts=1 err=<nil>
+        racer 2: attempts=1 err=<nil>
+        racer 3: attempts=1 err=<nil>
+        racer 4: attempts=1 err=<nil>
+        racers retried: 0   <-- must be 0, or arm A's aborts are not the query's doing
+        === END: ARM D — positive control: the same inserts with no query ===
+--- PASS: TestConcurrentInsertsWithNoQueryAtAll (0.94s)
+=== RUN   TestConcurrentRegistrationWithoutTheSentinel
+    phantom_integration_test.go:365: 
+        === MEASURED: ARM B — registration with the sentinel removed ===
+        phone_number:  +525093397970
+        racers:        5
+        users created: 1   <-- the quantity under test
+        racer 0: err=<nil>
+        racer 1: err=firestore: OTP f7b241ecfc95d3cbe71434f8d78feaf827edd534928de157049f29d648e7e91c already consumed: invalid OTP
+        racer 2: err=firestore: OTP f7b241ecfc95d3cbe71434f8d78feaf827edd534928de157049f29d648e7e91c already consumed: invalid OTP
+        racer 3: err=firestore: OTP f7b241ecfc95d3cbe71434f8d78feaf827edd534928de157049f29d648e7e91c already consumed: invalid OTP
+        racer 4: err=firestore: OTP f7b241ecfc95d3cbe71434f8d78feaf827edd534928de157049f29d648e7e91c already consumed: invalid OTP
+        racers returning nil: 1
+        === END: ARM B — registration with the sentinel removed ===
+--- PASS: TestConcurrentRegistrationWithoutTheSentinel (2.85s)
+=== RUN   TestConcurrentRegistrationLoserErrors
+    phantom_integration_test.go:439: 
+        === MEASURED: ARM C — which document refuses the losers ===
+        racers: 5
+        racer 0: refused by the OTP assertion (firestore: OTP a383dc391af1fe3064f28b5445c86e90d3d1c778d740324d33cb6e44d7b60db7 already consumed: invalid OTP)
+        racer 1: refused by the OTP assertion (firestore: OTP a383dc391af1fe3064f28b5445c86e90d3d1c778d740324d33cb6e44d7b60db7 already consumed: invalid OTP)
+        racer 2: refused by the OTP assertion (firestore: OTP a383dc391af1fe3064f28b5445c86e90d3d1c778d740324d33cb6e44d7b60db7 already consumed: invalid OTP)
+        racer 3: WON
+        racer 4: refused by the OTP assertion (firestore: OTP a383dc391af1fe3064f28b5445c86e90d3d1c778d740324d33cb6e44d7b60db7 already consumed: invalid OTP)
+        winners:            1
+        sentinel refusals:  0   <-- how often phone_index did the work
+        OTP refusals:       4   <-- how often the OTP document did it instead
+        unexpected:         0
+        === END: ARM C — which document refuses the losers ===
+--- PASS: TestConcurrentRegistrationLoserErrors (3.08s)
+=== RUN   TestConcurrentInsertsBehindAnEmptyQuery
+    phantom_integration_test.go:198: 
+        === MEASURED: ARM A — concurrent inserts behind an empty query ===
+        phone_number:        +527033527083
+        racers:              5
+        users created:       1   <-- the quantity under test
+        racer 0: attempts=1 saw-existing=false err=<nil>
+        racer 1: attempts=2 saw-existing=true err=<nil>
+        racer 2: attempts=2 saw-existing=true err=<nil>
+        racer 3: attempts=2 saw-existing=true err=<nil>
+        racer 4: attempts=1 saw-existing=true err=<nil>
+        racers retried:      3   <-- store-detected conflicts
+        racers that declined: 4  <-- query found a user in time
+        === END: ARM A — concurrent inserts behind an empty query ===
+--- PASS: TestConcurrentInsertsBehindAnEmptyQuery (2.46s)
+=== RUN   TestConcurrentInsertsWithNoQueryAtAll
+    phantom_integration_test.go:287: 
+        === MEASURED: ARM D — positive control: the same inserts with no query ===
+        phone_number:  +528494114293
+        racers:        5
+        users created: 5   <-- expected 5: nothing here can conflict
+        racer 0: attempts=1 err=<nil>
+        racer 1: attempts=1 err=<nil>
+        racer 2: attempts=1 err=<nil>
+        racer 3: attempts=1 err=<nil>
+        racer 4: attempts=1 err=<nil>
+        racers retried: 0   <-- must be 0, or arm A's aborts are not the query's doing
+        === END: ARM D — positive control: the same inserts with no query ===
+--- PASS: TestConcurrentInsertsWithNoQueryAtAll (1.05s)
+=== RUN   TestConcurrentRegistrationWithoutTheSentinel
+    phantom_integration_test.go:365: 
+        === MEASURED: ARM B — registration with the sentinel removed ===
+        phone_number:  +529547024626
+        racers:        5
+        users created: 1   <-- the quantity under test
+        racer 0: err=firestore: OTP 79c7f9e92b30bbb95207104b5715e7cdf898c9c81d8fd2be5ac5a65e29d3a824 already consumed: invalid OTP
+        racer 1: err=firestore: OTP 79c7f9e92b30bbb95207104b5715e7cdf898c9c81d8fd2be5ac5a65e29d3a824 already consumed: invalid OTP
+        racer 2: err=firestore: OTP 79c7f9e92b30bbb95207104b5715e7cdf898c9c81d8fd2be5ac5a65e29d3a824 already consumed: invalid OTP
+        racer 3: err=<nil>
+        racer 4: err=firestore: OTP 79c7f9e92b30bbb95207104b5715e7cdf898c9c81d8fd2be5ac5a65e29d3a824 already consumed: invalid OTP
+        racers returning nil: 1
+        === END: ARM B — registration with the sentinel removed ===
+--- PASS: TestConcurrentRegistrationWithoutTheSentinel (3.20s)
+=== RUN   TestConcurrentRegistrationLoserErrors
+    phantom_integration_test.go:439: 
+        === MEASURED: ARM C — which document refuses the losers ===
+        racers: 5
+        racer 0: refused by the OTP assertion (firestore: OTP 13932660e2a39eb4203ec49a5addbcc3675e40ccc42261f62f81e21127ac3c70 already consumed: invalid OTP)
+        racer 1: WON
+        racer 2: refused by the OTP assertion (firestore: OTP 13932660e2a39eb4203ec49a5addbcc3675e40ccc42261f62f81e21127ac3c70 already consumed: invalid OTP)
+        racer 3: refused by the OTP assertion (firestore: OTP 13932660e2a39eb4203ec49a5addbcc3675e40ccc42261f62f81e21127ac3c70 already consumed: invalid OTP)
+        racer 4: refused by the OTP assertion (firestore: OTP 13932660e2a39eb4203ec49a5addbcc3675e40ccc42261f62f81e21127ac3c70 already consumed: invalid OTP)
+        winners:            1
+        sentinel refusals:  0   <-- how often phone_index did the work
+        OTP refusals:       4   <-- how often the OTP document did it instead
+        unexpected:         0
+        === END: ARM C — which document refuses the losers ===
+--- PASS: TestConcurrentRegistrationLoserErrors (2.85s)
+FAIL
+FAIL	github.com/aelexs/realtime-messaging-platform/internal/firestore	46.081s
+FAIL
+

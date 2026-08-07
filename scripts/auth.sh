@@ -116,13 +116,43 @@ case "${1:-}" in
     # REPS repeats every arm. A concurrency result from one run is an anecdote;
     # the phone number and document IDs are freshly generated per repetition,
     # so repetitions do not contaminate one another.
+    # LOG_SUFFIX keeps a second run (a different concurrency mode, say) from
+    # overwriting the first. The mode itself is recorded in the log, because the
+    # measured result depends on it and a log that does not say which mode
+    # produced it is not evidence for either.
     echo "==> RTM-04 negative control against ${PROJECT_ID}/${DATABASE} (${REGION}), REPS=${REPS:-1}"
-    capture rtm-04-negative-control \
+    capture "rtm-04-negative-control${LOG_SUFFIX:-}" \
       docker compose run --rm -T \
       -e FIRESTORE_PROJECT="${PROJECT_ID}" \
       -e FIRESTORE_DATABASE="${DATABASE}" \
       toolbox go test -race -count="${REPS:-1}" -tags=integration -v ./internal/firestore/... \
       -run 'TestConcurrentInsertsBehindAnEmptyQuery|TestConcurrentInsertsWithNoQueryAtAll|TestConcurrentRegistrationWithoutTheSentinel|TestConcurrentRegistrationLoserErrors'
+    ;;
+
+  mode)
+    # Read or set the database's concurrency mode.
+    #
+    # This is the switch RTM-04 C6 turns on. Server client libraries use the
+    # database-level setting: Standard edition defaults to PESSIMISTIC, and
+    # Enterprise edition defaults to OPTIMISTIC, so the same code measured on
+    # one is not evidence about the other. Flipping it here rather than in
+    # terraform/modules/firestore is deliberate — it is experimental apparatus,
+    # not a deployment choice, and the module should keep shipping whatever the
+    # platform default is, since that is the condition the essay is about.
+    #
+    #   scripts/auth.sh mode                 # report the current mode
+    #   scripts/auth.sh mode optimistic      # set it
+    if [ -z "${2:-}" ]; then
+      echo "==> concurrency mode of ${PROJECT_ID}/${DATABASE}:"
+      tb gcloud firestore databases describe --database="${DATABASE}" \
+        --project="${PROJECT_ID}" --format="value(concurrencyMode)"
+    else
+      echo "==> setting ${PROJECT_ID}/${DATABASE} concurrency mode to $2"
+      tb gcloud firestore databases update --database="${DATABASE}" \
+        --project="${PROJECT_ID}" --concurrency-mode="$2" --quiet
+      tb gcloud firestore databases describe --database="${DATABASE}" \
+        --project="${PROJECT_ID}" --format="value(concurrencyMode)"
+    fi
     ;;
 
   flow)
@@ -144,7 +174,7 @@ case "${1:-}" in
     ;;
 
   *)
-    echo "usage: PROJECT_ID=... scripts/auth.sh {apply|store|negative-control|flow|destroy}" >&2
+    echo "usage: PROJECT_ID=... scripts/auth.sh {apply|store|negative-control|mode [MODE]|flow|destroy}" >&2
     exit 2
     ;;
 esac
