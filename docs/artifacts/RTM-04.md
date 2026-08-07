@@ -4,7 +4,7 @@
 **Subject:** uniqueness under concurrency in a document store; the auth re-home of Module 1.2
 **Decisions annotated:** [ADR-015](../adr/ADR-015.md) (authentication and OTP), [ADR-023](../adr/ADR-023.md) v1.2 / v1.3 (where the state landed)
 **Work:** PR [#15](https://github.com/ae-lexs/realtime-messaging-platform/pull/15) (M1.2, merged `05ae733`), PR [#16](https://github.com/ae-lexs/realtime-messaging-platform/pull/16) (ADR-023 v1.3, merged `a74aaed`), PR [#17](https://github.com/ae-lexs/realtime-messaging-platform/pull/17) (this ledger, merged `c6ee34b`)
-**Pinned at:** `a74aaed4a9ddd10ecb195a2a61dec9ec801c7f71` for C1–C5. **C6 and C7 pin to the negative-control commit**, named in their own rows.
+**Pinned at:** `a74aaed4a9ddd10ecb195a2a61dec9ec801c7f71` for C1–C5. **C6 and C7 pin to the negative-control commit**, named in their own rows. **C8 pins to no code** — it is a claim about the store's behaviour under two settings, so its evidence is the captured runs rather than a source range.
 
 ---
 
@@ -35,7 +35,7 @@ Five concurrent registrations of one phone number, all holding the same valid OT
 | | |
 |---|---|
 | **Decision** | [ADR-015](../adr/ADR-015.md) §5.1 (the `PHONE#` sentinel), re-homed by [ADR-023](../adr/ADR-023.md) v1.2 |
-| **Pinned** | [`internal/firestore/auth_tx.go#L83-L112`](https://github.com/ae-lexs/realtime-messaging-platform/blob/a74aaed4a9ddd10ecb195a2a61dec9ec801c7f71/internal/firestore/auth_tx.go#L83-L112) — `Register`, the four-document write set<br>[`internal/firestore/auth_tx.go#L136-L184`](https://github.com/ae-lexs/realtime-messaging-platform/blob/a74aaed4a9ddd10ecb195a2a61dec9ec801c7f71/internal/firestore/auth_tx.go#L136-L184) — `AuthTx.run`, the OTP read-and-write that surrounds it<br>[`internal/firestore/documents.go#L139-L144`](https://github.com/ae-lexs/realtime-messaging-platform/blob/a74aaed4a9ddd10ecb195a2a61dec9ec801c7f71/internal/firestore/documents.go#L139-L144) — `PhoneIndexDoc`, written and never read |
+| **Pinned** | [`internal/firestore/auth_tx.go#L83-L112`](https://github.com/ae-lexs/realtime-messaging-platform/blob/a74aaed4a9ddd10ecb195a2a61dec9ec801c7f71/internal/firestore/auth_tx.go#L83-L112) — `Register` in full; the four-document write set is the closure beginning at L94, which is the range the essay's specimen shows<br>[`internal/firestore/auth_tx.go#L136-L184`](https://github.com/ae-lexs/realtime-messaging-platform/blob/a74aaed4a9ddd10ecb195a2a61dec9ec801c7f71/internal/firestore/auth_tx.go#L136-L184) — `AuthTx.run`, the OTP read-and-write that surrounds it<br>[`internal/firestore/documents.go#L139-L144`](https://github.com/ae-lexs/realtime-messaging-platform/blob/a74aaed4a9ddd10ecb195a2a61dec9ec801c7f71/internal/firestore/documents.go#L139-L144) — `PhoneIndexDoc`, written and never read |
 | **Living** | `internal/firestore/auth_tx.go` → `AuthTx.Register` |
 | **Proof** | [`internal/firestore/auth_integration_test.go#L294-L351`](https://github.com/ae-lexs/realtime-messaging-platform/blob/a74aaed4a9ddd10ecb195a2a61dec9ec801c7f71/internal/firestore/auth_integration_test.go#L294-L351) — `TestConcurrentRegistrationYieldsExactlyOneUser`, `racers = 5`, build tag `integration`, run against a live database via `make auth-test`. **Proves the outcome, not the mechanism** — see C7 |
 | **Captured run** | [`evidence/m1.2-store.log`](evidence/m1.2-store.log) — `--- PASS: TestConcurrentRegistrationYieldsExactlyOneUser (2.91s)`, captured 2026-08-04 against `messaging-dev` in `us-central1`, code at `cdf3c09` |
