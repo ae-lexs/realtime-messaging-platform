@@ -106,6 +106,25 @@ case "${1:-}" in
       toolbox go test -race -count=1 -tags=integration -v ./internal/firestore/...
     ;;
 
+  negative-control)
+    # The RTM-04 negative control (docs/artifacts/RTM-04.md, C6). Kept separate
+    # from `store` for two reasons: it captures to its own log, so the run the
+    # ledger already cites for C2 and C5 is not overwritten, and it is an
+    # experiment rather than a gate — the arms measuring an unknown assert only
+    # that the harness was valid and report the quantity under test.
+    #
+    # REPS repeats every arm. A concurrency result from one run is an anecdote;
+    # the phone number and document IDs are freshly generated per repetition,
+    # so repetitions do not contaminate one another.
+    echo "==> RTM-04 negative control against ${PROJECT_ID}/${DATABASE} (${REGION}), REPS=${REPS:-1}"
+    capture rtm-04-negative-control \
+      docker compose run --rm -T \
+      -e FIRESTORE_PROJECT="${PROJECT_ID}" \
+      -e FIRESTORE_DATABASE="${DATABASE}" \
+      toolbox go test -race -count="${REPS:-1}" -tags=integration -v ./internal/firestore/... \
+      -run 'TestConcurrentInsertsBehindAnEmptyQuery|TestConcurrentInsertsWithNoQueryAtAll|TestConcurrentRegistrationWithoutTheSentinel|TestConcurrentRegistrationLoserErrors'
+    ;;
+
   flow)
     echo "==> full auth flow against the deployed chatmgmt in ${NAMESPACE}"
     # Everything runs inside one toolbox container so the port-forward and the
@@ -125,7 +144,7 @@ case "${1:-}" in
     ;;
 
   *)
-    echo "usage: PROJECT_ID=... scripts/auth.sh {apply|store|flow|destroy}" >&2
+    echo "usage: PROJECT_ID=... scripts/auth.sh {apply|store|negative-control|flow|destroy}" >&2
     exit 2
     ;;
 esac
