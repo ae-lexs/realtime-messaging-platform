@@ -52,7 +52,7 @@ Five concurrent registrations of one phone number, all holding the same valid OT
 | **Pinned** | [`docs/adr/ADR-023.md`](https://github.com/ae-lexs/realtime-messaging-platform/blob/a74aaed4a9ddd10ecb195a2a61dec9ec801c7f71/docs/adr/ADR-023.md) — the `direct_chats` paragraph in the Firestore model |
 | **Living** | `docs/adr/ADR-023.md` → Firestore model → `direct_chats` |
 | **Proof** | None yet. Essays citing this claim must label it a design claim. |
-| **Re-examine** | The wording above inherits C1's premise — *"the query matches nothing"* was offered as the reason two creates would both succeed, and C6 falsified that. Direct chats carry no OTP in their transaction, so the confound behind C2/C7 does not apply and C6 transfers **directly**: on this configuration the naive in-transaction query would hold. The construction is still worth building, for C6's *Consequence* reason — invariance to a database setting nobody selected — but that is an argument, not a measurement, and nothing has been measured on this path. |
+| **Re-examine** | The wording above inherits C1's premise — *"the query matches nothing"* was offered as the reason two creates would both succeed, and C6 falsified that. Direct chats carry no OTP in their transaction, so the confound behind C2/C7 does not apply and C6 transfers **directly**: on this configuration the naive in-transaction query would hold. The construction is still worth building, but for what survives C8: the mobile and web client libraries cannot express a range, and a behaviour outside the written contract cannot be cited. That is an argument, not a measurement, and nothing has been measured on this path. |
 
 ### RTM-04-C4 — A documented race recovery was never reachable, on either substrate
 
@@ -102,7 +102,7 @@ The control is what licenses the reading. **Arm D** is the same test with the qu
 | **Living** | `internal/firestore/phantom_integration_test.go` → `TestConcurrentInsertsBehindAnEmptyQuery`, `TestConcurrentInsertsWithNoQueryAtAll` |
 | **Proof** | `racers = 5`, `REPS=5`, build tag `integration`, run via `make auth-negative-control`. The instrument is `attempts[i]++` inside the transaction callback: the SDK re-invokes the callback per retry, so the counter distinguishes *the store detected a conflict* from *the racers never overlapped*. Without it, "one user" is uninterpretable |
 | **Captured run** | [`evidence/rtm-04-negative-control.log`](evidence/rtm-04-negative-control.log) — captured 2026-08-07 against `messaging-dev` in `us-central1`, infrastructure destroyed the same evening |
-| **Consequence** | The sentinel is **not** withdrawn. Concurrency mode is a database-level setting; `terraform/modules/firestore/main.tf` sets neither `concurrency_mode` nor `database_edition`, so the measured protection rides on platform defaults this project never selected, and it exceeds the documented contract (*"Transactions place locks on the documents they read"*), so it cannot be cited. A materialised conflict costs one document and is invariant to all of it |
+| **Consequence** | The sentinel is **not** withdrawn. The protection exceeds the documented contract (*"Transactions place locks on the documents they read"*), so it cannot be cited, and it is absent by construction from the mobile and web client libraries. ⚠ This row originally also claimed the protection rode on a concurrency-mode default nobody selected — **[C8](#rtm-04-c8--the-range-protection-is-invariant-to-the-databases-concurrency-mode) measured that and withdrew it** |
 
 ### RTM-04-C7 — The five-racer gate never exercises the sentinel
 
@@ -118,6 +118,32 @@ The gate is not wrong to accept either error — which one a loser sees genuinel
 | **Pinned** | [`internal/firestore/phantom_integration_test.go#L379-L444`](https://github.com/ae-lexs/realtime-messaging-platform/blob/2ff47ce2b532574e17dab89a503a334fad8c3d8a/internal/firestore/phantom_integration_test.go#L379-L444) — arm C, refusals attributed<br>[`internal/firestore/phantom_integration_test.go#L308-L369`](https://github.com/ae-lexs/realtime-messaging-platform/blob/2ff47ce2b532574e17dab89a503a334fad8c3d8a/internal/firestore/phantom_integration_test.go#L308-L369) — arm B, `Register` minus the sentinel: one user, all losers on the OTP |
 | **Living** | `internal/firestore/phantom_integration_test.go` → `TestConcurrentRegistrationLoserErrors`, `TestConcurrentRegistrationWithoutTheSentinel` |
 | **Captured run** | [`evidence/rtm-04-negative-control.log`](evidence/rtm-04-negative-control.log) — `sentinel refusals: 0` / `OTP refusals: 4` in each of five repetitions |
+
+### RTM-04-C8 — The range protection is invariant to the database's concurrency mode
+
+**Status:** **Measured** — 2026-08-07. **Corrects the *Consequence* row of [C6](#rtm-04-c6--a-transaction-is-aborted-by-a-write-to-a-range-its-query-read) as first written**, which asserted that the protection rode on a concurrency-mode default this project never selected.
+
+Concurrency mode is a database-level setting, and server client libraries use whatever the database is set to: Standard edition defaults to PESSIMISTIC, Enterprise edition to OPTIMISTIC. That made "the guarantee depends on a switch nobody chose" an obvious inference — and it was an inference, of exactly the kind C1 was withdrawn for. The switch was flipped and arm A re-run unchanged, then flipped back, so the comparison is **A-B-A within one database** rather than across sessions.
+
+| Mode | Reps | Users created | Racers aborted and retried |
+|---|---|---|---|
+| PESSIMISTIC — as created, `concurrency_mode` unset in Terraform | 5 | **1**, every rep | 4 of 5, every rep |
+| OPTIMISTIC — switch flipped | 5 | **1**, every rep | 4 of 5 in four reps; one rep where the racers never overlapped |
+| PESSIMISTIC — flipped back | 5 | **1**, every rep | 1–4, varying with overlap |
+
+**Fifteen repetitions, seventy-five racers, one user every time.** The range is defended under both modes. The documentation describes neither case: pessimistic transactions *"place locks on the documents they read"*, optimistic ones *"don't use database locks to block other operations from changing data"*, and no range appears in either sentence.
+
+Also confirmed by query rather than inference: the module's unset `concurrency_mode` produces `PESSIMISTIC`.
+
+**What remains unmeasured** is a client library, not a setting — the mobile and web SDKs *"always emulate optimistic concurrency"* using per-document version preconditions, which structurally cannot express a range. Enterprise edition as a product tier was not tested; only its default mode was.
+
+| | |
+|---|---|
+| **Decision** | None. It narrows C6's consequence and, with it, the surviving justification for `phone_index` and for [C3](#rtm-04-c3--the-same-construction-generalises-to-direct-pair-uniqueness) |
+| **Living** | `scripts/auth.sh` → `mode` (read or set the concurrency mode); `internal/firestore/phantom_integration_test.go` → `TestConcurrentInsertsBehindAnEmptyQuery` |
+| **Proof** | `REPS=5` per mode, arm A and its control unchanged between runs. `LOG_SUFFIX` keeps each mode's capture in its own file so neither overwrites the other |
+| **Captured run** | [`evidence/rtm-04-negative-control-optimistic.log`](evidence/rtm-04-negative-control-optimistic.log) and [`evidence/rtm-04-negative-control-pessimistic-recheck.log`](evidence/rtm-04-negative-control-pessimistic-recheck.log), both 2026-08-07; the first PESSIMISTIC run is [`evidence/rtm-04-negative-control.log`](evidence/rtm-04-negative-control.log) |
+| **Consequence** | The sentinel still stands, on two grounds and no longer on three: the mobile and web client path, and the fact that a behaviour absent from the written contract cannot be cited or held anyone to. "It depends on a setting" is withdrawn |
 
 ## Evidence provenance
 
@@ -143,6 +169,11 @@ PROJECT_ID=<your-project> make auth-test     # writes evidence/m1.2-store.log
 # C6 and C7 — the negative control, same infrastructure
 PROJECT_ID=<your-project> REPS=5 make auth-negative-control   # writes evidence/rtm-04-negative-control.log
 
+# C8 — the same arms under the other concurrency mode
+PROJECT_ID=<your-project> ./scripts/auth.sh mode optimistic
+PROJECT_ID=<your-project> REPS=5 LOG_SUFFIX=-optimistic make auth-negative-control
+PROJECT_ID=<your-project> ./scripts/auth.sh mode pessimistic
+
 PROJECT_ID=<your-project> BILLING_ACCOUNT_ID=<your-billing> make auth-down
 ```
 
@@ -154,6 +185,7 @@ PROJECT_ID=<your-project> BILLING_ACCOUNT_ID=<your-billing> make auth-down
 
 | Version | Date | Changes |
 |---|---|---|
+| v0.4 | 2026-08-07 | **C8 added, and it corrects C6's own consequence.** C6 was recorded with the claim that the measured protection rode on a `concurrency_mode` default this project never selected — an inference from the documented Standard/Enterprise split, with no measurement under it, which is the defect C1 was withdrawn for. The switch was flipped and arm A re-run unchanged, then flipped back: **A-B-A in one database, fifteen repetitions, seventy-five racers, one user every time under both modes.** C8 records that; C6's *Consequence* row is corrected in place with a pointer rather than rewritten silently; C3's *Re-examine* row drops the same retracted reason. What survives is the mobile/web client path and citability. Apparatus: `scripts/auth.sh mode` to read or set the mode, and `LOG_SUFFIX` so a second run cannot overwrite the first. |
 | v0.3 | 2026-08-07 | **The negative control ran, and two claims did not survive it.** C1 → **Withdrawn**: a transaction whose only read was a query matching zero documents was aborted by a concurrent insert, in five of five repetitions, with the query-deleted control producing five users and zero retries. C2 → **Corrected**: the outcome stands, the mechanism named in its wording does not — the sentinel refused zero losers and the OTP document refused all twenty, so the original run proves uniqueness on the registration path but not the sentinel's part in it. C3 gains a **Re-examine** row, since its stated justification inherited C1's premise and direct chats have no OTP to confound them. **C6** (the range is defended, with arm D as the control and per-racer abort counts as the instrument) and **C7** (the gate never exercises the sentinel) added as **Measured**. Reproduction gains `make auth-negative-control`, deliberately a separate target so the experiment cannot overwrite the log C2 and C5 cite. The sentinel survives all of it, on the ground stated in C6's *Consequence* row: the protection is a platform default this project never selected and exceeds the documented contract, so it cannot be cited. |
 | v0.2 | 2026-08-04 | Evidence gap closed. The store gate was re-provisioned and re-run with capture in place; C2 and C5 now cite `evidence/m1.2-store.log` rather than test source alone, and the *Evidence gap* section became *Evidence provenance*, recording why the log's header names the ledger branch instead of the M1.2 merge. Infrastructure destroyed after the run. |
 | v0.1 | 2026-08-04 | Initial ledger for the *Lock What Isn't There* draft. Five claims: the phantom (C1), the measured five-racer uniqueness gate (C2), the direct-chat generalisation as an explicit design claim (C3), the unreachable race recovery and the over-permissive fake (C4), and TTL-as-garbage-collection with the missing third disjunct (C5). Evidence gap for M1.2's live runs recorded rather than hidden; capture lands with this commit for M1.3 onward. |
