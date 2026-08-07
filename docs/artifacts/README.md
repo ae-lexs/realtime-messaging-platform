@@ -6,7 +6,7 @@ The point is falsifiability. A published claim that cannot be checked against a 
 
 | Artifact | Title | Claims | Status |
 |---|---|---|---|
-| RTM-04 | Lock What Isn't There | [RTM-04.md](RTM-04.md) | Draft — pending publication |
+| RTM-04 | The Lock That Was Already There | [RTM-04.md](RTM-04.md) | Draft — pending publication |
 
 ## How to cite
 
@@ -18,6 +18,8 @@ Each claim carries two kinds of pointer, and both matter:
 - **Living** — a path and a symbol name: `internal/firestore/auth_tx.go` → `AuthTx.Register`. Survives refactoring and points a reader at current reality.
 
 Never cite `blob/main/…` with line numbers. It resolves after the file changes and silently points at the wrong code, which is worse than not citing at all.
+
+And the opposite failure, which is easy to miss because the link looks correct when you write it: **never leave a claim pinned to a pre-merge branch commit.** This repository squash-merges, so the SHA a feature branch carried never becomes reachable from `main` and is eventually garbage-collected. Such a link is immutable *and* dead — it 404s with no hint that it once worked. Pinning is therefore a two-step operation: cite the branch SHA while the work is in review, then **re-pin to the merged SHA as the first commit after the merge**, before the essay citing it is published.
 
 It is expected that a claim's pinned SHA **predates** its ledger entry. The ledger is written when an essay is drafted; the evidence was produced when the work was done.
 
