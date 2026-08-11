@@ -29,9 +29,12 @@ func TestDocumentFieldNamesMatchTheSchema(t *testing.T) {
 			wantTags: []string{"phone_number", "phone_verified", "display_name", "created_at", "updated_at"},
 		},
 		{
+			// member_count joined the collection in ADR-023 v1.4: it is the
+			// group-size cap's serialization point, read inside the same
+			// transaction that writes a membership.
 			name:     "chats",
 			doc:      firestore.ChatDoc{},
-			wantTags: []string{"chat_type", "name", "created_by", "created_at", "updated_at"},
+			wantTags: []string{"chat_type", "name", "created_by", "member_count", "created_at", "updated_at"},
 		},
 		{
 			name:     "memberships",
@@ -57,6 +60,14 @@ func TestDocumentFieldNamesMatchTheSchema(t *testing.T) {
 			name:     "phone_index",
 			doc:      firestore.PhoneIndexDoc{},
 			wantTags: []string{"user_id", "created_at"},
+		},
+		{
+			// chat_id is the field that makes this a lookup and not only a
+			// sentinel — the race loser reads it to learn which chat won
+			// (ADR-023 v1.3, v1.4).
+			name:     "direct_chats",
+			doc:      firestore.DirectChatDoc{},
+			wantTags: []string{"chat_id", "created_at"},
 		},
 	}
 

@@ -23,6 +23,16 @@ var (
 	ErrMessageTooLarge    = errors.New("message exceeds size limit")
 	ErrInvalidContentType = errors.New("unsupported content type")
 
+	// Chat lifecycle errors (ADR-006 §4, ADR-016)
+	//
+	// ErrInvalidOperation is ADR-006's INVALID_OPERATION: the request is
+	// well-formed and the caller is entitled to act, but the operation does
+	// not exist for this chat — adding a member to a direct chat, an owner
+	// leaving a group, removing yourself instead of leaving.
+	ErrInvalidOperation = errors.New("operation not valid for this chat")
+	ErrChatFull         = errors.New("chat has reached its member limit")
+	ErrAlreadyMember    = errors.New("user is already a member of this chat")
+
 	// Operational errors
 	ErrRateLimited  = errors.New("rate limit exceeded")
 	ErrUnavailable  = errors.New("service temporarily unavailable")
@@ -78,6 +88,9 @@ var clientErrors = []error{
 	ErrSessionExpired,
 	ErrSessionRevoked,
 	ErrInvalidPhoneNumber,
+	ErrInvalidOperation,
+	ErrChatFull,
+	ErrAlreadyMember,
 }
 
 // IsClientError returns true if the error represents a client-side issue

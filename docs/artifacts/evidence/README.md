@@ -22,5 +22,6 @@ experiment means only that the measurement was validly taken.
 | `rtm-04-negative-control.log` | `make auth-negative-control` — experiment: does a transaction lock a query that matched nothing? | 2026-08-07 | [RTM-04](../RTM-04.md) C6, C7 — and the run that withdrew C1 |
 | `rtm-04-negative-control-optimistic.log` | the same experiment under `OPTIMISTIC` concurrency | 2026-08-07 | [RTM-04](../RTM-04.md) C8 — the mode switch that corrected C6's consequence |
 | `rtm-04-negative-control-pessimistic-recheck.log` | the same experiment, mode restored — the second `A` of an A-B-A | 2026-08-07 | [RTM-04](../RTM-04.md) C8 |
+| `m1.3-store.log` | `make chat-test` — gate: chat creation, membership mutation, and the direct-pair invariant through the shipped path | 2026-08-10 | M1.3 — 18 tests, all PASS; the concurrency gate records `created 1 / replayed 4 / refused 0` |
 | `m1.3-direct-pair-pessimistic.log` | `make chat-direct-pair` — experiment: the same question on the direct-chat path, which carries no OTP document to confound it | 2026-08-10 | M1.3 — 15 repetitions × 3 arms, 45/45 PASS |
 | `m1.3-direct-pair-optimistic.log` | the same experiment under `OPTIMISTIC` concurrency | 2026-08-10 | M1.3 — 15 repetitions × 3 arms, 45/45 PASS |

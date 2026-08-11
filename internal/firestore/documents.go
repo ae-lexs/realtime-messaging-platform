@@ -25,11 +25,36 @@ type ChatDoc struct {
 	ID string `firestore:"-"`
 
 	// ChatType is "direct" or "group" (ADR-016).
-	ChatType  string    `firestore:"chat_type"`
-	Name      string    `firestore:"name"`
-	CreatedBy string    `firestore:"created_by"`
+	ChatType  string `firestore:"chat_type"`
+	Name      string `firestore:"name"`
+	CreatedBy string `firestore:"created_by"`
+
+	// MemberCount is the number of memberships, maintained in the same
+	// transaction as the membership writes (ADR-023 v1.4).
+	//
+	// Two things it is not. It is **never an authorization input** — the
+	// membership check reads `memberships` directly (ADR-016 §3.2), and a
+	// future reader must not repurpose this as a truth source. And it is not
+	// the "intended count" ADR-016 §3.2 hedged it as: that hedge answered a
+	// prior substrate's transaction limit (ADR-023 v1.4 retires it), while a
+	// Firestore transaction creates a whole group at once, so this value is
+	// exact from the moment the chat exists.
+	//
+	// What it is for: display (ADR-006 §4.2, §4.3) and the group-size cap,
+	// where reading this document inside the transaction is what serializes
+	// concurrent adds. That lock is the one Firestore actually documents — on
+	// a document the transaction read — which is why the cap is enforced this
+	// way rather than by counting memberships with a query.
+	MemberCount int `firestore:"member_count"`
+
 	CreatedAt time.Time `firestore:"created_at"`
 	UpdatedAt time.Time `firestore:"updated_at"`
+}
+
+// IsDirect reports whether the chat is a direct chat, whose membership is
+// fixed at creation (ADR-016 §5).
+func (d ChatDoc) IsDirect() bool {
+	return d.ChatType == string(domain.ChatTypeDirect)
 }
 
 // MembershipDoc is a document in `memberships` (ADR-023). Doc ID is the
@@ -141,6 +166,36 @@ type PhoneIndexDoc struct {
 
 	UserID    string    `firestore:"user_id"`
 	CreatedAt time.Time `firestore:"created_at"`
+}
+
+// DirectChatDoc is a document in `direct_chats` (ADR-023 v1.3). Doc ID is the
+// canonical pair from DirectChatDocID.
+//
+// It is both the uniqueness sentinel for a user pair and the lookup that
+// answers which chat that pair has — the second is what justifies it, since
+// the concurrency argument v1.3 gave for the first did not survive measurement
+// (ADR-023 v1.4). Permanent, no TTL: if direct-chat deletion is ever built,
+// this document must be deleted in the same transaction as the chat, or the
+// pair can never open a second conversation.
+type DirectChatDoc struct {
+	ID string `firestore:"-"`
+
+	ChatID    string    `firestore:"chat_id"`
+	CreatedAt time.Time `firestore:"created_at"`
+}
+
+// Validate reports whether the direct-pair sentinel can be written.
+func (d DirectChatDoc) Validate() error {
+	if d.ID == "" {
+		return fmt.Errorf("firestore: direct chat document ID is required")
+	}
+	if d.ChatID == "" {
+		// A sentinel with no chat_id claims the pair for nothing: the pair
+		// could never open a chat, and the loser of a race would read a
+		// document that names no winner.
+		return fmt.Errorf("firestore: direct chat %s has no chat ID", d.ID)
+	}
+	return nil
 }
 
 // Validate reports whether the document can be written. Each Validate covers

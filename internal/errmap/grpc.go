@@ -47,6 +47,11 @@ var grpcMappings = []struct {
 	{domain.ErrInvalidID, codes.InvalidArgument},
 	{domain.ErrInvalidPhoneNumber, codes.InvalidArgument},
 
+	// Chat lifecycle (ADR-006 §4)
+	{domain.ErrInvalidOperation, codes.FailedPrecondition},
+	{domain.ErrChatFull, codes.FailedPrecondition},
+	{domain.ErrAlreadyMember, codes.AlreadyExists},
+
 	// Rate limiting / resource exhaustion
 	{domain.ErrRateLimited, codes.ResourceExhausted},
 	{domain.ErrPhoneRateLimited, codes.ResourceExhausted},

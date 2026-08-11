@@ -58,6 +58,13 @@ var httpMappings = []httpMapping{
 	{domain.ErrInvalidID, http.StatusBadRequest, "INVALID_ARGUMENT"},
 	{domain.ErrInvalidPhoneNumber, http.StatusBadRequest, "INVALID_ARGUMENT"},
 
+	// Chat lifecycle (ADR-006 §4). ALREADY_A_MEMBER is a 409 because the
+	// caller's intent is already satisfied; the other two are 400 because the
+	// operation does not exist for this chat, whatever the caller's role.
+	{domain.ErrInvalidOperation, http.StatusBadRequest, "INVALID_OPERATION"},
+	{domain.ErrChatFull, http.StatusBadRequest, "CHAT_FULL"},
+	{domain.ErrAlreadyMember, http.StatusConflict, "ALREADY_A_MEMBER"},
+
 	// Rate limiting — 429
 	{domain.ErrRateLimited, http.StatusTooManyRequests, "RATE_LIMITED"},
 	{domain.ErrPhoneRateLimited, http.StatusTooManyRequests, "PHONE_RATE_LIMITED"},

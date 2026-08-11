@@ -31,9 +31,26 @@ const (
 	ConnectionTTL     = 60 * time.Second // Redis key TTL = 2x heartbeat interval
 
 	// Timeout contracts (ADR-009 §1)
-	KafkaProduceTimeout  = 10 * time.Second // Max time for Kafka produce
-	RedisTimeout         = 2 * time.Second  // Max time for Redis operations
-	FirestoreTimeout     = 5 * time.Second  // Max time for a Firestore document read/write or query
+	KafkaProduceTimeout = 10 * time.Second // Max time for Kafka produce
+	RedisTimeout        = 2 * time.Second  // Max time for Redis operations
+	FirestoreTimeout    = 5 * time.Second  // Max time for a Firestore document read/write or query
+
+	// FirestoreTxTimeout bounds a whole Firestore transaction, which is not
+	// one operation and must not borrow FirestoreTimeout's budget.
+	//
+	// A read-write transaction that the store aborts is re-run by the client
+	// library with exponential backoff, up to its own attempt limit, and
+	// internal/firestore restarts it again if the store rejects one of those
+	// retries (ADR-023 v1.4). The budget therefore has to cover several
+	// attempts plus the backoff between them, where FirestoreTimeout covers
+	// exactly one round trip.
+	//
+	// 5 s was measured to be too small: the M1.3 store gate hit
+	// DeadlineExceeded inside a two-read transaction under ordinary
+	// contention, on a path that had passed minutes earlier. 20 s is four
+	// times the single-operation budget, leaving room for the retries while
+	// staying well inside Firestore's own 270 s transaction limit.
+	FirestoreTxTimeout   = 20 * time.Second
 	SecretManagerTimeout = 10 * time.Second // Max time for a Secret Manager access; only on the startup and refresh paths, never per-request
 	GRPCCallTimeout      = 10 * time.Second // Max time for inter-service gRPC calls
 
@@ -94,4 +111,39 @@ const (
 // IsValidChatType checks if a chat type is valid.
 func IsValidChatType(ct ChatType) bool {
 	return ct == ChatTypeDirect || ct == ChatTypeGroup
+}
+
+// Role is a member's role in a chat (ADR-006 §8, ADR-016).
+type Role string
+
+const (
+	// RoleOwner is the group creator. Exactly one per group, for the group's
+	// whole life: ownership transfer is out of scope for the MVP, so the owner
+	// can neither leave nor be removed nor have their role changed
+	// (ADR-016 §4.3). Direct chats have no owner.
+	RoleOwner Role = "owner"
+
+	// RoleAdmin can add and remove members and rename the chat, but only
+	// against members — an admin cannot act on another admin or the owner.
+	RoleAdmin Role = "admin"
+
+	// RoleMember can read, send and mute. Both participants of a direct chat
+	// hold this role (ADR-006 §4.1).
+	RoleMember Role = "member"
+)
+
+// IsValidRole reports whether r is a role this system assigns.
+func IsValidRole(r Role) bool {
+	return r == RoleOwner || r == RoleAdmin || r == RoleMember
+}
+
+// IsAssignableRole reports whether r may be granted through the API.
+//
+// RoleOwner is deliberately excluded: it is conferred once, by creating a
+// group, and ADR-006 §4.7 forbids assigning it because ownership transfer has
+// no implementation. A transfer would have to move the role off one member and
+// onto another in a single transaction — two independent writes would leave a
+// window with zero owners or two (ADR-016 §4.3).
+func IsAssignableRole(r Role) bool {
+	return r == RoleAdmin || r == RoleMember
 }

@@ -26,6 +26,8 @@ import (
 	"time"
 
 	"cloud.google.com/go/firestore"
+
+	"github.com/aelexs/realtime-messaging-platform/internal/domain"
 )
 
 // Config holds the parameters needed to reach a Firestore database.
@@ -81,4 +83,15 @@ func (c *Client) Close() error {
 // withTimeout bounds one operation. Callers must call the cancel func.
 func (c *Client) withTimeout(ctx context.Context) (context.Context, context.CancelFunc) {
 	return context.WithTimeout(ctx, c.timeout)
+}
+
+// withTxTimeout bounds a whole transaction, which is several operations plus
+// the backoff between the attempts the store forces.
+//
+// It is deliberately not derived from Config.Timeout: that value is the budget
+// for one round trip, and spending it on a transaction that the library may
+// legitimately re-run three times produces DeadlineExceeded on a healthy path
+// (see domain.FirestoreTxTimeout, which was set from a measured failure).
+func (c *Client) withTxTimeout(ctx context.Context) (context.Context, context.CancelFunc) {
+	return context.WithTimeout(ctx, domain.FirestoreTxTimeout)
 }
