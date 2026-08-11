@@ -192,6 +192,14 @@
             "in": "query",
             "required": false,
             "type": "string"
+          },
+          {
+            "name": "updatedSince.millis",
+            "description": "UTC milliseconds since Unix epoch (1970-01-01T00:00:00Z).",
+            "in": "query",
+            "required": false,
+            "type": "string",
+            "format": "int64"
           }
         ],
         "tags": [
@@ -260,11 +268,48 @@
         "tags": [
           "ChatMgmtService"
         ]
+      },
+      "patch": {
+        "summary": "UpdateChat updates a group chat's metadata (ADR-006 §4.4).\nOwner and admin only; direct chats cannot be renamed.",
+        "operationId": "ChatMgmtService_UpdateChat",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/v1UpdateChatResponse"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "chatId",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/ChatMgmtServiceUpdateChatBody"
+            }
+          }
+        ],
+        "tags": [
+          "ChatMgmtService"
+        ]
       }
     },
     "/v1/chats/{chatId}/leave": {
       "post": {
-        "summary": "LeaveChat removes the calling user from a group chat.\nOwner cannot leave (must transfer ownership first).",
+        "summary": "LeaveChat removes the calling user from a group chat (ADR-006 §4.8).\nThe owner cannot leave, because ownership transfer does not exist yet;\na direct chat cannot be left at all — mute it instead.",
         "operationId": "ChatMgmtService_LeaveChat",
         "responses": {
           "200": {
@@ -342,7 +387,7 @@
     },
     "/v1/chats/{chatId}/members/{userId}": {
       "delete": {
-        "summary": "RemoveMember removes a user from a group chat.\nOnly chat owner can remove members.",
+        "summary": "RemoveMember removes a user from a group chat (ADR-006 §4.6).\nOwner can remove anyone but themselves; admin can remove members only.\nTo remove yourself, call LeaveChat.",
         "operationId": "ChatMgmtService_RemoveMember",
         "responses": {
           "200": {
@@ -370,6 +415,49 @@
             "in": "path",
             "required": true,
             "type": "string"
+          }
+        ],
+        "tags": [
+          "ChatMgmtService"
+        ]
+      },
+      "patch": {
+        "summary": "UpdateMemberRole changes a member's role in a group chat (ADR-006 §4.7).\nOwner only. The owner role cannot be assigned or revoked, because\nownership transfer is out of scope for the MVP (ADR-016 §4.4).",
+        "operationId": "ChatMgmtService_UpdateMemberRole",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/v1UpdateMemberRoleResponse"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "chatId",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "name": "userId",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/ChatMgmtServiceUpdateMemberRoleBody"
+            }
           }
         ],
         "tags": [
@@ -438,6 +526,84 @@
           "ChatMgmtService"
         ]
       }
+    },
+    "/v1/chats/{chatId}/mute": {
+      "post": {
+        "summary": "MuteChat silences notifications for the calling user (ADR-006 §4.9).\nA per-user setting rather than a mutation of the chat, so unlike every\nother membership operation it is allowed on direct chats.",
+        "operationId": "ChatMgmtService_MuteChat",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/v1MuteChatResponse"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "chatId",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/ChatMgmtServiceMuteChatBody"
+            }
+          }
+        ],
+        "tags": [
+          "ChatMgmtService"
+        ]
+      }
+    },
+    "/v1/chats/{chatId}/unmute": {
+      "post": {
+        "summary": "UnmuteChat clears the mute (ADR-006 §4.10).",
+        "operationId": "ChatMgmtService_UnmuteChat",
+        "responses": {
+          "200": {
+            "description": "A successful response.",
+            "schema": {
+              "$ref": "#/definitions/v1UnmuteChatResponse"
+            }
+          },
+          "default": {
+            "description": "An unexpected error response.",
+            "schema": {
+              "$ref": "#/definitions/rpcStatus"
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "chatId",
+            "in": "path",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/ChatMgmtServiceUnmuteChatBody"
+            }
+          }
+        ],
+        "tags": [
+          "ChatMgmtService"
+        ]
+      }
     }
   },
   "definitions": {
@@ -446,6 +612,10 @@
       "properties": {
         "userId": {
           "type": "string"
+        },
+        "role": {
+          "$ref": "#/definitions/v1MemberRole",
+          "description": "Role to grant. Defaults to MEMBER when unspecified. An owner may grant\nADMIN; an admin may only add members (ADR-006 §4.5)."
         }
       },
       "description": "AddMemberRequest specifies the member to add."
@@ -453,6 +623,41 @@
     "ChatMgmtServiceLeaveChatBody": {
       "type": "object",
       "description": "LeaveChatRequest identifies the chat to leave."
+    },
+    "ChatMgmtServiceMuteChatBody": {
+      "type": "object",
+      "properties": {
+        "durationHours": {
+          "type": "integer",
+          "format": "int32",
+          "description": "Hours to stay muted, at most 8760 (one year). Absent means indefinite\n(ADR-006 §4.9)."
+        }
+      },
+      "description": "MuteChatRequest silences a chat for the caller."
+    },
+    "ChatMgmtServiceUnmuteChatBody": {
+      "type": "object",
+      "description": "UnmuteChatRequest clears a mute."
+    },
+    "ChatMgmtServiceUpdateChatBody": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "New chat name, 1-128 characters."
+        }
+      },
+      "description": "UpdateChatRequest changes a group chat's metadata."
+    },
+    "ChatMgmtServiceUpdateMemberRoleBody": {
+      "type": "object",
+      "properties": {
+        "role": {
+          "$ref": "#/definitions/v1MemberRole",
+          "description": "New role: MEMBER or ADMIN. OWNER cannot be assigned (ADR-006 §4.7)."
+        }
+      },
+      "description": "UpdateMemberRoleRequest changes a member's role."
     },
     "protobufAny": {
       "type": "object",
@@ -485,13 +690,16 @@
     "v1AddMemberResponse": {
       "type": "object",
       "properties": {
-        "memberCount": {
-          "type": "integer",
-          "format": "int32",
-          "description": "Updated member count."
+        "member": {
+          "$ref": "#/definitions/v1ChatMember",
+          "description": "The membership that was created."
+        },
+        "addedBy": {
+          "type": "string",
+          "description": "User who performed the addition."
         }
       },
-      "description": "AddMemberResponse confirms the member was added."
+      "description": "AddMemberResponse confirms the member was added (ADR-006 §4.5)."
     },
     "v1AuthUser": {
       "type": "object",
@@ -529,12 +737,13 @@
           "$ref": "#/definitions/v1ChatType"
         },
         "name": {
-          "type": "string"
+          "type": "string",
+          "description": "Empty for direct chats, which cannot be named."
         },
         "memberCount": {
           "type": "integer",
           "format": "int32",
-          "description": "Number of members."
+          "description": "Number of members. Display and the group-size cap only — never an\nauthorization input, which reads memberships directly (ADR-016 §3.2)."
         },
         "createdAt": {
           "$ref": "#/definitions/v1Timestamp",
@@ -543,10 +752,46 @@
         "lastSequence": {
           "type": "string",
           "format": "uint64",
-          "description": "Last message sequence (for sync purposes)."
+          "description": "Last message sequence, for sync. Served from the Postgres write path,\nso it is populated from M2.2 onward and left zero before that."
+        },
+        "createdBy": {
+          "type": "string",
+          "description": "User who created the chat. Owner of a group; for a direct chat it\nrecords who opened it, and confers nothing — direct chats have no owner."
+        },
+        "updatedAt": {
+          "$ref": "#/definitions/v1Timestamp",
+          "description": "When the chat metadata last changed."
         }
       },
       "description": "Chat represents a chat room."
+    },
+    "v1ChatMember": {
+      "type": "object",
+      "properties": {
+        "userId": {
+          "type": "string"
+        },
+        "chatId": {
+          "type": "string"
+        },
+        "role": {
+          "$ref": "#/definitions/v1MemberRole",
+          "description": "Role in the chat."
+        },
+        "joinedAt": {
+          "$ref": "#/definitions/v1Timestamp",
+          "description": "When the user joined."
+        },
+        "displayName": {
+          "type": "string",
+          "description": "Denormalized for display, so rendering a member list costs no extra\nuser lookups (ADR-006 §4.3)."
+        },
+        "mutedUntil": {
+          "$ref": "#/definitions/v1Timestamp",
+          "description": "When this member's mute lapses. Absent when not muted. Per-user state\nthat happens to live on the membership document (ADR-023)."
+        }
+      },
+      "description": "ChatMember represents a chat membership."
     },
     "v1ChatType": {
       "type": "string",
@@ -576,14 +821,14 @@
         },
         "name": {
           "type": "string",
-          "description": "Display name for group chats. Ignored for direct chats."
+          "description": "Display name for group chats. Required for groups, 1-128 characters.\nIgnored for direct chats, which cannot be named (ADR-006 §4.1)."
         },
         "memberIds": {
           "type": "array",
           "items": {
             "type": "string"
           },
-          "description": "Initial members. For direct chats, must contain exactly 2 user IDs.\nFor group chats, must contain at least 2 and at most 100 user IDs."
+          "description": "Members to add, EXCLUDING the caller, who is added automatically\n(ADR-006 §4.1). Exactly one ID for a direct chat; 1-99 for a group,\nwhich with the caller makes the 100-member maximum."
         }
       },
       "description": "CreateChatRequest contains parameters for creating a chat."
@@ -597,7 +842,15 @@
         },
         "isExisting": {
           "type": "boolean",
-          "description": "True if this is an existing direct chat (idempotent creation)."
+          "description": "True when a direct chat for this pair already existed and is being\nreturned rather than created (ADR-006 §4.1). REST maps this to\n200 OK + `X-Idempotent-Replay: true` instead of 201 Created; it is not\nan error, and a caller may create a direct chat without checking first."
+        },
+        "members": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "$ref": "#/definitions/v1ChatMember"
+          },
+          "description": "Members of the chat, the creator included."
         }
       },
       "description": "CreateChatResponse contains the created or existing chat."
@@ -607,6 +860,18 @@
       "properties": {
         "chat": {
           "$ref": "#/definitions/v1Chat"
+        },
+        "members": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "$ref": "#/definitions/v1ChatMember"
+          },
+          "description": "All members of the chat (ADR-006 §4.3)."
+        },
+        "myMembership": {
+          "$ref": "#/definitions/v1ChatMember",
+          "description": "The caller's own membership, carrying their role and mute state."
         }
       },
       "description": "GetChatResponse contains the requested chat."
@@ -665,6 +930,17 @@
       "type": "object",
       "description": "LogoutResponse is empty on success."
     },
+    "v1MemberRole": {
+      "type": "string",
+      "enum": [
+        "MEMBER_ROLE_UNSPECIFIED",
+        "MEMBER_ROLE_MEMBER",
+        "MEMBER_ROLE_OWNER",
+        "MEMBER_ROLE_ADMIN"
+      ],
+      "default": "MEMBER_ROLE_UNSPECIFIED",
+      "description": "MemberRole defines user roles in a chat.\n\nThree roles, matching ADR-006 §8's authorization matrix. Direct chats use\nMEMBER for both participants and have no owner (ADR-006 §4.1)."
+    },
     "v1Message": {
       "type": "object",
       "properties": {
@@ -703,6 +979,19 @@
         }
       },
       "description": "Message represents a chat message."
+    },
+    "v1MuteChatResponse": {
+      "type": "object",
+      "properties": {
+        "chatId": {
+          "type": "string"
+        },
+        "mutedUntil": {
+          "$ref": "#/definitions/v1Timestamp",
+          "description": "When the mute lapses. Absent when muted indefinitely."
+        }
+      },
+      "description": "MuteChatResponse reports the resulting mute."
     },
     "v1PageRequest": {
       "type": "object",
@@ -764,14 +1053,7 @@
     },
     "v1RemoveMemberResponse": {
       "type": "object",
-      "properties": {
-        "memberCount": {
-          "type": "integer",
-          "format": "int32",
-          "description": "Updated member count."
-        }
-      },
-      "description": "RemoveMemberResponse confirms the member was removed."
+      "description": "RemoveMemberResponse confirms the member was removed.\n\nDeliberately empty: ADR-006 §4.6 answers 204 No Content, and a member\ncount in the body would be a second source of truth for a number the\ncaller can read from the chat."
     },
     "v1RequestOTPRequest": {
       "type": "object",
@@ -808,6 +1090,37 @@
         }
       },
       "description": "Timestamp represents a point in time as UTC milliseconds since epoch.\nAll persisted timestamps use this format per TBD-PR0-3."
+    },
+    "v1UnmuteChatResponse": {
+      "type": "object",
+      "properties": {
+        "chatId": {
+          "type": "string"
+        }
+      },
+      "description": "UnmuteChatResponse confirms the chat is unmuted."
+    },
+    "v1UpdateChatResponse": {
+      "type": "object",
+      "properties": {
+        "chat": {
+          "$ref": "#/definitions/v1Chat"
+        }
+      },
+      "description": "UpdateChatResponse contains the updated chat."
+    },
+    "v1UpdateMemberRoleResponse": {
+      "type": "object",
+      "properties": {
+        "member": {
+          "$ref": "#/definitions/v1ChatMember"
+        },
+        "updatedBy": {
+          "type": "string",
+          "description": "User who performed the change."
+        }
+      },
+      "description": "UpdateMemberRoleResponse contains the updated membership."
     },
     "v1VerifyOTPRequest": {
       "type": "object",

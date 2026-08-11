@@ -89,6 +89,15 @@ service ChatMgmtService {
     };
   }
 
+  // UpdateChat updates a group chat's metadata (ADR-006 §4.4).
+  // Owner and admin only; direct chats cannot be renamed.
+  rpc UpdateChat(UpdateChatRequest) returns (UpdateChatResponse) {
+    option (google.api.http) = {
+      patch: "/v1/chats/{chat_id}"
+      body: "*"
+    };
+  }
+
   // ListChats lists chats the user is a member of.
   rpc ListChats(ListChatsRequest) returns (ListChatsResponse) {
     option (google.api.http) = {
@@ -105,19 +114,49 @@ service ChatMgmtService {
     };
   }
 
-  // RemoveMember removes a user from a group chat.
-  // Only chat owner can remove members.
+  // RemoveMember removes a user from a group chat (ADR-006 §4.6).
+  // Owner can remove anyone but themselves; admin can remove members only.
+  // To remove yourself, call LeaveChat.
   rpc RemoveMember(RemoveMemberRequest) returns (RemoveMemberResponse) {
     option (google.api.http) = {
       delete: "/v1/chats/{chat_id}/members/{user_id}"
     };
   }
 
-  // LeaveChat removes the calling user from a group chat.
-  // Owner cannot leave (must transfer ownership first).
+  // UpdateMemberRole changes a member's role in a group chat (ADR-006 §4.7).
+  // Owner only. The owner role cannot be assigned or revoked, because
+  // ownership transfer is out of scope for the MVP (ADR-016 §4.4).
+  rpc UpdateMemberRole(UpdateMemberRoleRequest) returns (UpdateMemberRoleResponse) {
+    option (google.api.http) = {
+      patch: "/v1/chats/{chat_id}/members/{user_id}"
+      body: "*"
+    };
+  }
+
+  // LeaveChat removes the calling user from a group chat (ADR-006 §4.8).
+  // The owner cannot leave, because ownership transfer does not exist yet;
+  // a direct chat cannot be left at all — mute it instead.
   rpc LeaveChat(LeaveChatRequest) returns (LeaveChatResponse) {
     option (google.api.http) = {
       post: "/v1/chats/{chat_id}/leave"
+      body: "*"
+    };
+  }
+
+  // MuteChat silences notifications for the calling user (ADR-006 §4.9).
+  // A per-user setting rather than a mutation of the chat, so unlike every
+  // other membership operation it is allowed on direct chats.
+  rpc MuteChat(MuteChatRequest) returns (MuteChatResponse) {
+    option (google.api.http) = {
+      post: "/v1/chats/{chat_id}/mute"
+      body: "*"
+    };
+  }
+
+  // UnmuteChat clears the mute (ADR-006 §4.10).
+  rpc UnmuteChat(UnmuteChatRequest) returns (UnmuteChatResponse) {
+    option (google.api.http) = {
+      post: "/v1/chats/{chat_id}/unmute"
       body: "*"
     };
   }
@@ -135,11 +174,13 @@ message CreateChatRequest {
   // Type of chat to create.
   ChatType chat_type = 1;
 
-  // Display name for group chats. Ignored for direct chats.
+  // Display name for group chats. Required for groups, 1-128 characters.
+  // Ignored for direct chats, which cannot be named (ADR-006 §4.1).
   string name = 2;
 
-  // Initial members. For direct chats, must contain exactly 2 user IDs.
-  // For group chats, must contain at least 2 and at most 100 user IDs.
+  // Members to add, EXCLUDING the caller, who is added automatically
+  // (ADR-006 §4.1). Exactly one ID for a direct chat; 1-99 for a group,
+  // which with the caller makes the 100-member maximum.
   repeated string member_ids = 3;
 }
 
@@ -148,8 +189,14 @@ message CreateChatResponse {
   // The chat.
   Chat chat = 1;
 
-  // True if this is an existing direct chat (idempotent creation).
+  // True when a direct chat for this pair already existed and is being
+  // returned rather than created (ADR-006 §4.1). REST maps this to
+  // 200 OK + `X-Idempotent-Replay: true` instead of 201 Created; it is not
+  // an error, and a caller may create a direct chat without checking first.
   bool is_existing = 2;
+
+  // Members of the chat, the creator included.
+  repeated ChatMember members = 3;
 }
 
 // GetChatRequest identifies the chat to retrieve.
@@ -160,12 +207,35 @@ message GetChatRequest {
 // GetChatResponse contains the requested chat.
 message GetChatResponse {
   Chat chat = 1;
+
+  // All members of the chat (ADR-006 §4.3).
+  repeated ChatMember members = 2;
+
+  // The caller's own membership, carrying their role and mute state.
+  ChatMember my_membership = 3;
+}
+
+// UpdateChatRequest changes a group chat's metadata.
+message UpdateChatRequest {
+  string chat_id = 1;
+
+  // New chat name, 1-128 characters.
+  string name = 2;
+}
+
+// UpdateChatResponse contains the updated chat.
+message UpdateChatResponse {
+  Chat chat = 1;
 }
 
 // ListChatsRequest contains pagination parameters.
 message ListChatsRequest {
   // Pagination.
   PageRequest page = 1;
+
+  // When set, return only chats updated at or after this time
+  // (ADR-006 §4.2's `updated_since`).
+  optional Timestamp updated_since = 2;
 }
 
 // ListChatsResponse contains the user's chats.
@@ -181,12 +251,22 @@ message ListChatsResponse {
 message AddMemberRequest {
   string chat_id = 1;
   string user_id = 2;
+
+  // Role to grant. Defaults to MEMBER when unspecified. An owner may grant
+  // ADMIN; an admin may only add members (ADR-006 §4.5).
+  MemberRole role = 3;
 }
 
-// AddMemberResponse confirms the member was added.
+// AddMemberResponse confirms the member was added (ADR-006 §4.5).
 message AddMemberResponse {
-  // Updated member count.
-  int32 member_count = 1;
+  reserved 1;
+  reserved "member_count";
+
+  // The membership that was created.
+  ChatMember member = 2;
+
+  // User who performed the addition.
+  string added_by = 3;
 }
 
 // RemoveMemberRequest specifies the member to remove.
@@ -196,9 +276,30 @@ message RemoveMemberRequest {
 }
 
 // RemoveMemberResponse confirms the member was removed.
+//
+// Deliberately empty: ADR-006 §4.6 answers 204 No Content, and a member
+// count in the body would be a second source of truth for a number the
+// caller can read from the chat.
 message RemoveMemberResponse {
-  // Updated member count.
-  int32 member_count = 1;
+  reserved 1;
+  reserved "member_count";
+}
+
+// UpdateMemberRoleRequest changes a member's role.
+message UpdateMemberRoleRequest {
+  string chat_id = 1;
+  string user_id = 2;
+
+  // New role: MEMBER or ADMIN. OWNER cannot be assigned (ADR-006 §4.7).
+  MemberRole role = 3;
+}
+
+// UpdateMemberRoleResponse contains the updated membership.
+message UpdateMemberRoleResponse {
+  ChatMember member = 1;
+
+  // User who performed the change.
+  string updated_by = 2;
 }
 
 // LeaveChatRequest identifies the chat to leave.
@@ -208,6 +309,33 @@ message LeaveChatRequest {
 
 // LeaveChatResponse confirms the user left.
 message LeaveChatResponse {}
+
+// MuteChatRequest silences a chat for the caller.
+message MuteChatRequest {
+  string chat_id = 1;
+
+  // Hours to stay muted, at most 8760 (one year). Absent means indefinite
+  // (ADR-006 §4.9).
+  optional int32 duration_hours = 2;
+}
+
+// MuteChatResponse reports the resulting mute.
+message MuteChatResponse {
+  string chat_id = 1;
+
+  // When the mute lapses. Absent when muted indefinitely.
+  optional Timestamp muted_until = 2;
+}
+
+// UnmuteChatRequest clears a mute.
+message UnmuteChatRequest {
+  string chat_id = 1;
+}
+
+// UnmuteChatResponse confirms the chat is unmuted.
+message UnmuteChatResponse {
+  string chat_id = 1;
+}
 
 // GetMessagesRequest specifies message history query parameters.
 message GetMessagesRequest {
@@ -238,16 +366,27 @@ message GetMessagesResponse {
 message Chat {
   string chat_id = 1;
   ChatType chat_type = 2;
+
+  // Empty for direct chats, which cannot be named.
   string name = 3;
 
-  // Number of members.
+  // Number of members. Display and the group-size cap only — never an
+  // authorization input, which reads memberships directly (ADR-016 §3.2).
   int32 member_count = 4;
 
   // When the chat was created.
   Timestamp created_at = 5;
 
-  // Last message sequence (for sync purposes).
+  // Last message sequence, for sync. Served from the Postgres write path,
+  // so it is populated from M2.2 onward and left zero before that.
   uint64 last_sequence = 6;
+
+  // User who created the chat. Owner of a group; for a direct chat it
+  // records who opened it, and confers nothing — direct chats have no owner.
+  string created_by = 7;
+
+  // When the chat metadata last changed.
+  Timestamp updated_at = 8;
 }
 
 // ChatMember represents a chat membership.
@@ -260,39 +399,37 @@ message ChatMember {
 
   // When the user joined.
   Timestamp joined_at = 4;
+
+  // Denormalized for display, so rendering a member list costs no extra
+  // user lookups (ADR-006 §4.3).
+  string display_name = 5;
+
+  // When this member's mute lapses. Absent when not muted. Per-user state
+  // that happens to live on the membership document (ADR-023).
+  optional Timestamp muted_until = 6;
 }
 
 // MemberRole defines user roles in a chat.
+//
+// Three roles, matching ADR-006 §8's authorization matrix. Direct chats use
+// MEMBER for both participants and have no owner (ADR-006 §4.1).
 enum MemberRole {
   MEMBER_ROLE_UNSPECIFIED = 0;
   MEMBER_ROLE_MEMBER = 1;
   MEMBER_ROLE_OWNER = 2;
+  MEMBER_ROLE_ADMIN = 3;
 }
 
-// ChatCreatedEvent is published to Kafka when a chat is created.
-// Topic: chats.created
-message ChatCreatedEvent {
-  Chat chat = 1;
-  repeated ChatMember initial_members = 2;
-  Timestamp event_time = 3;
-}
-
-// MembershipChangedEvent is published to Kafka when membership changes.
-// Topic: memberships.changed
-message MembershipChangedEvent {
-  string chat_id = 1;
-  string user_id = 2;
-  MembershipChangeType change_type = 3;
-  Timestamp event_time = 4;
-}
-
-// MembershipChangeType defines types of membership changes.
-enum MembershipChangeType {
-  MEMBERSHIP_CHANGE_TYPE_UNSPECIFIED = 0;
-  MEMBERSHIP_CHANGE_TYPE_JOINED = 1;
-  MEMBERSHIP_CHANGE_TYPE_LEFT = 2;
-  MEMBERSHIP_CHANGE_TYPE_REMOVED = 3;
-}
+// The Kafka event types that lived here — ChatCreatedEvent,
+// MembershipChangedEvent and MembershipChangeType — were removed in M1.3.
+//
+// They were ADR-011's JSON-era shapes, superseded by ADR-022 D1's Protobuf
+// events in proto/events/v1, which are the ones actually registered with the
+// schema registry (M0.3) and produced from M2.3. Nothing generated or consumed
+// the duplicates; keeping two definitions of one event on the wire is how the
+// two drift apart. events/v1/membership_changed.proto is the live contract,
+// and its Change enum carries the CHANGE_ROLE_CHANGED case this pair never
+// had.
 
 // ============================================================================
 // Auth messages (ADR-015)
