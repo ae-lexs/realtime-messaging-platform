@@ -20,3 +20,28 @@ lint:
 breaking:
   use:
     - FILE
+  # TEMPORARY, and it must be deleted in the PR after the one that added it.
+  #
+  # M1.3 removed three dead types from chatmgmt.proto — ChatCreatedEvent,
+  # MembershipChangedEvent and MembershipChangeType, ADR-011's JSON-era event
+  # shapes that ADR-022 D1 superseded with proto/events/v1 — and dropped the
+  # member_count field from two responses that ADR-006 §4.6 answers with
+  # 204 No Content. Nothing generated or consumed any of them, and no client of
+  # this API exists: it has never been released, and M1.2 shipped only the auth
+  # endpoints. The wire compatibility this check protects has nothing to protect
+  # here yet.
+  #
+  # `buf breaking` compares the working tree against main using the config in
+  # the working tree, so this entry is what lets that one PR through. Once the
+  # deletion is on main the comparison is clean without it, and leaving it would
+  # quietly license every future deletion in the repo's main API file.
+  #
+  # Scoped to the three rules that actually fired, on the one file, so every
+  # other breaking rule stays live on it in the meantime.
+  ignore_only:
+    MESSAGE_NO_DELETE:
+      - messaging/v1/chatmgmt.proto
+    ENUM_NO_DELETE:
+      - messaging/v1/chatmgmt.proto
+    FIELD_NO_DELETE:
+      - messaging/v1/chatmgmt.proto
