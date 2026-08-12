@@ -249,6 +249,18 @@ auth-flow:
 auth-down:
 	./scripts/auth.sh destroy
 
+## Apply Firestore alone for the M1.3 apparatus (needs PROJECT_ID, BILLING_ACCOUNT_ID)
+chat-up:
+	./scripts/chat.sh apply
+
+## M1.3 negative control: does the direct-pair uniqueness argument hold without a sentinel?
+chat-direct-pair:
+	./scripts/chat.sh direct-pair
+
+## Destroy the M1.3 apparatus (Firestore only)
+chat-down:
+	./scripts/chat.sh destroy
+
 # ============================================================================
 # Utilities
 # ============================================================================

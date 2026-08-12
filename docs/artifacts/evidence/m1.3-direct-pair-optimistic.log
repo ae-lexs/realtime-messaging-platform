@@ -1,0 +1,750 @@
+# m1.3-direct-pair-optimistic — captured experiment output
+# captured:  2026-08-10T23:09:27Z
+# commit:    37b33ac79a52808b12fb20bf681b7bc2aee7c95a
+# database:  messaging-dev (us-central1)
+# mode:      OPTIMISTIC
+# reps:      15
+# project:   redacted
+#
+# Re-running requires re-provisioning — the infrastructure this ran
+# against was destroyed at end of session. See docs/artifacts/README.md.
+
+ Container realtime-messaging-platform-toolbox-run-cec2f421e8b7 Creating 
+ Container realtime-messaging-platform-toolbox-run-cec2f421e8b7 Created 
+=== RUN   TestConcurrentDirectChatsBehindAnEmptyQuery
+    directpair_integration_test.go:453: 
+        === MEASURED: ARM A — concurrent direct chats behind an empty query ===
+        pair key:            0c50b51b-585c-41db-a6f4-37e3a58d4e9c__96869929-1125-4431-bcdb-b4c1041f11a2
+        racers:              5
+        chats created:       1   <-- the quantity under test
+        chats by pair query: 1   (cross-check, must match)
+        racer 0: attempts=2 fast-path=true refused=false rejected=false chat=f968bcee-d044-4118-8ef5-8da15912cd40 err=<nil>
+        racer 1: attempts=2 fast-path=true refused=false rejected=false chat=f968bcee-d044-4118-8ef5-8da15912cd40 err=<nil>
+        racer 2: attempts=2 fast-path=true refused=false rejected=false chat=f968bcee-d044-4118-8ef5-8da15912cd40 err=<nil>
+        racer 3: attempts=1 fast-path=false refused=false rejected=false chat=f968bcee-d044-4118-8ef5-8da15912cd40 err=<nil>
+        racer 4: attempts=2 fast-path=true refused=false rejected=false chat=f968bcee-d044-4118-8ef5-8da15912cd40 err=<nil>
+        racers retried:       4  <-- store-detected conflicts
+        racers that declined: 4  <-- query found a chat in time
+        retry rejected:       0  <-- non-retryable InvalidArgument on retry
+        === END: ARM A — concurrent direct chats behind an empty query ===
+--- PASS: TestConcurrentDirectChatsBehindAnEmptyQuery (3.53s)
+=== RUN   TestConcurrentDirectChatsWithNoQueryAtAll
+    directpair_integration_test.go:503: 
+        === MEASURED: ARM B — the same writes with no query at all (positive control) ===
+        pair key:            46a22797-db42-47a6-a425-abf4f82881e1__5646f648-9dd4-467e-bd41-8612b925d84a
+        racers:              5
+        chats created:       5   <-- must equal racers
+        racer 0: attempts=1 fast-path=false refused=false rejected=false chat=acf5a1ef-1df9-47d4-bb7f-ad11dfc5b158 err=<nil>
+        racer 1: attempts=1 fast-path=false refused=false rejected=false chat=988fb81c-9eeb-4727-a114-4015454ca906 err=<nil>
+        racer 2: attempts=1 fast-path=false refused=false rejected=false chat=32609251-aafe-416c-8e90-2a008bad9872 err=<nil>
+        racer 3: attempts=1 fast-path=false refused=false rejected=false chat=3eea7e5f-1188-4203-befc-b8fee9e28540 err=<nil>
+        racer 4: attempts=1 fast-path=false refused=false rejected=false chat=001da64c-39d6-4682-b3ad-4c66a65d0dd0 err=<nil>
+        racers retried:       0  <-- must be 0
+        === END: ARM B — the same writes with no query at all (positive control) ===
+--- PASS: TestConcurrentDirectChatsWithNoQueryAtAll (1.51s)
+=== RUN   TestConcurrentDirectChatsBehindTheSentinel
+    directpair_integration_test.go:611: 
+        === MEASURED: ARM C — the sentinel, with the refusing mechanism recorded ===
+        pair key:            affbbbf0-77c6-4d2c-bbd4-3e7082bf7f52__b2b6b7d0-e815-453c-9ff1-3369693cc9f5
+        racers:              5
+        chats created:       1   <-- the invariant: exactly 1
+        sentinel holds:      da09d9e2-d8bc-47b3-9826-3af8a35b435f
+        racer 0: attempts=2 fast-path=true refused=false rejected=false chat=da09d9e2-d8bc-47b3-9826-3af8a35b435f err=<nil>
+        racer 1: attempts=2 fast-path=true refused=false rejected=false chat=da09d9e2-d8bc-47b3-9826-3af8a35b435f err=<nil>
+        racer 2: attempts=2 fast-path=true refused=false rejected=false chat=da09d9e2-d8bc-47b3-9826-3af8a35b435f err=<nil>
+        racer 3: attempts=2 fast-path=true refused=false rejected=false chat=da09d9e2-d8bc-47b3-9826-3af8a35b435f err=<nil>
+        racer 4: attempts=1 fast-path=false refused=false rejected=false chat=da09d9e2-d8bc-47b3-9826-3af8a35b435f err=<nil>
+        refused by sentinel:  0  <-- tx.Create AlreadyExists
+        took the fast path:   4  <-- read the winner, returned it
+        racers retried:       4  <-- aborted before commit
+        retry rejected:       0  <-- non-retryable InvalidArgument on retry
+        === END: ARM C — the sentinel, with the refusing mechanism recorded ===
+--- PASS: TestConcurrentDirectChatsBehindTheSentinel (3.13s)
+=== RUN   TestConcurrentDirectChatsBehindAnEmptyQuery
+    directpair_integration_test.go:453: 
+        === MEASURED: ARM A — concurrent direct chats behind an empty query ===
+        pair key:            a9a435bc-8ada-4835-be5e-4bf51d93d61d__d3bb7639-45aa-4ddb-80cd-23cdfcd0e80a
+        racers:              5
+        chats created:       1   <-- the quantity under test
+        chats by pair query: 1   (cross-check, must match)
+        racer 0: attempts=2 fast-path=true refused=false rejected=false chat=0b4a985b-d914-4a5e-9736-91a2221e560f err=<nil>
+        racer 1: attempts=2 fast-path=true refused=false rejected=false chat=0b4a985b-d914-4a5e-9736-91a2221e560f err=<nil>
+        racer 2: attempts=2 fast-path=true refused=false rejected=false chat=0b4a985b-d914-4a5e-9736-91a2221e560f err=<nil>
+        racer 3: attempts=1 fast-path=false refused=false rejected=false chat=0b4a985b-d914-4a5e-9736-91a2221e560f err=<nil>
+        racer 4: attempts=2 fast-path=true refused=false rejected=false chat=0b4a985b-d914-4a5e-9736-91a2221e560f err=<nil>
+        racers retried:       4  <-- store-detected conflicts
+        racers that declined: 4  <-- query found a chat in time
+        retry rejected:       0  <-- non-retryable InvalidArgument on retry
+        === END: ARM A — concurrent direct chats behind an empty query ===
+--- PASS: TestConcurrentDirectChatsBehindAnEmptyQuery (3.12s)
+=== RUN   TestConcurrentDirectChatsWithNoQueryAtAll
+    directpair_integration_test.go:503: 
+        === MEASURED: ARM B — the same writes with no query at all (positive control) ===
+        pair key:            34250f8f-4e78-4bf3-8759-74e5e9766647__7b606649-ef23-4cca-979a-0f11a988d7d8
+        racers:              5
+        chats created:       5   <-- must equal racers
+        racer 0: attempts=1 fast-path=false refused=false rejected=false chat=a70c7573-f8db-4b38-8466-dcfa6974940d err=<nil>
+        racer 1: attempts=1 fast-path=false refused=false rejected=false chat=70bbe1a1-e525-4370-90d5-cc1a28a7f6c9 err=<nil>
+        racer 2: attempts=1 fast-path=false refused=false rejected=false chat=38380c09-9a7a-433c-bca7-33a14580a882 err=<nil>
+        racer 3: attempts=1 fast-path=false refused=false rejected=false chat=33aaad4c-6d24-4316-9287-26f0aa51f27a err=<nil>
+        racer 4: attempts=1 fast-path=false refused=false rejected=false chat=6e1c4c8e-25bd-4d82-9632-6f39b5d34475 err=<nil>
+        racers retried:       0  <-- must be 0
+        === END: ARM B — the same writes with no query at all (positive control) ===
+--- PASS: TestConcurrentDirectChatsWithNoQueryAtAll (1.43s)
+=== RUN   TestConcurrentDirectChatsBehindTheSentinel
+    directpair_integration_test.go:611: 
+        === MEASURED: ARM C — the sentinel, with the refusing mechanism recorded ===
+        pair key:            0cd0422e-1d2b-48e3-be9b-e754199afae1__3cb09235-db8a-4e8c-8ec8-e4247d169c90
+        racers:              5
+        chats created:       1   <-- the invariant: exactly 1
+        sentinel holds:      c2dcf0e6-dfac-4290-82b7-4a87caaaf2a3
+        racer 0: attempts=2 fast-path=true refused=false rejected=false chat=c2dcf0e6-dfac-4290-82b7-4a87caaaf2a3 err=<nil>
+        racer 1: attempts=2 fast-path=true refused=false rejected=false chat=c2dcf0e6-dfac-4290-82b7-4a87caaaf2a3 err=<nil>
+        racer 2: attempts=2 fast-path=true refused=false rejected=false chat=c2dcf0e6-dfac-4290-82b7-4a87caaaf2a3 err=<nil>
+        racer 3: attempts=2 fast-path=true refused=false rejected=false chat=c2dcf0e6-dfac-4290-82b7-4a87caaaf2a3 err=<nil>
+        racer 4: attempts=1 fast-path=false refused=false rejected=false chat=c2dcf0e6-dfac-4290-82b7-4a87caaaf2a3 err=<nil>
+        refused by sentinel:  0  <-- tx.Create AlreadyExists
+        took the fast path:   4  <-- read the winner, returned it
+        racers retried:       4  <-- aborted before commit
+        retry rejected:       0  <-- non-retryable InvalidArgument on retry
+        === END: ARM C — the sentinel, with the refusing mechanism recorded ===
+--- PASS: TestConcurrentDirectChatsBehindTheSentinel (3.19s)
+=== RUN   TestConcurrentDirectChatsBehindAnEmptyQuery
+    directpair_integration_test.go:453: 
+        === MEASURED: ARM A — concurrent direct chats behind an empty query ===
+        pair key:            63e99cb6-4deb-4d43-8724-4ff50c798f25__86044c0e-4664-4418-b0be-74844127d89a
+        racers:              5
+        chats created:       1   <-- the quantity under test
+        chats by pair query: 1   (cross-check, must match)
+        racer 0: attempts=2 fast-path=true refused=false rejected=false chat=bf1bb167-10bc-4d5d-94ba-af448d2edd64 err=<nil>
+        racer 1: attempts=1 fast-path=false refused=false rejected=false chat=bf1bb167-10bc-4d5d-94ba-af448d2edd64 err=<nil>
+        racer 2: attempts=2 fast-path=true refused=false rejected=false chat=bf1bb167-10bc-4d5d-94ba-af448d2edd64 err=<nil>
+        racer 3: attempts=2 fast-path=true refused=false rejected=false chat=bf1bb167-10bc-4d5d-94ba-af448d2edd64 err=<nil>
+        racer 4: attempts=2 fast-path=true refused=false rejected=false chat=bf1bb167-10bc-4d5d-94ba-af448d2edd64 err=<nil>
+        racers retried:       4  <-- store-detected conflicts
+        racers that declined: 4  <-- query found a chat in time
+        retry rejected:       0  <-- non-retryable InvalidArgument on retry
+        === END: ARM A — concurrent direct chats behind an empty query ===
+--- PASS: TestConcurrentDirectChatsBehindAnEmptyQuery (4.05s)
+=== RUN   TestConcurrentDirectChatsWithNoQueryAtAll
+    directpair_integration_test.go:503: 
+        === MEASURED: ARM B — the same writes with no query at all (positive control) ===
+        pair key:            2ec58680-6418-4b3f-9eb3-2b558efa106b__5a904759-fc6a-4282-aad2-e3f7b057374a
+        racers:              5
+        chats created:       5   <-- must equal racers
+        racer 0: attempts=1 fast-path=false refused=false rejected=false chat=db2d644a-0ff4-4255-92c3-ea516cb136fa err=<nil>
+        racer 1: attempts=1 fast-path=false refused=false rejected=false chat=a9d42ae0-34d3-453c-8d80-4adf5e544f75 err=<nil>
+        racer 2: attempts=1 fast-path=false refused=false rejected=false chat=551255ec-04dd-4aeb-b4d9-9ea1c9877b99 err=<nil>
+        racer 3: attempts=1 fast-path=false refused=false rejected=false chat=06d3f05d-35d3-46bb-bfd1-f2e3cc131c11 err=<nil>
+        racer 4: attempts=1 fast-path=false refused=false rejected=false chat=3a39d639-ba17-4b36-b03b-a7172c73b71c err=<nil>
+        racers retried:       0  <-- must be 0
+        === END: ARM B — the same writes with no query at all (positive control) ===
+--- PASS: TestConcurrentDirectChatsWithNoQueryAtAll (1.45s)
+=== RUN   TestConcurrentDirectChatsBehindTheSentinel
+    directpair_integration_test.go:611: 
+        === MEASURED: ARM C — the sentinel, with the refusing mechanism recorded ===
+        pair key:            1b0a8a8d-9180-4cf9-b066-6c966776c435__4c43f4cb-9cbf-4456-8336-54b2299ffa34
+        racers:              5
+        chats created:       1   <-- the invariant: exactly 1
+        sentinel holds:      f4dd76d9-87fd-4be0-99a6-0dee2d4ede3f
+        racer 0: attempts=1 fast-path=false refused=false rejected=false chat=f4dd76d9-87fd-4be0-99a6-0dee2d4ede3f err=<nil>
+        racer 1: attempts=2 fast-path=true refused=false rejected=false chat=f4dd76d9-87fd-4be0-99a6-0dee2d4ede3f err=<nil>
+        racer 2: attempts=2 fast-path=true refused=false rejected=false chat=f4dd76d9-87fd-4be0-99a6-0dee2d4ede3f err=<nil>
+        racer 3: attempts=2 fast-path=true refused=false rejected=false chat=f4dd76d9-87fd-4be0-99a6-0dee2d4ede3f err=<nil>
+        racer 4: attempts=2 fast-path=true refused=false rejected=false chat=f4dd76d9-87fd-4be0-99a6-0dee2d4ede3f err=<nil>
+        refused by sentinel:  0  <-- tx.Create AlreadyExists
+        took the fast path:   4  <-- read the winner, returned it
+        racers retried:       4  <-- aborted before commit
+        retry rejected:       0  <-- non-retryable InvalidArgument on retry
+        === END: ARM C — the sentinel, with the refusing mechanism recorded ===
+--- PASS: TestConcurrentDirectChatsBehindTheSentinel (3.06s)
+=== RUN   TestConcurrentDirectChatsBehindAnEmptyQuery
+    directpair_integration_test.go:453: 
+        === MEASURED: ARM A — concurrent direct chats behind an empty query ===
+        pair key:            bc528af6-7c72-4bba-a1ae-6a90ede66a1c__e945a004-df6f-44ff-a337-7b252ff86695
+        racers:              5
+        chats created:       1   <-- the quantity under test
+        chats by pair query: 1   (cross-check, must match)
+        racer 0: attempts=2 fast-path=true refused=false rejected=false chat=b349fe8d-3845-437a-842d-dff32b3dfc21 err=<nil>
+        racer 1: attempts=2 fast-path=true refused=false rejected=false chat=b349fe8d-3845-437a-842d-dff32b3dfc21 err=<nil>
+        racer 2: attempts=2 fast-path=true refused=false rejected=false chat=b349fe8d-3845-437a-842d-dff32b3dfc21 err=<nil>
+        racer 3: attempts=2 fast-path=true refused=false rejected=false chat=b349fe8d-3845-437a-842d-dff32b3dfc21 err=<nil>
+        racer 4: attempts=1 fast-path=false refused=false rejected=false chat=b349fe8d-3845-437a-842d-dff32b3dfc21 err=<nil>
+        racers retried:       4  <-- store-detected conflicts
+        racers that declined: 4  <-- query found a chat in time
+        retry rejected:       0  <-- non-retryable InvalidArgument on retry
+        === END: ARM A — concurrent direct chats behind an empty query ===
+--- PASS: TestConcurrentDirectChatsBehindAnEmptyQuery (3.31s)
+=== RUN   TestConcurrentDirectChatsWithNoQueryAtAll
+    directpair_integration_test.go:503: 
+        === MEASURED: ARM B — the same writes with no query at all (positive control) ===
+        pair key:            ccc753b7-e669-493a-8c5f-ddae799faf87__e664fb06-b64d-471a-91eb-881dc9931797
+        racers:              5
+        chats created:       5   <-- must equal racers
+        racer 0: attempts=1 fast-path=false refused=false rejected=false chat=4fdd1c72-c346-4626-bf1c-fcdd9dc17010 err=<nil>
+        racer 1: attempts=1 fast-path=false refused=false rejected=false chat=c9907141-76d9-4361-be96-097aaf1ea516 err=<nil>
+        racer 2: attempts=1 fast-path=false refused=false rejected=false chat=f875d86a-58f4-4ea8-a924-78a109f7c7fd err=<nil>
+        racer 3: attempts=1 fast-path=false refused=false rejected=false chat=549ec8fc-97cd-42ab-95ae-7ad77f4f6ddc err=<nil>
+        racer 4: attempts=1 fast-path=false refused=false rejected=false chat=d815ec18-cc8b-453e-9c8c-a45cc2e35cf2 err=<nil>
+        racers retried:       0  <-- must be 0
+        === END: ARM B — the same writes with no query at all (positive control) ===
+--- PASS: TestConcurrentDirectChatsWithNoQueryAtAll (1.48s)
+=== RUN   TestConcurrentDirectChatsBehindTheSentinel
+    directpair_integration_test.go:611: 
+        === MEASURED: ARM C — the sentinel, with the refusing mechanism recorded ===
+        pair key:            09d68146-c8f1-4d17-b09b-dcecc410e348__1c5784b4-1bd5-4351-a8be-962aa361f5db
+        racers:              5
+        chats created:       1   <-- the invariant: exactly 1
+        sentinel holds:      5a9961c2-d7c9-4702-9644-689a874bce9c
+        racer 0: attempts=2 fast-path=true refused=false rejected=false chat=5a9961c2-d7c9-4702-9644-689a874bce9c err=<nil>
+        racer 1: attempts=2 fast-path=true refused=false rejected=false chat=5a9961c2-d7c9-4702-9644-689a874bce9c err=<nil>
+        racer 2: attempts=2 fast-path=true refused=false rejected=false chat=5a9961c2-d7c9-4702-9644-689a874bce9c err=<nil>
+        racer 3: attempts=1 fast-path=false refused=false rejected=false chat=5a9961c2-d7c9-4702-9644-689a874bce9c err=<nil>
+        racer 4: attempts=2 fast-path=true refused=false rejected=false chat=5a9961c2-d7c9-4702-9644-689a874bce9c err=<nil>
+        refused by sentinel:  0  <-- tx.Create AlreadyExists
+        took the fast path:   4  <-- read the winner, returned it
+        racers retried:       4  <-- aborted before commit
+        retry rejected:       0  <-- non-retryable InvalidArgument on retry
+        === END: ARM C — the sentinel, with the refusing mechanism recorded ===
+--- PASS: TestConcurrentDirectChatsBehindTheSentinel (3.27s)
+=== RUN   TestConcurrentDirectChatsBehindAnEmptyQuery
+    directpair_integration_test.go:453: 
+        === MEASURED: ARM A — concurrent direct chats behind an empty query ===
+        pair key:            4f9c22ed-efc5-43e2-8075-b081404c58fa__733d631f-d46b-4afe-86b2-312225e09fb8
+        racers:              5
+        chats created:       1   <-- the quantity under test
+        chats by pair query: 1   (cross-check, must match)
+        racer 0: attempts=1 fast-path=false refused=false rejected=false chat=e8ccc199-4ea4-4827-bda3-2f0b387ac54d err=<nil>
+        racer 1: attempts=2 fast-path=true refused=false rejected=false chat=e8ccc199-4ea4-4827-bda3-2f0b387ac54d err=<nil>
+        racer 2: attempts=2 fast-path=true refused=false rejected=false chat=e8ccc199-4ea4-4827-bda3-2f0b387ac54d err=<nil>
+        racer 3: attempts=2 fast-path=true refused=false rejected=false chat=e8ccc199-4ea4-4827-bda3-2f0b387ac54d err=<nil>
+        racer 4: attempts=2 fast-path=true refused=false rejected=false chat=e8ccc199-4ea4-4827-bda3-2f0b387ac54d err=<nil>
+        racers retried:       4  <-- store-detected conflicts
+        racers that declined: 4  <-- query found a chat in time
+        retry rejected:       0  <-- non-retryable InvalidArgument on retry
+        === END: ARM A — concurrent direct chats behind an empty query ===
+--- PASS: TestConcurrentDirectChatsBehindAnEmptyQuery (3.00s)
+=== RUN   TestConcurrentDirectChatsWithNoQueryAtAll
+    directpair_integration_test.go:503: 
+        === MEASURED: ARM B — the same writes with no query at all (positive control) ===
+        pair key:            2192ef7f-68e0-42ee-b6f8-0e9e185dd98e__ed79299e-3094-461a-b7ab-875fb9c48eb4
+        racers:              5
+        chats created:       5   <-- must equal racers
+        racer 0: attempts=1 fast-path=false refused=false rejected=false chat=983a1a85-f2f0-4ba1-a681-7dc1d908958d err=<nil>
+        racer 1: attempts=1 fast-path=false refused=false rejected=false chat=6b9b7814-1089-4cd3-9470-5511f78ec8b9 err=<nil>
+        racer 2: attempts=1 fast-path=false refused=false rejected=false chat=82246f4b-0596-4ee3-adb9-60529bd0c7bd err=<nil>
+        racer 3: attempts=1 fast-path=false refused=false rejected=false chat=57cdfe7a-90ca-4454-bdb4-014e8d6fa559 err=<nil>
+        racer 4: attempts=1 fast-path=false refused=false rejected=false chat=d6315825-947f-42f9-b39d-462962b3d2af err=<nil>
+        racers retried:       0  <-- must be 0
+        === END: ARM B — the same writes with no query at all (positive control) ===
+--- PASS: TestConcurrentDirectChatsWithNoQueryAtAll (1.51s)
+=== RUN   TestConcurrentDirectChatsBehindTheSentinel
+    directpair_integration_test.go:611: 
+        === MEASURED: ARM C — the sentinel, with the refusing mechanism recorded ===
+        pair key:            927927b7-4fb0-4828-be76-05eec79335b7__fd49c8d8-6a7f-48d3-9c3b-1bc2eaba978d
+        racers:              5
+        chats created:       1   <-- the invariant: exactly 1
+        sentinel holds:      8d3e4ae6-5e7c-4985-9b61-0096b88253f6
+        racer 0: attempts=2 fast-path=true refused=false rejected=false chat=8d3e4ae6-5e7c-4985-9b61-0096b88253f6 err=<nil>
+        racer 1: attempts=2 fast-path=true refused=false rejected=false chat=8d3e4ae6-5e7c-4985-9b61-0096b88253f6 err=<nil>
+        racer 2: attempts=1 fast-path=false refused=false rejected=false chat=8d3e4ae6-5e7c-4985-9b61-0096b88253f6 err=<nil>
+        racer 3: attempts=2 fast-path=true refused=false rejected=false chat=8d3e4ae6-5e7c-4985-9b61-0096b88253f6 err=<nil>
+        racer 4: attempts=2 fast-path=true refused=false rejected=false chat=8d3e4ae6-5e7c-4985-9b61-0096b88253f6 err=<nil>
+        refused by sentinel:  0  <-- tx.Create AlreadyExists
+        took the fast path:   4  <-- read the winner, returned it
+        racers retried:       4  <-- aborted before commit
+        retry rejected:       0  <-- non-retryable InvalidArgument on retry
+        === END: ARM C — the sentinel, with the refusing mechanism recorded ===
+--- PASS: TestConcurrentDirectChatsBehindTheSentinel (3.15s)
+=== RUN   TestConcurrentDirectChatsBehindAnEmptyQuery
+    directpair_integration_test.go:453: 
+        === MEASURED: ARM A — concurrent direct chats behind an empty query ===
+        pair key:            b1e6f35f-6d0e-4a38-b580-dc63fe190371__cae1419d-331c-4555-8198-ea789a459511
+        racers:              5
+        chats created:       1   <-- the quantity under test
+        chats by pair query: 1   (cross-check, must match)
+        racer 0: attempts=1 fast-path=false refused=false rejected=false chat=b92612dc-f6a8-4de2-aaab-24ece11bab65 err=<nil>
+        racer 1: attempts=2 fast-path=true refused=false rejected=false chat=b92612dc-f6a8-4de2-aaab-24ece11bab65 err=<nil>
+        racer 2: attempts=2 fast-path=true refused=false rejected=false chat=b92612dc-f6a8-4de2-aaab-24ece11bab65 err=<nil>
+        racer 3: attempts=2 fast-path=true refused=false rejected=false chat=b92612dc-f6a8-4de2-aaab-24ece11bab65 err=<nil>
+        racer 4: attempts=2 fast-path=true refused=false rejected=false chat=b92612dc-f6a8-4de2-aaab-24ece11bab65 err=<nil>
+        racers retried:       4  <-- store-detected conflicts
+        racers that declined: 4  <-- query found a chat in time
+        retry rejected:       0  <-- non-retryable InvalidArgument on retry
+        === END: ARM A — concurrent direct chats behind an empty query ===
+--- PASS: TestConcurrentDirectChatsBehindAnEmptyQuery (3.85s)
+=== RUN   TestConcurrentDirectChatsWithNoQueryAtAll
+    directpair_integration_test.go:503: 
+        === MEASURED: ARM B — the same writes with no query at all (positive control) ===
+        pair key:            250fa1e0-639e-4e45-876a-28f47bccc202__92b4727b-bcd3-4b10-9882-fa3428a1db78
+        racers:              5
+        chats created:       5   <-- must equal racers
+        racer 0: attempts=1 fast-path=false refused=false rejected=false chat=a36172f9-52ac-4710-ae36-bbd7f07c17ae err=<nil>
+        racer 1: attempts=1 fast-path=false refused=false rejected=false chat=7bd4536e-c2fe-43ca-90d9-42d75d799fe5 err=<nil>
+        racer 2: attempts=1 fast-path=false refused=false rejected=false chat=2908a6fc-63c7-46e3-9518-32cd1bc4fd76 err=<nil>
+        racer 3: attempts=1 fast-path=false refused=false rejected=false chat=f77f144a-8ac6-47b9-9b70-f22a892af140 err=<nil>
+        racer 4: attempts=1 fast-path=false refused=false rejected=false chat=8b0e35cb-f85f-4ca2-bd44-3c1b60a8a8d4 err=<nil>
+        racers retried:       0  <-- must be 0
+        === END: ARM B — the same writes with no query at all (positive control) ===
+--- PASS: TestConcurrentDirectChatsWithNoQueryAtAll (1.45s)
+=== RUN   TestConcurrentDirectChatsBehindTheSentinel
+    directpair_integration_test.go:611: 
+        === MEASURED: ARM C — the sentinel, with the refusing mechanism recorded ===
+        pair key:            a5cbaf17-c19c-4ff7-a33e-46c91ecba67e__d573105e-de65-4680-8595-500acaa3adfd
+        racers:              5
+        chats created:       1   <-- the invariant: exactly 1
+        sentinel holds:      d8453faa-529b-4d4d-88fd-1851cb9b838f
+        racer 0: attempts=1 fast-path=false refused=false rejected=false chat=d8453faa-529b-4d4d-88fd-1851cb9b838f err=<nil>
+        racer 1: attempts=2 fast-path=true refused=false rejected=false chat=d8453faa-529b-4d4d-88fd-1851cb9b838f err=<nil>
+        racer 2: attempts=1 fast-path=true refused=false rejected=false chat=d8453faa-529b-4d4d-88fd-1851cb9b838f err=<nil>
+        racer 3: attempts=1 fast-path=true refused=false rejected=false chat=d8453faa-529b-4d4d-88fd-1851cb9b838f err=<nil>
+        racer 4: attempts=2 fast-path=true refused=false rejected=false chat=d8453faa-529b-4d4d-88fd-1851cb9b838f err=<nil>
+        refused by sentinel:  0  <-- tx.Create AlreadyExists
+        took the fast path:   4  <-- read the winner, returned it
+        racers retried:       2  <-- aborted before commit
+        retry rejected:       0  <-- non-retryable InvalidArgument on retry
+        === END: ARM C — the sentinel, with the refusing mechanism recorded ===
+--- PASS: TestConcurrentDirectChatsBehindTheSentinel (3.01s)
+=== RUN   TestConcurrentDirectChatsBehindAnEmptyQuery
+    directpair_integration_test.go:453: 
+        === MEASURED: ARM A — concurrent direct chats behind an empty query ===
+        pair key:            1fe3ea1b-183a-48b9-a5b4-16ccf65890bd__43575962-ca60-46ea-b5b8-0ea8a59ec4ad
+        racers:              5
+        chats created:       1   <-- the quantity under test
+        chats by pair query: 1   (cross-check, must match)
+        racer 0: attempts=2 fast-path=true refused=false rejected=false chat=271ab574-3254-41de-aa54-9607c16cfbe9 err=<nil>
+        racer 1: attempts=2 fast-path=true refused=false rejected=false chat=271ab574-3254-41de-aa54-9607c16cfbe9 err=<nil>
+        racer 2: attempts=1 fast-path=false refused=false rejected=false chat=271ab574-3254-41de-aa54-9607c16cfbe9 err=<nil>
+        racer 3: attempts=2 fast-path=true refused=false rejected=false chat=271ab574-3254-41de-aa54-9607c16cfbe9 err=<nil>
+        racer 4: attempts=1 fast-path=false refused=false rejected=true chat=f3e3b475-839f-45ec-bc9c-69e720abd6e9 err=rpc error: code = InvalidArgument desc = Transaction options should be the same as specified previous transaction.
+        racers retried:       3  <-- store-detected conflicts
+        racers that declined: 3  <-- query found a chat in time
+        retry rejected:       1  <-- non-retryable InvalidArgument on retry
+        === END: ARM A — concurrent direct chats behind an empty query ===
+--- PASS: TestConcurrentDirectChatsBehindAnEmptyQuery (3.92s)
+=== RUN   TestConcurrentDirectChatsWithNoQueryAtAll
+    directpair_integration_test.go:503: 
+        === MEASURED: ARM B — the same writes with no query at all (positive control) ===
+        pair key:            70a2c0ff-d541-4423-85be-8acb648ec30d__8d47b576-fb53-4deb-8158-1dfdaca6ad65
+        racers:              5
+        chats created:       5   <-- must equal racers
+        racer 0: attempts=1 fast-path=false refused=false rejected=false chat=11c9e1f2-06e7-424b-b2ab-11fc21655a1b err=<nil>
+        racer 1: attempts=1 fast-path=false refused=false rejected=false chat=a10d4323-e259-4bdc-9f09-416857144777 err=<nil>
+        racer 2: attempts=1 fast-path=false refused=false rejected=false chat=cac47ca0-3006-40e5-b16f-4bce9d6abca0 err=<nil>
+        racer 3: attempts=1 fast-path=false refused=false rejected=false chat=d064d1de-2165-42d5-8ee9-90c5b9d9682c err=<nil>
+        racer 4: attempts=1 fast-path=false refused=false rejected=false chat=1344e363-7d46-434c-927b-91649b225607 err=<nil>
+        racers retried:       0  <-- must be 0
+        === END: ARM B — the same writes with no query at all (positive control) ===
+--- PASS: TestConcurrentDirectChatsWithNoQueryAtAll (1.56s)
+=== RUN   TestConcurrentDirectChatsBehindTheSentinel
+    directpair_integration_test.go:611: 
+        === MEASURED: ARM C — the sentinel, with the refusing mechanism recorded ===
+        pair key:            4cf31df9-58c7-4fb8-b61a-20493a6c8f99__d296cf55-ab16-4e73-9ab6-eddd2451d1d8
+        racers:              5
+        chats created:       1   <-- the invariant: exactly 1
+        sentinel holds:      538e3973-f15a-4f34-8a56-b041891eef29
+        racer 0: attempts=2 fast-path=true refused=false rejected=false chat=538e3973-f15a-4f34-8a56-b041891eef29 err=<nil>
+        racer 1: attempts=2 fast-path=true refused=false rejected=false chat=538e3973-f15a-4f34-8a56-b041891eef29 err=<nil>
+        racer 2: attempts=1 fast-path=true refused=false rejected=false chat=538e3973-f15a-4f34-8a56-b041891eef29 err=<nil>
+        racer 3: attempts=2 fast-path=true refused=false rejected=false chat=538e3973-f15a-4f34-8a56-b041891eef29 err=<nil>
+        racer 4: attempts=1 fast-path=false refused=false rejected=false chat=538e3973-f15a-4f34-8a56-b041891eef29 err=<nil>
+        refused by sentinel:  0  <-- tx.Create AlreadyExists
+        took the fast path:   4  <-- read the winner, returned it
+        racers retried:       3  <-- aborted before commit
+        retry rejected:       0  <-- non-retryable InvalidArgument on retry
+        === END: ARM C — the sentinel, with the refusing mechanism recorded ===
+--- PASS: TestConcurrentDirectChatsBehindTheSentinel (3.08s)
+=== RUN   TestConcurrentDirectChatsBehindAnEmptyQuery
+    directpair_integration_test.go:453: 
+        === MEASURED: ARM A — concurrent direct chats behind an empty query ===
+        pair key:            935bc1ab-403f-4805-a6d5-a2cede587492__cd687b71-b9af-4082-96ea-323bb182a75b
+        racers:              5
+        chats created:       1   <-- the quantity under test
+        chats by pair query: 1   (cross-check, must match)
+        racer 0: attempts=2 fast-path=true refused=false rejected=false chat=a253d327-c5b2-4ac5-9cfa-b72fd9140912 err=<nil>
+        racer 1: attempts=2 fast-path=true refused=false rejected=false chat=a253d327-c5b2-4ac5-9cfa-b72fd9140912 err=<nil>
+        racer 2: attempts=1 fast-path=true refused=false rejected=false chat=a253d327-c5b2-4ac5-9cfa-b72fd9140912 err=<nil>
+        racer 3: attempts=1 fast-path=false refused=false rejected=false chat=a253d327-c5b2-4ac5-9cfa-b72fd9140912 err=<nil>
+        racer 4: attempts=2 fast-path=true refused=false rejected=false chat=a253d327-c5b2-4ac5-9cfa-b72fd9140912 err=<nil>
+        racers retried:       3  <-- store-detected conflicts
+        racers that declined: 4  <-- query found a chat in time
+        retry rejected:       0  <-- non-retryable InvalidArgument on retry
+        === END: ARM A — concurrent direct chats behind an empty query ===
+--- PASS: TestConcurrentDirectChatsBehindAnEmptyQuery (3.14s)
+=== RUN   TestConcurrentDirectChatsWithNoQueryAtAll
+    directpair_integration_test.go:503: 
+        === MEASURED: ARM B — the same writes with no query at all (positive control) ===
+        pair key:            00d231b5-1937-46f1-b95b-fdf3f7176be8__85620133-7cc6-4fb0-8ba2-22f522898957
+        racers:              5
+        chats created:       5   <-- must equal racers
+        racer 0: attempts=1 fast-path=false refused=false rejected=false chat=db490fb9-1660-43ef-9ad8-655dabbcc898 err=<nil>
+        racer 1: attempts=1 fast-path=false refused=false rejected=false chat=f68b3d08-beee-43ab-8749-3a8b0d6795d7 err=<nil>
+        racer 2: attempts=1 fast-path=false refused=false rejected=false chat=ea41a4ac-9f1e-4208-a023-416c0674752b err=<nil>
+        racer 3: attempts=1 fast-path=false refused=false rejected=false chat=41a4f9f4-5a18-4edd-9b90-958fa776f402 err=<nil>
+        racer 4: attempts=1 fast-path=false refused=false rejected=false chat=f8621cd4-59af-44c6-a68c-757c8da07cd5 err=<nil>
+        racers retried:       0  <-- must be 0
+        === END: ARM B — the same writes with no query at all (positive control) ===
+--- PASS: TestConcurrentDirectChatsWithNoQueryAtAll (1.50s)
+=== RUN   TestConcurrentDirectChatsBehindTheSentinel
+    directpair_integration_test.go:611: 
+        === MEASURED: ARM C — the sentinel, with the refusing mechanism recorded ===
+        pair key:            37afbc45-3a0c-4513-8c9b-8796e46c4120__660168fe-e922-4eee-9e10-5e998ecafd8c
+        racers:              5
+        chats created:       1   <-- the invariant: exactly 1
+        sentinel holds:      f0305e0a-4b2a-4598-a8db-5bfa528c4cde
+        racer 0: attempts=1 fast-path=false refused=false rejected=true chat=798dd03c-12b4-4d05-a0d3-a0c8ffacac40 err=rpc error: code = InvalidArgument desc = Transaction options should be the same as specified previous transaction.
+        racer 1: attempts=2 fast-path=true refused=false rejected=false chat=f0305e0a-4b2a-4598-a8db-5bfa528c4cde err=<nil>
+        racer 2: attempts=1 fast-path=false refused=false rejected=true chat=4837047b-4962-4d95-86d0-6f3f0eff5cdf err=rpc error: code = InvalidArgument desc = Transaction options should be the same as specified previous transaction.
+        racer 3: attempts=1 fast-path=false refused=false rejected=false chat=f0305e0a-4b2a-4598-a8db-5bfa528c4cde err=<nil>
+        racer 4: attempts=2 fast-path=true refused=false rejected=false chat=f0305e0a-4b2a-4598-a8db-5bfa528c4cde err=<nil>
+        refused by sentinel:  0  <-- tx.Create AlreadyExists
+        took the fast path:   2  <-- read the winner, returned it
+        racers retried:       2  <-- aborted before commit
+        retry rejected:       2  <-- non-retryable InvalidArgument on retry
+        === END: ARM C — the sentinel, with the refusing mechanism recorded ===
+--- PASS: TestConcurrentDirectChatsBehindTheSentinel (2.97s)
+=== RUN   TestConcurrentDirectChatsBehindAnEmptyQuery
+    directpair_integration_test.go:453: 
+        === MEASURED: ARM A — concurrent direct chats behind an empty query ===
+        pair key:            0b90bf33-9981-42f6-a666-9a4d34c9fda1__7fbc7896-9da9-4e67-9c77-5e8204942818
+        racers:              5
+        chats created:       1   <-- the quantity under test
+        chats by pair query: 1   (cross-check, must match)
+        racer 0: attempts=2 fast-path=true refused=false rejected=false chat=6bc1c320-e9fa-4a0c-b26a-d36d0dcf01d8 err=<nil>
+        racer 1: attempts=2 fast-path=true refused=false rejected=false chat=6bc1c320-e9fa-4a0c-b26a-d36d0dcf01d8 err=<nil>
+        racer 2: attempts=2 fast-path=true refused=false rejected=false chat=6bc1c320-e9fa-4a0c-b26a-d36d0dcf01d8 err=<nil>
+        racer 3: attempts=2 fast-path=true refused=false rejected=false chat=6bc1c320-e9fa-4a0c-b26a-d36d0dcf01d8 err=<nil>
+        racer 4: attempts=1 fast-path=false refused=false rejected=false chat=6bc1c320-e9fa-4a0c-b26a-d36d0dcf01d8 err=<nil>
+        racers retried:       4  <-- store-detected conflicts
+        racers that declined: 4  <-- query found a chat in time
+        retry rejected:       0  <-- non-retryable InvalidArgument on retry
+        === END: ARM A — concurrent direct chats behind an empty query ===
+--- PASS: TestConcurrentDirectChatsBehindAnEmptyQuery (3.91s)
+=== RUN   TestConcurrentDirectChatsWithNoQueryAtAll
+    directpair_integration_test.go:503: 
+        === MEASURED: ARM B — the same writes with no query at all (positive control) ===
+        pair key:            33e5a2b6-26ce-4e9c-bd5c-178b6c7e5d45__cba37c4b-8738-4a0d-a976-9f2e5872a907
+        racers:              5
+        chats created:       5   <-- must equal racers
+        racer 0: attempts=1 fast-path=false refused=false rejected=false chat=cb79898c-0d48-4d46-bb4e-baa3ca0a2f23 err=<nil>
+        racer 1: attempts=1 fast-path=false refused=false rejected=false chat=7249aa51-8385-4225-a9df-fc2bb9df72e0 err=<nil>
+        racer 2: attempts=1 fast-path=false refused=false rejected=false chat=175460a5-747c-491a-93d8-28650a3cfc97 err=<nil>
+        racer 3: attempts=1 fast-path=false refused=false rejected=false chat=128ab849-74b2-474e-819e-321d21504e05 err=<nil>
+        racer 4: attempts=1 fast-path=false refused=false rejected=false chat=144a7410-d13f-4ce4-ba1c-9279227d8eea err=<nil>
+        racers retried:       0  <-- must be 0
+        === END: ARM B — the same writes with no query at all (positive control) ===
+--- PASS: TestConcurrentDirectChatsWithNoQueryAtAll (1.53s)
+=== RUN   TestConcurrentDirectChatsBehindTheSentinel
+    directpair_integration_test.go:611: 
+        === MEASURED: ARM C — the sentinel, with the refusing mechanism recorded ===
+        pair key:            4053ac27-e91c-4ab7-a0e2-984352939bba__d45d057e-ef22-4b0a-9447-1ac9e4bbf4f4
+        racers:              5
+        chats created:       1   <-- the invariant: exactly 1
+        sentinel holds:      52e3ae34-9fb1-45f6-b719-67a249b394ad
+        racer 0: attempts=2 fast-path=true refused=false rejected=false chat=52e3ae34-9fb1-45f6-b719-67a249b394ad err=<nil>
+        racer 1: attempts=2 fast-path=true refused=false rejected=false chat=52e3ae34-9fb1-45f6-b719-67a249b394ad err=<nil>
+        racer 2: attempts=1 fast-path=false refused=false rejected=false chat=52e3ae34-9fb1-45f6-b719-67a249b394ad err=<nil>
+        racer 3: attempts=2 fast-path=true refused=false rejected=false chat=52e3ae34-9fb1-45f6-b719-67a249b394ad err=<nil>
+        racer 4: attempts=2 fast-path=true refused=false rejected=false chat=52e3ae34-9fb1-45f6-b719-67a249b394ad err=<nil>
+        refused by sentinel:  0  <-- tx.Create AlreadyExists
+        took the fast path:   4  <-- read the winner, returned it
+        racers retried:       4  <-- aborted before commit
+        retry rejected:       0  <-- non-retryable InvalidArgument on retry
+        === END: ARM C — the sentinel, with the refusing mechanism recorded ===
+--- PASS: TestConcurrentDirectChatsBehindTheSentinel (3.08s)
+=== RUN   TestConcurrentDirectChatsBehindAnEmptyQuery
+    directpair_integration_test.go:453: 
+        === MEASURED: ARM A — concurrent direct chats behind an empty query ===
+        pair key:            71e568a8-eb7b-45be-9da6-59db868fefca__8a5adf48-aee9-4cd7-8938-70a402aef111
+        racers:              5
+        chats created:       1   <-- the quantity under test
+        chats by pair query: 1   (cross-check, must match)
+        racer 0: attempts=2 fast-path=true refused=false rejected=false chat=1440b5b1-01ad-45e0-8e91-5a94e2d5c5b9 err=<nil>
+        racer 1: attempts=2 fast-path=true refused=false rejected=false chat=1440b5b1-01ad-45e0-8e91-5a94e2d5c5b9 err=<nil>
+        racer 2: attempts=2 fast-path=true refused=false rejected=false chat=1440b5b1-01ad-45e0-8e91-5a94e2d5c5b9 err=<nil>
+        racer 3: attempts=2 fast-path=true refused=false rejected=false chat=1440b5b1-01ad-45e0-8e91-5a94e2d5c5b9 err=<nil>
+        racer 4: attempts=1 fast-path=false refused=false rejected=false chat=1440b5b1-01ad-45e0-8e91-5a94e2d5c5b9 err=<nil>
+        racers retried:       4  <-- store-detected conflicts
+        racers that declined: 4  <-- query found a chat in time
+        retry rejected:       0  <-- non-retryable InvalidArgument on retry
+        === END: ARM A — concurrent direct chats behind an empty query ===
+--- PASS: TestConcurrentDirectChatsBehindAnEmptyQuery (3.44s)
+=== RUN   TestConcurrentDirectChatsWithNoQueryAtAll
+    directpair_integration_test.go:503: 
+        === MEASURED: ARM B — the same writes with no query at all (positive control) ===
+        pair key:            3f7395c1-6ffe-4274-8f17-32081a3cc958__48fc75c7-6b05-4ffc-8dbc-bff4899be74b
+        racers:              5
+        chats created:       5   <-- must equal racers
+        racer 0: attempts=1 fast-path=false refused=false rejected=false chat=709c17ae-04e0-413b-a6ed-1988a266e101 err=<nil>
+        racer 1: attempts=1 fast-path=false refused=false rejected=false chat=02b0be5d-64e1-4bd1-a638-97504c26cc0e err=<nil>
+        racer 2: attempts=1 fast-path=false refused=false rejected=false chat=266f834d-46a9-4532-9187-5fa8dbd29d11 err=<nil>
+        racer 3: attempts=1 fast-path=false refused=false rejected=false chat=b2622253-a9ef-4e95-b5e5-190ae72894d4 err=<nil>
+        racer 4: attempts=1 fast-path=false refused=false rejected=false chat=8bbf547b-60da-40e2-831d-eaa5e32fbd69 err=<nil>
+        racers retried:       0  <-- must be 0
+        === END: ARM B — the same writes with no query at all (positive control) ===
+--- PASS: TestConcurrentDirectChatsWithNoQueryAtAll (1.58s)
+=== RUN   TestConcurrentDirectChatsBehindTheSentinel
+    directpair_integration_test.go:611: 
+        === MEASURED: ARM C — the sentinel, with the refusing mechanism recorded ===
+        pair key:            676a4651-cf79-4651-a723-4d4fd073edd7__be85b036-ca82-4918-82a8-160770b5db04
+        racers:              5
+        chats created:       1   <-- the invariant: exactly 1
+        sentinel holds:      14a99556-e124-4298-8f8e-4ff40538829b
+        racer 0: attempts=2 fast-path=true refused=false rejected=false chat=14a99556-e124-4298-8f8e-4ff40538829b err=<nil>
+        racer 1: attempts=2 fast-path=true refused=false rejected=false chat=14a99556-e124-4298-8f8e-4ff40538829b err=<nil>
+        racer 2: attempts=2 fast-path=true refused=false rejected=false chat=14a99556-e124-4298-8f8e-4ff40538829b err=<nil>
+        racer 3: attempts=1 fast-path=false refused=false rejected=false chat=14a99556-e124-4298-8f8e-4ff40538829b err=<nil>
+        racer 4: attempts=2 fast-path=true refused=false rejected=false chat=14a99556-e124-4298-8f8e-4ff40538829b err=<nil>
+        refused by sentinel:  0  <-- tx.Create AlreadyExists
+        took the fast path:   4  <-- read the winner, returned it
+        racers retried:       4  <-- aborted before commit
+        retry rejected:       0  <-- non-retryable InvalidArgument on retry
+        === END: ARM C — the sentinel, with the refusing mechanism recorded ===
+--- PASS: TestConcurrentDirectChatsBehindTheSentinel (2.79s)
+=== RUN   TestConcurrentDirectChatsBehindAnEmptyQuery
+    directpair_integration_test.go:453: 
+        === MEASURED: ARM A — concurrent direct chats behind an empty query ===
+        pair key:            1f084b6b-1815-4e4b-8878-cc97c8315108__634081cf-d952-493f-a28b-df4391175be2
+        racers:              5
+        chats created:       1   <-- the quantity under test
+        chats by pair query: 1   (cross-check, must match)
+        racer 0: attempts=2 fast-path=true refused=false rejected=false chat=4fd28b5d-0ec2-484f-a3d9-45936e7bdfbd err=<nil>
+        racer 1: attempts=2 fast-path=true refused=false rejected=false chat=4fd28b5d-0ec2-484f-a3d9-45936e7bdfbd err=<nil>
+        racer 2: attempts=2 fast-path=true refused=false rejected=false chat=4fd28b5d-0ec2-484f-a3d9-45936e7bdfbd err=<nil>
+        racer 3: attempts=1 fast-path=false refused=false rejected=false chat=4fd28b5d-0ec2-484f-a3d9-45936e7bdfbd err=<nil>
+        racer 4: attempts=2 fast-path=true refused=false rejected=false chat=4fd28b5d-0ec2-484f-a3d9-45936e7bdfbd err=<nil>
+        racers retried:       4  <-- store-detected conflicts
+        racers that declined: 4  <-- query found a chat in time
+        retry rejected:       0  <-- non-retryable InvalidArgument on retry
+        === END: ARM A — concurrent direct chats behind an empty query ===
+--- PASS: TestConcurrentDirectChatsBehindAnEmptyQuery (3.58s)
+=== RUN   TestConcurrentDirectChatsWithNoQueryAtAll
+    directpair_integration_test.go:503: 
+        === MEASURED: ARM B — the same writes with no query at all (positive control) ===
+        pair key:            922a3071-d4ab-440b-941f-afb8c3efe6b8__f19f1795-ed63-48ee-b8d6-5cb03529418a
+        racers:              5
+        chats created:       5   <-- must equal racers
+        racer 0: attempts=1 fast-path=false refused=false rejected=false chat=0db2986b-263e-44de-aa8f-814b0ce69edb err=<nil>
+        racer 1: attempts=1 fast-path=false refused=false rejected=false chat=a6c777f1-5731-447e-a5e2-29e8679f7702 err=<nil>
+        racer 2: attempts=1 fast-path=false refused=false rejected=false chat=9c109b49-22af-4445-a3ae-965c0337ceac err=<nil>
+        racer 3: attempts=1 fast-path=false refused=false rejected=false chat=782e43b0-e042-45de-9886-25321f58c2a3 err=<nil>
+        racer 4: attempts=1 fast-path=false refused=false rejected=false chat=8244aa50-a576-4b16-a156-1e522d774e1e err=<nil>
+        racers retried:       0  <-- must be 0
+        === END: ARM B — the same writes with no query at all (positive control) ===
+--- PASS: TestConcurrentDirectChatsWithNoQueryAtAll (1.61s)
+=== RUN   TestConcurrentDirectChatsBehindTheSentinel
+    directpair_integration_test.go:611: 
+        === MEASURED: ARM C — the sentinel, with the refusing mechanism recorded ===
+        pair key:            312c7a92-da57-4519-abd7-8309795aa8ae__7496c602-c8de-4910-ba88-541ce7ae090b
+        racers:              5
+        chats created:       1   <-- the invariant: exactly 1
+        sentinel holds:      194f62ab-f049-42f2-91e0-14e41c37b34b
+        racer 0: attempts=2 fast-path=true refused=false rejected=false chat=194f62ab-f049-42f2-91e0-14e41c37b34b err=<nil>
+        racer 1: attempts=2 fast-path=true refused=false rejected=false chat=194f62ab-f049-42f2-91e0-14e41c37b34b err=<nil>
+        racer 2: attempts=2 fast-path=true refused=false rejected=false chat=194f62ab-f049-42f2-91e0-14e41c37b34b err=<nil>
+        racer 3: attempts=1 fast-path=false refused=false rejected=false chat=194f62ab-f049-42f2-91e0-14e41c37b34b err=<nil>
+        racer 4: attempts=2 fast-path=true refused=false rejected=false chat=194f62ab-f049-42f2-91e0-14e41c37b34b err=<nil>
+        refused by sentinel:  0  <-- tx.Create AlreadyExists
+        took the fast path:   4  <-- read the winner, returned it
+        racers retried:       4  <-- aborted before commit
+        retry rejected:       0  <-- non-retryable InvalidArgument on retry
+        === END: ARM C — the sentinel, with the refusing mechanism recorded ===
+--- PASS: TestConcurrentDirectChatsBehindTheSentinel (3.24s)
+=== RUN   TestConcurrentDirectChatsBehindAnEmptyQuery
+    directpair_integration_test.go:453: 
+        === MEASURED: ARM A — concurrent direct chats behind an empty query ===
+        pair key:            5f425885-9522-407b-a081-02b599ad44e3__d16c99a3-33a4-4444-8c7c-4010a8126aac
+        racers:              5
+        chats created:       1   <-- the quantity under test
+        chats by pair query: 1   (cross-check, must match)
+        racer 0: attempts=2 fast-path=true refused=false rejected=false chat=02e6598f-f1b1-4307-b132-d2495d7a33ee err=<nil>
+        racer 1: attempts=2 fast-path=true refused=false rejected=false chat=02e6598f-f1b1-4307-b132-d2495d7a33ee err=<nil>
+        racer 2: attempts=2 fast-path=true refused=false rejected=false chat=02e6598f-f1b1-4307-b132-d2495d7a33ee err=<nil>
+        racer 3: attempts=1 fast-path=false refused=false rejected=false chat=02e6598f-f1b1-4307-b132-d2495d7a33ee err=<nil>
+        racer 4: attempts=2 fast-path=true refused=false rejected=false chat=02e6598f-f1b1-4307-b132-d2495d7a33ee err=<nil>
+        racers retried:       4  <-- store-detected conflicts
+        racers that declined: 4  <-- query found a chat in time
+        retry rejected:       0  <-- non-retryable InvalidArgument on retry
+        === END: ARM A — concurrent direct chats behind an empty query ===
+--- PASS: TestConcurrentDirectChatsBehindAnEmptyQuery (3.33s)
+=== RUN   TestConcurrentDirectChatsWithNoQueryAtAll
+    directpair_integration_test.go:503: 
+        === MEASURED: ARM B — the same writes with no query at all (positive control) ===
+        pair key:            2d9cccbc-09e7-4e99-bd70-6372f09c8a50__469eaa03-ecd6-4b54-a843-763932c9dea0
+        racers:              5
+        chats created:       5   <-- must equal racers
+        racer 0: attempts=1 fast-path=false refused=false rejected=false chat=3e94ea65-d81e-4a59-b639-9f4b7557410f err=<nil>
+        racer 1: attempts=1 fast-path=false refused=false rejected=false chat=38205e76-e283-4104-ad69-006abecd5efd err=<nil>
+        racer 2: attempts=1 fast-path=false refused=false rejected=false chat=daf72df3-12b7-4464-826d-c35aa74a74eb err=<nil>
+        racer 3: attempts=1 fast-path=false refused=false rejected=false chat=f44df0ef-3b4e-46bb-a715-e2fc8d8b4779 err=<nil>
+        racer 4: attempts=1 fast-path=false refused=false rejected=false chat=66bcab36-a4f2-4df4-8db0-e1346c5278ee err=<nil>
+        racers retried:       0  <-- must be 0
+        === END: ARM B — the same writes with no query at all (positive control) ===
+--- PASS: TestConcurrentDirectChatsWithNoQueryAtAll (1.42s)
+=== RUN   TestConcurrentDirectChatsBehindTheSentinel
+    directpair_integration_test.go:611: 
+        === MEASURED: ARM C — the sentinel, with the refusing mechanism recorded ===
+        pair key:            25dd2d43-8dca-4c93-9b61-e1b5f0b57eef__7f246e5a-8adf-46b1-a554-ccf1900a2917
+        racers:              5
+        chats created:       1   <-- the invariant: exactly 1
+        sentinel holds:      f6d3cce4-5a29-43a0-a9d7-b53becba9400
+        racer 0: attempts=1 fast-path=false refused=false rejected=false chat=f6d3cce4-5a29-43a0-a9d7-b53becba9400 err=<nil>
+        racer 1: attempts=2 fast-path=true refused=false rejected=false chat=f6d3cce4-5a29-43a0-a9d7-b53becba9400 err=<nil>
+        racer 2: attempts=2 fast-path=true refused=false rejected=false chat=f6d3cce4-5a29-43a0-a9d7-b53becba9400 err=<nil>
+        racer 3: attempts=2 fast-path=true refused=false rejected=false chat=f6d3cce4-5a29-43a0-a9d7-b53becba9400 err=<nil>
+        racer 4: attempts=2 fast-path=true refused=false rejected=false chat=f6d3cce4-5a29-43a0-a9d7-b53becba9400 err=<nil>
+        refused by sentinel:  0  <-- tx.Create AlreadyExists
+        took the fast path:   4  <-- read the winner, returned it
+        racers retried:       4  <-- aborted before commit
+        retry rejected:       0  <-- non-retryable InvalidArgument on retry
+        === END: ARM C — the sentinel, with the refusing mechanism recorded ===
+--- PASS: TestConcurrentDirectChatsBehindTheSentinel (3.37s)
+=== RUN   TestConcurrentDirectChatsBehindAnEmptyQuery
+    directpair_integration_test.go:453: 
+        === MEASURED: ARM A — concurrent direct chats behind an empty query ===
+        pair key:            213684b3-aaba-4a56-b75a-abe21f431631__a9b2e715-4e78-4dd8-8bd1-488414039c8b
+        racers:              5
+        chats created:       1   <-- the quantity under test
+        chats by pair query: 1   (cross-check, must match)
+        racer 0: attempts=2 fast-path=true refused=false rejected=false chat=2c9acd22-227b-441f-81e2-6bcb51df6b7b err=<nil>
+        racer 1: attempts=2 fast-path=true refused=false rejected=false chat=2c9acd22-227b-441f-81e2-6bcb51df6b7b err=<nil>
+        racer 2: attempts=1 fast-path=false refused=false rejected=false chat=2c9acd22-227b-441f-81e2-6bcb51df6b7b err=<nil>
+        racer 3: attempts=2 fast-path=true refused=false rejected=false chat=2c9acd22-227b-441f-81e2-6bcb51df6b7b err=<nil>
+        racer 4: attempts=2 fast-path=true refused=false rejected=false chat=2c9acd22-227b-441f-81e2-6bcb51df6b7b err=<nil>
+        racers retried:       4  <-- store-detected conflicts
+        racers that declined: 4  <-- query found a chat in time
+        retry rejected:       0  <-- non-retryable InvalidArgument on retry
+        === END: ARM A — concurrent direct chats behind an empty query ===
+--- PASS: TestConcurrentDirectChatsBehindAnEmptyQuery (3.39s)
+=== RUN   TestConcurrentDirectChatsWithNoQueryAtAll
+    directpair_integration_test.go:503: 
+        === MEASURED: ARM B — the same writes with no query at all (positive control) ===
+        pair key:            16b7b42f-a0f4-4209-8d1d-a57820b4b1e9__20181f9e-2f10-4c94-ae81-eed942217c0c
+        racers:              5
+        chats created:       5   <-- must equal racers
+        racer 0: attempts=1 fast-path=false refused=false rejected=false chat=cece4581-47ca-4e06-9905-16d573832184 err=<nil>
+        racer 1: attempts=1 fast-path=false refused=false rejected=false chat=2489f025-327d-4a2f-8c4f-3eb7978876cf err=<nil>
+        racer 2: attempts=1 fast-path=false refused=false rejected=false chat=ab42692c-3c4a-45cd-8ddb-7f6c68ca43ef err=<nil>
+        racer 3: attempts=1 fast-path=false refused=false rejected=false chat=cce5826c-e869-46e0-a436-9d99375b2191 err=<nil>
+        racer 4: attempts=1 fast-path=false refused=false rejected=false chat=2e543587-2998-4574-9e91-5144ef80bf03 err=<nil>
+        racers retried:       0  <-- must be 0
+        === END: ARM B — the same writes with no query at all (positive control) ===
+--- PASS: TestConcurrentDirectChatsWithNoQueryAtAll (1.49s)
+=== RUN   TestConcurrentDirectChatsBehindTheSentinel
+    directpair_integration_test.go:611: 
+        === MEASURED: ARM C — the sentinel, with the refusing mechanism recorded ===
+        pair key:            552c8245-201d-45be-babf-9e14dea46dd9__e785afdf-3d74-4fca-ab64-96671be83ea9
+        racers:              5
+        chats created:       1   <-- the invariant: exactly 1
+        sentinel holds:      1a122903-6ee5-4f13-a100-ad95792b448f
+        racer 0: attempts=1 fast-path=false refused=false rejected=true chat=016fafe0-a31d-4e1c-bb11-02a28b197a8c err=rpc error: code = InvalidArgument desc = Transaction options should be the same as specified previous transaction.
+        racer 1: attempts=2 fast-path=true refused=false rejected=false chat=1a122903-6ee5-4f13-a100-ad95792b448f err=<nil>
+        racer 2: attempts=2 fast-path=true refused=false rejected=false chat=1a122903-6ee5-4f13-a100-ad95792b448f err=<nil>
+        racer 3: attempts=2 fast-path=true refused=false rejected=false chat=1a122903-6ee5-4f13-a100-ad95792b448f err=<nil>
+        racer 4: attempts=1 fast-path=false refused=false rejected=false chat=1a122903-6ee5-4f13-a100-ad95792b448f err=<nil>
+        refused by sentinel:  0  <-- tx.Create AlreadyExists
+        took the fast path:   3  <-- read the winner, returned it
+        racers retried:       3  <-- aborted before commit
+        retry rejected:       1  <-- non-retryable InvalidArgument on retry
+        === END: ARM C — the sentinel, with the refusing mechanism recorded ===
+--- PASS: TestConcurrentDirectChatsBehindTheSentinel (3.31s)
+=== RUN   TestConcurrentDirectChatsBehindAnEmptyQuery
+    directpair_integration_test.go:453: 
+        === MEASURED: ARM A — concurrent direct chats behind an empty query ===
+        pair key:            04a180b5-eb52-4eea-9977-1de6c58df66c__f26778d9-ea4a-4452-a33d-189e69ac4ece
+        racers:              5
+        chats created:       1   <-- the quantity under test
+        chats by pair query: 1   (cross-check, must match)
+        racer 0: attempts=2 fast-path=true refused=false rejected=false chat=b2812ec0-8a33-4506-9e30-bb223f92e06c err=<nil>
+        racer 1: attempts=2 fast-path=true refused=false rejected=false chat=b2812ec0-8a33-4506-9e30-bb223f92e06c err=<nil>
+        racer 2: attempts=1 fast-path=false refused=false rejected=true chat=3521e63b-21e9-49d5-8c54-9481435672b2 err=rpc error: code = InvalidArgument desc = Transaction options should be the same as specified previous transaction.
+        racer 3: attempts=1 fast-path=false refused=false rejected=false chat=b2812ec0-8a33-4506-9e30-bb223f92e06c err=<nil>
+        racer 4: attempts=1 fast-path=false refused=false rejected=true chat=29088718-7784-45d4-a824-a9bdb0b6d36e err=rpc error: code = InvalidArgument desc = Transaction options should be the same as specified previous transaction.
+        racers retried:       2  <-- store-detected conflicts
+        racers that declined: 2  <-- query found a chat in time
+        retry rejected:       2  <-- non-retryable InvalidArgument on retry
+        === END: ARM A — concurrent direct chats behind an empty query ===
+--- PASS: TestConcurrentDirectChatsBehindAnEmptyQuery (2.86s)
+=== RUN   TestConcurrentDirectChatsWithNoQueryAtAll
+    directpair_integration_test.go:503: 
+        === MEASURED: ARM B — the same writes with no query at all (positive control) ===
+        pair key:            03cc43c5-765d-4a8d-9abf-75cc9c86e92f__2dfd771a-098a-40ef-9f83-9058b64e00aa
+        racers:              5
+        chats created:       5   <-- must equal racers
+        racer 0: attempts=1 fast-path=false refused=false rejected=false chat=5642cae3-b32c-4308-95b2-245b0dbcef40 err=<nil>
+        racer 1: attempts=1 fast-path=false refused=false rejected=false chat=ee2d7ed5-54d7-4572-bd8c-d0ac6623580f err=<nil>
+        racer 2: attempts=1 fast-path=false refused=false rejected=false chat=97bf2550-7fd4-41cf-8f62-960ca7932091 err=<nil>
+        racer 3: attempts=1 fast-path=false refused=false rejected=false chat=34d5dcb4-b209-4873-b0e4-8b6858a44739 err=<nil>
+        racer 4: attempts=1 fast-path=false refused=false rejected=false chat=50a1b02d-d418-437f-8df9-9d85f697cb56 err=<nil>
+        racers retried:       0  <-- must be 0
+        === END: ARM B — the same writes with no query at all (positive control) ===
+--- PASS: TestConcurrentDirectChatsWithNoQueryAtAll (1.01s)
+=== RUN   TestConcurrentDirectChatsBehindTheSentinel
+    directpair_integration_test.go:611: 
+        === MEASURED: ARM C — the sentinel, with the refusing mechanism recorded ===
+        pair key:            aa40bc14-9378-4a86-b3f2-02755896e021__ead445ad-f7a9-402a-bddd-3fe07b877517
+        racers:              5
+        chats created:       1   <-- the invariant: exactly 1
+        sentinel holds:      68eaa93a-52a6-4cc4-af91-31676d4c1629
+        racer 0: attempts=1 fast-path=false refused=false rejected=true chat=a55fdfd2-24b8-482b-978d-61c0deff9f4b err=rpc error: code = InvalidArgument desc = Transaction options should be the same as specified previous transaction.
+        racer 1: attempts=2 fast-path=true refused=false rejected=false chat=68eaa93a-52a6-4cc4-af91-31676d4c1629 err=<nil>
+        racer 2: attempts=2 fast-path=true refused=false rejected=false chat=68eaa93a-52a6-4cc4-af91-31676d4c1629 err=<nil>
+        racer 3: attempts=1 fast-path=false refused=false rejected=false chat=68eaa93a-52a6-4cc4-af91-31676d4c1629 err=<nil>
+        racer 4: attempts=2 fast-path=true refused=false rejected=false chat=68eaa93a-52a6-4cc4-af91-31676d4c1629 err=<nil>
+        refused by sentinel:  0  <-- tx.Create AlreadyExists
+        took the fast path:   3  <-- read the winner, returned it
+        racers retried:       3  <-- aborted before commit
+        retry rejected:       1  <-- non-retryable InvalidArgument on retry
+        === END: ARM C — the sentinel, with the refusing mechanism recorded ===
+--- PASS: TestConcurrentDirectChatsBehindTheSentinel (3.25s)
+=== RUN   TestConcurrentDirectChatsBehindAnEmptyQuery
+    directpair_integration_test.go:453: 
+        === MEASURED: ARM A — concurrent direct chats behind an empty query ===
+        pair key:            df339155-bac0-4ab7-a91e-75063cd37e37__e330f5a3-de4f-4e9a-89ae-5160c0141e69
+        racers:              5
+        chats created:       1   <-- the quantity under test
+        chats by pair query: 1   (cross-check, must match)
+        racer 0: attempts=1 fast-path=false refused=false rejected=true chat=25bb1cc3-a89b-4780-99d1-8d12931e2d5d err=rpc error: code = InvalidArgument desc = Transaction options should be the same as specified previous transaction.
+        racer 1: attempts=1 fast-path=false refused=false rejected=false chat=d2983fd4-9620-49d7-acaf-8b2cc11f8e8e err=<nil>
+        racer 2: attempts=1 fast-path=false refused=false rejected=true chat=153046c2-5b5f-4e72-a78d-016c02b99523 err=rpc error: code = InvalidArgument desc = Transaction options should be the same as specified previous transaction.
+        racer 3: attempts=1 fast-path=false refused=false rejected=true chat=757220a9-b0cc-44cf-8c25-ac056c49f652 err=rpc error: code = InvalidArgument desc = Transaction options should be the same as specified previous transaction.
+        racer 4: attempts=2 fast-path=true refused=false rejected=false chat=d2983fd4-9620-49d7-acaf-8b2cc11f8e8e err=<nil>
+        racers retried:       1  <-- store-detected conflicts
+        racers that declined: 1  <-- query found a chat in time
+        retry rejected:       3  <-- non-retryable InvalidArgument on retry
+        === END: ARM A — concurrent direct chats behind an empty query ===
+--- PASS: TestConcurrentDirectChatsBehindAnEmptyQuery (2.58s)
+=== RUN   TestConcurrentDirectChatsWithNoQueryAtAll
+    directpair_integration_test.go:503: 
+        === MEASURED: ARM B — the same writes with no query at all (positive control) ===
+        pair key:            7cb84b15-0b77-493f-8e2a-a8c217397edb__a4c3d6e2-eea5-464d-9ba0-3316217a768e
+        racers:              5
+        chats created:       5   <-- must equal racers
+        racer 0: attempts=1 fast-path=false refused=false rejected=false chat=857055a4-38b1-411f-957e-bf66fa154ee9 err=<nil>
+        racer 1: attempts=1 fast-path=false refused=false rejected=false chat=b298d05b-4dcd-4750-a97a-520e0550f687 err=<nil>
+        racer 2: attempts=1 fast-path=false refused=false rejected=false chat=8dbc0f21-8e55-40ca-85db-0b26ff3c5902 err=<nil>
+        racer 3: attempts=1 fast-path=false refused=false rejected=false chat=f650f785-790f-440d-a3f6-96c080946bd5 err=<nil>
+        racer 4: attempts=1 fast-path=false refused=false rejected=false chat=b43f04f6-ae85-41ac-a353-023bf9f41347 err=<nil>
+        racers retried:       0  <-- must be 0
+        === END: ARM B — the same writes with no query at all (positive control) ===
+--- PASS: TestConcurrentDirectChatsWithNoQueryAtAll (1.46s)
+=== RUN   TestConcurrentDirectChatsBehindTheSentinel
+    directpair_integration_test.go:611: 
+        === MEASURED: ARM C — the sentinel, with the refusing mechanism recorded ===
+        pair key:            826538d5-a0d5-4ec4-a92a-3391afcbed7f__b16c635e-7d77-4a18-958f-b5cc5fbbd908
+        racers:              5
+        chats created:       1   <-- the invariant: exactly 1
+        sentinel holds:      de6152ec-e023-4ff1-8409-26d1f9963491
+        racer 0: attempts=2 fast-path=true refused=false rejected=false chat=de6152ec-e023-4ff1-8409-26d1f9963491 err=<nil>
+        racer 1: attempts=1 fast-path=false refused=false rejected=false chat=de6152ec-e023-4ff1-8409-26d1f9963491 err=<nil>
+        racer 2: attempts=2 fast-path=true refused=false rejected=false chat=de6152ec-e023-4ff1-8409-26d1f9963491 err=<nil>
+        racer 3: attempts=2 fast-path=true refused=false rejected=false chat=de6152ec-e023-4ff1-8409-26d1f9963491 err=<nil>
+        racer 4: attempts=2 fast-path=true refused=false rejected=false chat=de6152ec-e023-4ff1-8409-26d1f9963491 err=<nil>
+        refused by sentinel:  0  <-- tx.Create AlreadyExists
+        took the fast path:   4  <-- read the winner, returned it
+        racers retried:       4  <-- aborted before commit
+        retry rejected:       0  <-- non-retryable InvalidArgument on retry
+        === END: ARM C — the sentinel, with the refusing mechanism recorded ===
+--- PASS: TestConcurrentDirectChatsBehindTheSentinel (3.42s)
+PASS
+ok  	github.com/aelexs/realtime-messaging-platform/internal/firestore	121.466s
