@@ -1,0 +1,86 @@
+# m1.3-store — captured experiment output
+# captured:  2026-08-11T02:11:46Z
+# commit:    41f1302b55d7acb94f1ed494b2b895fa49363e03
+# database:  messaging-dev (us-central1)
+# mode:      PESSIMISTIC
+# reps:      1
+# project:   redacted
+#
+# Re-running requires re-provisioning — the infrastructure this ran
+# against was destroyed at end of session. See docs/artifacts/README.md.
+
+ Container realtime-messaging-platform-toolbox-run-2919aceff1f1 Creating 
+ Container realtime-messaging-platform-toolbox-run-2919aceff1f1 Created 
+=== RUN   TestCreateDirectChatWritesFourDocuments
+--- PASS: TestCreateDirectChatWritesFourDocuments (1.26s)
+=== RUN   TestCreateDirectChatIsIdempotentInEitherOrder
+--- PASS: TestCreateDirectChatIsIdempotentInEitherOrder (1.51s)
+=== RUN   TestCreateDirectChatRefusesAPairWithItself
+--- PASS: TestCreateDirectChatRefusesAPairWithItself (0.00s)
+=== RUN   TestCreateGroupIsOneTransaction
+--- PASS: TestCreateGroupIsOneTransaction (1.36s)
+=== RUN   TestCreateGroupRefusesMoreThanTheMaximum
+--- PASS: TestCreateGroupRefusesMoreThanTheMaximum (0.00s)
+=== RUN   TestAddMemberMaintainsTheCountAtomically
+--- PASS: TestAddMemberMaintainsTheCountAtomically (1.58s)
+=== RUN   TestAddMemberRefusesAFullChat
+--- PASS: TestAddMemberRefusesAFullChat (1.52s)
+=== RUN   TestAddMemberRefusesADuplicate
+--- PASS: TestAddMemberRefusesADuplicate (1.56s)
+=== RUN   TestDirectChatMembershipIsImmutable
+=== RUN   TestDirectChatMembershipIsImmutable/a_member_cannot_be_added
+=== RUN   TestDirectChatMembershipIsImmutable/a_participant_cannot_be_removed
+=== RUN   TestDirectChatMembershipIsImmutable/a_participant_cannot_leave
+=== RUN   TestDirectChatMembershipIsImmutable/it_cannot_be_renamed
+=== RUN   TestDirectChatMembershipIsImmutable/but_it_can_be_muted
+--- PASS: TestDirectChatMembershipIsImmutable (3.14s)
+    --- PASS: TestDirectChatMembershipIsImmutable/a_member_cannot_be_added (0.39s)
+    --- PASS: TestDirectChatMembershipIsImmutable/a_participant_cannot_be_removed (0.48s)
+    --- PASS: TestDirectChatMembershipIsImmutable/a_participant_cannot_leave (0.48s)
+    --- PASS: TestDirectChatMembershipIsImmutable/it_cannot_be_renamed (0.49s)
+    --- PASS: TestDirectChatMembershipIsImmutable/but_it_can_be_muted (0.40s)
+=== RUN   TestTheOwnerCannotLeaveOrBeRemoved
+=== RUN   TestTheOwnerCannotLeaveOrBeRemoved/the_owner_cannot_leave
+=== RUN   TestTheOwnerCannotLeaveOrBeRemoved/the_owner_cannot_be_removed
+=== RUN   TestTheOwnerCannotLeaveOrBeRemoved/the_owner's_role_cannot_be_changed
+=== RUN   TestTheOwnerCannotLeaveOrBeRemoved/and_the_owner_is_still_there
+--- PASS: TestTheOwnerCannotLeaveOrBeRemoved (2.93s)
+    --- PASS: TestTheOwnerCannotLeaveOrBeRemoved/the_owner_cannot_leave (0.74s)
+    --- PASS: TestTheOwnerCannotLeaveOrBeRemoved/the_owner_cannot_be_removed (0.59s)
+    --- PASS: TestTheOwnerCannotLeaveOrBeRemoved/the_owner's_role_cannot_be_changed (0.59s)
+    --- PASS: TestTheOwnerCannotLeaveOrBeRemoved/and_the_owner_is_still_there (0.08s)
+=== RUN   TestLeaveRemovesTheMemberAndDecrementsTheCount
+--- PASS: TestLeaveRemovesTheMemberAndDecrementsTheCount (1.87s)
+=== RUN   TestRemoveMemberRefusesANonMember
+--- PASS: TestRemoveMemberRefusesANonMember (1.39s)
+=== RUN   TestSetRoleGrantsAdminButNeverOwner
+=== RUN   TestSetRoleGrantsAdminButNeverOwner/a_member_can_be_promoted_to_admin
+=== RUN   TestSetRoleGrantsAdminButNeverOwner/but_nobody_can_be_made_owner
+=== RUN   TestSetRoleGrantsAdminButNeverOwner/and_a_non-member_has_no_role_to_change
+--- PASS: TestSetRoleGrantsAdminButNeverOwner (2.28s)
+    --- PASS: TestSetRoleGrantsAdminButNeverOwner/a_member_can_be_promoted_to_admin (0.65s)
+    --- PASS: TestSetRoleGrantsAdminButNeverOwner/but_nobody_can_be_made_owner (0.00s)
+    --- PASS: TestSetRoleGrantsAdminButNeverOwner/and_a_non-member_has_no_role_to_change (0.74s)
+=== RUN   TestSetMuteClearsWithNil
+--- PASS: TestSetMuteClearsWithNil (1.35s)
+=== RUN   TestSetMuteRefusesANonMember
+--- PASS: TestSetMuteRefusesANonMember (1.99s)
+=== RUN   TestSetNameRenamesAGroup
+--- PASS: TestSetNameRenamesAGroup (1.52s)
+=== RUN   TestMutationsOnAMissingChatAreNotFound
+--- PASS: TestMutationsOnAMissingChatAreNotFound (1.73s)
+=== RUN   TestConcurrentCreateDirectYieldsExactlyOneChat
+    chat_tx_integration_test.go:585: 
+        === MEASURED: M1.3 GATE — concurrent direct-chat creation ===
+        racer 0: replay=true refused=false chat=d2459812-b5a7-455f-8a44-8950cd4ab105 err=<nil>
+        racer 1: replay=true refused=false chat=d2459812-b5a7-455f-8a44-8950cd4ab105 err=<nil>
+        racer 2: replay=false refused=false chat=d2459812-b5a7-455f-8a44-8950cd4ab105 err=<nil>
+        racer 3: replay=true refused=false chat=d2459812-b5a7-455f-8a44-8950cd4ab105 err=<nil>
+        racer 4: replay=true refused=false chat=d2459812-b5a7-455f-8a44-8950cd4ab105 err=<nil>
+        created:  1  <-- must be exactly 1
+        replayed: 4  <-- read the sentinel, returned the winner
+        refused:  0  <-- tx.Create on the sentinel lost
+        === END: M1.3 GATE — concurrent direct-chat creation ===
+--- PASS: TestConcurrentCreateDirectYieldsExactlyOneChat (2.64s)
+PASS
+ok  	github.com/aelexs/realtime-messaging-platform/internal/firestore	30.698s

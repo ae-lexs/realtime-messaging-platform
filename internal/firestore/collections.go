@@ -19,6 +19,17 @@ const (
 	// uniqueness sentinel, not a lookup index despite the name it inherits
 	// from ADR-015 §5.1. Reads by phone go to users.phone_number.
 	CollectionPhoneIndex = "phone_index"
+
+	// CollectionDirectChats holds one document per user pair that has a direct
+	// chat, keyed by the canonical pair (ADR-023 v1.3, v1.4).
+	//
+	// Unlike phone_index it is read as well as contended for: it carries the
+	// chat_id, which is how "which chat does this pair have?" is answered in a
+	// single strongly consistent get() — the question ADR-006 §4.1's
+	// idempotent create asks on every direct-chat creation. That is the
+	// primary justification for the collection; ADR-023 v1.4 records why the
+	// concurrency argument v1.3 gave for it did not survive measurement.
+	CollectionDirectChats = "direct_chats"
 )
 
 const (
@@ -46,4 +57,21 @@ const (
 // (ADR-022 D2).
 func MembershipDocID(chatID domain.ChatID, userID domain.UserID) string {
 	return chatID.String() + membershipIDSeparator + userID.String()
+}
+
+// DirectChatDocID builds the deterministic direct-pair document ID,
+// {min(a,b)}__{max(a,b)} (ADR-023 v1.3).
+//
+// The two user IDs are sorted lexicographically as strings, which is what
+// makes {A,B} and {B,A} address one document — ADR-006 §4.1's canonicalisation
+// rule, and the reason a caller never has to know which order it asked in.
+//
+// It shares MembershipDocID's separator and therefore its 74-byte bound: both
+// are two UUIDs joined by two characters, far inside MaxDocIDBytes.
+func DirectChatDocID(a, b domain.UserID) string {
+	lo, hi := a.String(), b.String()
+	if hi < lo {
+		lo, hi = hi, lo
+	}
+	return lo + membershipIDSeparator + hi
 }

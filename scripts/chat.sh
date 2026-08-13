@@ -4,6 +4,9 @@
 # It starts as one subcommand, because the first thing M1.3 does is measure a
 # premise rather than build on it.
 #
+#   store         The M1.3 gate — chat creation, membership mutation, the
+#                 direct-pair uniqueness invariant under concurrency.
+#
 #   direct-pair   The direct-chat negative control. ADR-023 v1.3 justifies the
 #                 `direct_chats` sentinel with "a query matching nothing locks
 #                 nothing", which RTM-04 measured false on the registration
@@ -17,7 +20,7 @@
 #   PROJECT_ID=my-project BILLING_ACCOUNT_ID=XXXXXX-XXXXXX-XXXXXX \
 #     [REGION=us-central1] [FIRESTORE_DATABASE=messaging-dev] \
 #     [REPS=5] [LOG_SUFFIX=-optimistic] \
-#     scripts/chat.sh {apply|direct-pair|destroy}
+#     scripts/chat.sh {apply|store|direct-pair|destroy}
 #
 # `apply` and `destroy` target Firestore only. The experiment needs no cluster,
 # no Redis and no secrets — standing up the rest would cost provisioning time
@@ -98,6 +101,24 @@ case "${1:-}" in
     terraform_cmd apply
     ;;
 
+  store)
+    # The M1.3 store gate: chat creation and membership mutation against a live
+    # database. Unlike `direct-pair` next to it, every outcome here is specified
+    # by ADR-006 §4 and ADR-016, so the tests assert rather than report — with
+    # one exception, the concurrency gate, which asserts the invariant AND
+    # records which mechanism refused each loser (RTM-04 C7).
+    #
+    # -count=1 disables Go's test cache: a cached "ok" would report success
+    # without touching Firestore, which is worthless for a live gate.
+    echo "==> M1.3 store gate against ${PROJECT_ID}/${DATABASE} (${REGION})"
+    capture "m1.3-store${LOG_SUFFIX:-}" \
+      docker compose run --rm -T \
+      -e FIRESTORE_PROJECT="${PROJECT_ID}" \
+      -e FIRESTORE_DATABASE="${DATABASE}" \
+      toolbox go test -race -count=1 -tags=integration -v ./internal/firestore/... \
+      -run 'TestCreateDirect|TestCreateGroup|TestAddMember|TestDirectChatMembershipIsImmutable|TestTheOwnerCannot|TestLeave|TestRemoveMember|TestSetRole|TestSetMute|TestSetName|TestMutationsOnAMissingChat|TestConcurrentCreateDirect'
+    ;;
+
   direct-pair)
     # REPS repeats every arm. A concurrency result from one run is an anecdote;
     # the user pair and every document ID are freshly generated per repetition,
@@ -125,7 +146,7 @@ case "${1:-}" in
     ;;
 
   *)
-    echo "usage: PROJECT_ID=... scripts/chat.sh {apply|direct-pair|destroy}" >&2
+    echo "usage: PROJECT_ID=... scripts/chat.sh {apply|store|direct-pair|destroy}" >&2
     exit 2
     ;;
 esac

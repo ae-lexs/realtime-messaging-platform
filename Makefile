@@ -253,6 +253,10 @@ auth-down:
 chat-up:
 	./scripts/chat.sh apply
 
+## M1.3 gate: chat creation + membership mutation against live Firestore
+chat-test:
+	./scripts/chat.sh store
+
 ## M1.3 negative control: does the direct-pair uniqueness argument hold without a sentinel?
 chat-direct-pair:
 	./scripts/chat.sh direct-pair
