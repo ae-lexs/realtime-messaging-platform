@@ -159,6 +159,30 @@ func setup(ctx context.Context, deps server.SetupDeps) (func(context.Context) er
 	handler := port.NewAuthHandler(svc)
 	messagingv1.RegisterAuthServiceServer(deps.GRPCServer, handler)
 
+	// The chat service (M1.3). Its handler is never registered directly: every
+	// chat endpoint requires an authenticated caller (ADR-006 §4), and the
+	// wrapper is what supplies one on both transports. Registering `chatHandler`
+	// here instead of `chatServer` would serve every route unauthenticated.
+	revocations := adapter.NewRevocationStore(redisConn.RDB)
+	chatSvc := app.NewChatService(app.ChatServiceConfig{
+		Writer: adapter.NewChatWriter(firestore.NewChatTx(fsClient)),
+		Reader: adapter.NewChatReader(firestore.NewChats(fsClient), firestore.NewMemberships(fsClient)),
+		Users:  adapter.NewUserStore(firestore.NewUsers(fsClient)),
+		Clock:  clock,
+		Logger: deps.Logger,
+	})
+	chatServer := port.NewAuthenticatedChatServer(
+		port.NewChatHandler(chatSvc),
+		auth.NewValidator(auth.ValidatorConfig{
+			KeyStore: keyStore,
+			Issuer:   cfg.Auth.Issuer,
+			Audience: cfg.Auth.Audience,
+			Clock:    clock,
+		}),
+		revocations,
+	)
+	messagingv1.RegisterChatMgmtServiceServer(deps.GRPCServer, chatServer)
+
 	// The REST bridge calls the handler in-process rather than dialling this
 	// service's own gRPC port: same behaviour, one fewer connection and one
 	// fewer thing to fail. ServeMuxOptions is not optional — it carries the
@@ -169,6 +193,16 @@ func setup(ctx context.Context, deps server.SetupDeps) (func(context.Context) er
 		stopRefresher()
 		return abort(fmt.Errorf("register REST handlers: %w", regErr))
 	}
+
+	// The same wrapped server the gRPC port got. This is the registration the
+	// decorator exists for: HandlerServer dispatches in process, so a gRPC
+	// interceptor would never run here, and passing the bare handler would make
+	// every REST chat route unauthenticated while the gRPC port stayed correct.
+	if regErr := messagingv1.RegisterChatMgmtServiceHandlerServer(ctx, gwMux, chatServer); regErr != nil {
+		stopRefresher()
+		return abort(fmt.Errorf("register chat REST handlers: %w", regErr))
+	}
+
 	deps.HTTPMux.Handle("/v1/", gwMux)
 
 	deps.Logger.Info("auth service registered",
