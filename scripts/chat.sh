@@ -16,11 +16,19 @@
 #                 positive control, and the sentinel with the refusing
 #                 mechanism recorded.
 #
+#   flow          #27's service layer (CreateChat/GetChat/ListChats,
+#                 AuthenticatedChatServer) against the *deployed* pod. The
+#                 unit tests run against fakes; this is the run the PR itself
+#                 flagged as still owed. Assumes a full `make deploy` — it
+#                 needs Redis for revocation checks and a real gRPC+REST
+#                 server, which `store`/`direct-pair` deliberately don't stand
+#                 up.
+#
 # Usage:
 #   PROJECT_ID=my-project BILLING_ACCOUNT_ID=XXXXXX-XXXXXX-XXXXXX \
 #     [REGION=us-central1] [FIRESTORE_DATABASE=messaging-dev] \
 #     [REPS=5] [LOG_SUFFIX=-optimistic] \
-#     scripts/chat.sh {apply|store|direct-pair|destroy}
+#     scripts/chat.sh {apply|store|direct-pair|flow|destroy}
 #
 # `apply` and `destroy` target Firestore only. The experiment needs no cluster,
 # no Redis and no secrets — standing up the rest would cost provisioning time
@@ -33,6 +41,10 @@ REGION="${REGION:-us-central1}"
 DATABASE="${FIRESTORE_DATABASE:-messaging-dev}"
 BUCKET="${TF_STATE_BUCKET:-${PROJECT_ID}-tf-state}"
 ENV_DIR="terraform/environments/dev"
+NAMESPACE="messaging"
+PHONE_A="${CHAT_TEST_PHONE_A:-+525599990010}"
+PHONE_B="${CHAT_TEST_PHONE_B:-+525599990011}"
+PHONE_C="${CHAT_TEST_PHONE_C:-+525599990012}"
 
 tb() { docker compose run --rm -T toolbox "$@"; }
 
@@ -139,6 +151,19 @@ case "${1:-}" in
       -run 'TestConcurrentDirectChatsBehindAnEmptyQuery|TestConcurrentDirectChatsWithNoQueryAtAll|TestConcurrentDirectChatsBehindTheSentinel'
     ;;
 
+  flow)
+    echo "==> M1.3 flow gate against the deployed chatmgmt in ${NAMESPACE}"
+    # Everything runs inside one toolbox container so the port-forward and the
+    # curls share a network namespace, same as scripts/auth.sh flow.
+    capture m1.3-flow \
+      docker compose run --rm -T \
+      -e NAMESPACE="${NAMESPACE}" \
+      -e PHONE_A="${PHONE_A}" \
+      -e PHONE_B="${PHONE_B}" \
+      -e PHONE_C="${PHONE_C}" \
+      toolbox bash scripts/chat-flow.sh
+    ;;
+
   destroy)
     # Expect ~6 minutes: deleting the TTL fields dominates this teardown.
     echo "==> destroying Firestore (the TTL fields take ~6 min)"
@@ -146,7 +171,7 @@ case "${1:-}" in
     ;;
 
   *)
-    echo "usage: PROJECT_ID=... scripts/chat.sh {apply|store|direct-pair|destroy}" >&2
+    echo "usage: PROJECT_ID=... scripts/chat.sh {apply|store|direct-pair|flow|destroy}" >&2
     exit 2
     ;;
 esac
