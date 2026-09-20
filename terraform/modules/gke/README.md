@@ -27,18 +27,19 @@ module "gke" {
 |------|---------|
 | terraform | >= 1.9.0, < 2.0.0 |
 | google | >= 6.0 |
+| google-beta | >= 7.0 |
 
 ## Providers
 
 | Name | Version |
 |------|---------|
-| google | >= 6.0 |
+| google-beta | >= 7.0 |
 
 ## Resources
 
 | Name | Type |
 |------|------|
-| [google_container_cluster.main](https://registry.terraform.io/providers/hashicorp/google/latest/docs/resources/container_cluster) | resource |
+| [google-beta_google_container_cluster.main](https://registry.terraform.io/providers/hashicorp/google-beta/latest/docs/resources/google_container_cluster) | resource |
 
 ## Inputs
 
