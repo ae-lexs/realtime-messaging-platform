@@ -18,3 +18,19 @@ provider "google" {
     managed-by  = "terraform"
   }
 }
+
+# Same configuration as "google" above, mirrored for google-beta. Only the gke
+# module uses it (managed_opentelemetry_config), passed down explicitly rather
+# than left implicit — see terraform/modules/gke/versions.tf.
+provider "google-beta" {
+  project               = var.project_id
+  region                = var.region
+  billing_project       = var.project_id
+  user_project_override = true
+
+  default_labels = {
+    project     = var.project_name
+    environment = var.environment
+    managed-by  = "terraform"
+  }
+}

@@ -36,6 +36,10 @@ module "gke" {
   services_range_name           = module.networking.services_range_name
   master_authorized_cidr_blocks = var.master_authorized_cidr_blocks
 
+  providers = {
+    google-beta = google-beta
+  }
+
   depends_on = [module.project_services]
 }
 

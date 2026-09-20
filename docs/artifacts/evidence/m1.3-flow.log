@@ -1,6 +1,6 @@
 # m1.3-flow — captured experiment output
-# captured:  2026-09-20T19:23:07Z
-# commit:    ea4bbd4bb4983ae72f6331206b0064bec686f31d
+# captured:  2026-09-20T20:01:47Z
+# commit:    7d90d0cb1ce421dd78100ab8ad630027403b14ba
 # database:  messaging-dev (us-central1)
 # mode:      PESSIMISTIC
 # reps:      1
@@ -9,16 +9,16 @@
 # Re-running requires re-provisioning — the infrastructure this ran
 # against was destroyed at end of session. See docs/artifacts/README.md.
 
- Container realtime-messaging-platform-toolbox-run-c5db190ed4ef Creating 
- Container realtime-messaging-platform-toolbox-run-c5db190ed4ef Created 
+ Container realtime-messaging-platform-toolbox-run-6e0b991d4f2d Creating 
+ Container realtime-messaging-platform-toolbox-run-6e0b991d4f2d Created 
 ==> port-forwarding svc/chatmgmt
    ✅ port-forward up
 ==> 1. register three users
-   ✅ user A registered (7a8e8114-bbcd-4c3c-889a-643c803308e3)
-   ✅ user B registered (722c471f-09cb-4f41-b6f3-c13ebd6896f2)
-   ✅ user C registered (e09cd069-b4b9-4c20-9c84-0507babba2d7, not a member of anything A creates)
+   ✅ user A registered (a89e843a-ab3b-4ad0-9e50-522e42dd23b2)
+   ✅ user B registered (11382a09-3648-4215-a45b-b3a565838be3)
+   ✅ user C registered (a25af0f5-3479-4ac6-9f77-460ff7be590f, not a member of anything A creates)
 ==> 2. create a direct chat (A, B)
-   ✅ direct chat created (915b36a0-ffe8-4f07-a0e7-0e92db2e5e8b), HTTP 200
+   ✅ direct chat created (e49ba4d6-8193-4b7e-9f24-ba5d5edd02db), HTTP 200
 ==> 3. replay create-chat for the same pair
    ✅ same chat returned, is_existing=true
 ==> 4. get-chat as a member (B)

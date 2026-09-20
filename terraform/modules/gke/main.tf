@@ -1,12 +1,25 @@
 # Regional GKE Autopilot cluster running all four services (ADR-021 Decision B).
 # Autopilot manages nodes, autoscaling, and security posture; there are no
 # node_config / node_pool blocks by design.
+# google-beta, not google: managed_opentelemetry_config (GKE Managed
+# OpenTelemetry — ADR-012 §amended by ADR-021, the Cloud Trace + Managed
+# Service for Prometheus backend) has not been promoted to the GA provider.
 resource "google_container_cluster" "main" {
+  provider = google-beta
+
   name     = "${var.name_prefix}-gke"
   project  = var.project_id
   location = var.region
 
   enable_autopilot = true
+
+  # In-cluster collector at opentelemetry-collector.gke-managed-otel.svc.
+  # cluster.local:4318 (OTLP/HTTP only — no gRPC port). Forwards traces to
+  # Cloud Trace and metrics to Managed Service for Prometheus; each service's
+  # OTEL_ENDPOINT env var (k8s/base/*.yaml) points at that address.
+  managed_opentelemetry_config {
+    scope = "COLLECTION_AND_INSTRUMENTATION_COMPONENTS"
+  }
 
   network    = var.network_id
   subnetwork = var.subnet_id

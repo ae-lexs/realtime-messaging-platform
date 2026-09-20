@@ -26,6 +26,9 @@ spec:
           env:
             - name: ENVIRONMENT
               value: dev
+            # See the matching comment in chatmgmt.yaml.
+            - name: OTEL_ENDPOINT
+              value: opentelemetry-collector.gke-managed-otel.svc.cluster.local:4318
             - name: INGEST_HTTP_PORT
               value: "8081"
           resources:

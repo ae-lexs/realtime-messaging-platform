@@ -7,7 +7,7 @@ import (
 	"fmt"
 
 	"go.opentelemetry.io/otel"
-	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
+	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp"
 	"go.opentelemetry.io/otel/propagation"
 	"go.opentelemetry.io/otel/sdk/resource"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
@@ -42,11 +42,16 @@ func InitTracer(ctx context.Context, cfg TracerConfig) (*TracerProvider, error) 
 	var opts []sdktrace.TracerProviderOption
 	opts = append(opts, sdktrace.WithResource(res))
 
-	// Configure exporter if endpoint is provided
+	// Configure exporter if endpoint is provided. HTTP, not gRPC: GKE Managed
+	// OpenTelemetry's in-cluster collector only documents an OTLP/HTTP endpoint
+	// (opentelemetry-collector.gke-managed-otel.svc.cluster.local:4318) — no
+	// gRPC port is published. WithInsecure is correct here, not a shortcut: the
+	// endpoint is a trusted in-cluster Service reached over the pod network,
+	// the same trust boundary as talking to Redis or Firestore's proxy.
 	if cfg.OTLPEndpoint != "" {
-		exporter, err := otlptracegrpc.New(ctx,
-			otlptracegrpc.WithEndpoint(cfg.OTLPEndpoint),
-			otlptracegrpc.WithInsecure(), // TODO: Configure TLS for production
+		exporter, err := otlptracehttp.New(ctx,
+			otlptracehttp.WithEndpoint(cfg.OTLPEndpoint),
+			otlptracehttp.WithInsecure(),
 		)
 		if err != nil {
 			return nil, fmt.Errorf("create OTLP exporter: %w", err)

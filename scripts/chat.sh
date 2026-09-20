@@ -42,9 +42,13 @@ DATABASE="${FIRESTORE_DATABASE:-messaging-dev}"
 BUCKET="${TF_STATE_BUCKET:-${PROJECT_ID}-tf-state}"
 ENV_DIR="terraform/environments/dev"
 NAMESPACE="messaging"
-PHONE_A="${CHAT_TEST_PHONE_A:-+525599990010}"
-PHONE_B="${CHAT_TEST_PHONE_B:-+525599990011}"
-PHONE_C="${CHAT_TEST_PHONE_C:-+525599990012}"
+# Random by default, not fixed numbers: `flow` may be re-run against
+# Firestore data an earlier run in the same session left behind (infra here
+# isn't necessarily destroyed between runs). Fixed numbers would find A and B
+# already paired from the prior run and fail asserting is_existing=false.
+PHONE_A="${CHAT_TEST_PHONE_A:-+5255$((RANDOM % 9000 + 1000))0}"
+PHONE_B="${CHAT_TEST_PHONE_B:-+5255$((RANDOM % 9000 + 1000))1}"
+PHONE_C="${CHAT_TEST_PHONE_C:-+5255$((RANDOM % 9000 + 1000))2}"
 
 tb() { docker compose run --rm -T toolbox "$@"; }
 
