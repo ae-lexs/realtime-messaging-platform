@@ -197,6 +197,34 @@ func TestAuthenticatedChatServerCoversEveryImplementedRPC(t *testing.T) {
 			_, err := f.server.ListChats(ctx, &messagingv1.ListChatsRequest{})
 			return err
 		},
+		"UpdateChat": func() error {
+			_, err := f.server.UpdateChat(ctx, &messagingv1.UpdateChatRequest{})
+			return err
+		},
+		"AddMember": func() error {
+			_, err := f.server.AddMember(ctx, &messagingv1.AddMemberRequest{})
+			return err
+		},
+		"RemoveMember": func() error {
+			_, err := f.server.RemoveMember(ctx, &messagingv1.RemoveMemberRequest{})
+			return err
+		},
+		"UpdateMemberRole": func() error {
+			_, err := f.server.UpdateMemberRole(ctx, &messagingv1.UpdateMemberRoleRequest{})
+			return err
+		},
+		"LeaveChat": func() error {
+			_, err := f.server.LeaveChat(ctx, &messagingv1.LeaveChatRequest{})
+			return err
+		},
+		"MuteChat": func() error {
+			_, err := f.server.MuteChat(ctx, &messagingv1.MuteChatRequest{})
+			return err
+		},
+		"UnmuteChat": func() error {
+			_, err := f.server.UnmuteChat(ctx, &messagingv1.UnmuteChatRequest{})
+			return err
+		},
 	}
 
 	for name, call := range calls {

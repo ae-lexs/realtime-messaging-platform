@@ -26,7 +26,7 @@ import (
 //   - member_count always equals the memberships written beside it
 //
 // **Authorization is not here.** Whether a caller may perform an operation —
-// ADR-006 §8's role matrix — belongs to the service layer, which knows the
+// ADR-016 §8's role matrix — belongs to the service layer, which knows the
 // caller. This type answers only whether the operation is coherent for the
 // chat. The division matters: an owner removing a member and a stranger
 // removing a member are the same write, and only one of them is allowed.

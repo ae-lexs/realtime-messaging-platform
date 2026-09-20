@@ -20,7 +20,7 @@ type callerKey struct{}
 // Caller is the authenticated identity a chat handler acts on behalf of.
 type Caller struct {
 	// UserID is the token's subject — the user every authorization decision in
-	// ADR-006 §8 is made about.
+	// ADR-016 §8 is made about.
 	UserID string
 
 	// SessionID and JTI are carried for logging and revocation, not for
@@ -164,4 +164,81 @@ func (s *AuthenticatedChatServer) ListChats(
 		return nil, errmap.ToGRPCError(err)
 	}
 	return s.inner.ListChats(ctx, req)
+}
+
+// UpdateChat authenticates, then delegates.
+func (s *AuthenticatedChatServer) UpdateChat(
+	ctx context.Context, req *messagingv1.UpdateChatRequest,
+) (*messagingv1.UpdateChatResponse, error) {
+	ctx, err := s.authenticate(ctx)
+	if err != nil {
+		return nil, errmap.ToGRPCError(err)
+	}
+	return s.inner.UpdateChat(ctx, req)
+}
+
+// AddMember authenticates, then delegates.
+func (s *AuthenticatedChatServer) AddMember(
+	ctx context.Context, req *messagingv1.AddMemberRequest,
+) (*messagingv1.AddMemberResponse, error) {
+	ctx, err := s.authenticate(ctx)
+	if err != nil {
+		return nil, errmap.ToGRPCError(err)
+	}
+	return s.inner.AddMember(ctx, req)
+}
+
+// RemoveMember authenticates, then delegates.
+func (s *AuthenticatedChatServer) RemoveMember(
+	ctx context.Context, req *messagingv1.RemoveMemberRequest,
+) (*messagingv1.RemoveMemberResponse, error) {
+	ctx, err := s.authenticate(ctx)
+	if err != nil {
+		return nil, errmap.ToGRPCError(err)
+	}
+	return s.inner.RemoveMember(ctx, req)
+}
+
+// UpdateMemberRole authenticates, then delegates.
+func (s *AuthenticatedChatServer) UpdateMemberRole(
+	ctx context.Context, req *messagingv1.UpdateMemberRoleRequest,
+) (*messagingv1.UpdateMemberRoleResponse, error) {
+	ctx, err := s.authenticate(ctx)
+	if err != nil {
+		return nil, errmap.ToGRPCError(err)
+	}
+	return s.inner.UpdateMemberRole(ctx, req)
+}
+
+// LeaveChat authenticates, then delegates.
+func (s *AuthenticatedChatServer) LeaveChat(
+	ctx context.Context, req *messagingv1.LeaveChatRequest,
+) (*messagingv1.LeaveChatResponse, error) {
+	ctx, err := s.authenticate(ctx)
+	if err != nil {
+		return nil, errmap.ToGRPCError(err)
+	}
+	return s.inner.LeaveChat(ctx, req)
+}
+
+// MuteChat authenticates, then delegates.
+func (s *AuthenticatedChatServer) MuteChat(
+	ctx context.Context, req *messagingv1.MuteChatRequest,
+) (*messagingv1.MuteChatResponse, error) {
+	ctx, err := s.authenticate(ctx)
+	if err != nil {
+		return nil, errmap.ToGRPCError(err)
+	}
+	return s.inner.MuteChat(ctx, req)
+}
+
+// UnmuteChat authenticates, then delegates.
+func (s *AuthenticatedChatServer) UnmuteChat(
+	ctx context.Context, req *messagingv1.UnmuteChatRequest,
+) (*messagingv1.UnmuteChatResponse, error) {
+	ctx, err := s.authenticate(ctx)
+	if err != nil {
+		return nil, errmap.ToGRPCError(err)
+	}
+	return s.inner.UnmuteChat(ctx, req)
 }

@@ -16,9 +16,10 @@ import (
 )
 
 var (
-	chatCreatedTotal      metric.Int64Counter
-	chatDedupTotal        metric.Int64Counter
-	chatAuthzDenialsTotal metric.Int64Counter
+	chatCreatedTotal        metric.Int64Counter
+	chatDedupTotal          metric.Int64Counter
+	chatAuthzDenialsTotal   metric.Int64Counter
+	membershipMutationTotal metric.Int64Counter
 )
 
 func init() {
@@ -29,7 +30,9 @@ func init() {
 	chatDedupTotal, _ = m.Int64Counter("direct_chat_dedup_total",
 		metric.WithDescription("Direct-chat creation outcomes: created or existing (ADR-016 §10)"))
 	chatAuthzDenialsTotal, _ = m.Int64Counter("chat_authz_denials_total",
-		metric.WithDescription("Chat operations refused by the authorization matrix (ADR-006 §8)"))
+		metric.WithDescription("Chat operations refused by the authorization matrix (ADR-016 §8)"))
+	membershipMutationTotal, _ = m.Int64Counter("membership_mutation_total",
+		metric.WithDescription("Membership changes, by change_type (ADR-016 §10)"))
 }
 
 // ChatRecord is the service's view of a chat. Adapters map the store's shape
@@ -90,6 +93,12 @@ type CreateChatResult struct {
 type ChatWriter interface {
 	CreateDirect(ctx context.Context, callerID, otherID string, now time.Time) (ChatRecord, bool, error)
 	CreateGroup(ctx context.Context, ownerID, name string, memberIDs []string, now time.Time) (ChatRecord, error)
+	AddMember(ctx context.Context, chatID, userID string, role domain.Role, now time.Time) (MemberRecord, error)
+	RemoveMember(ctx context.Context, chatID, userID string, now time.Time) error
+	Leave(ctx context.Context, chatID, userID string, now time.Time) error
+	SetRole(ctx context.Context, chatID, userID string, role domain.Role, now time.Time) (MemberRecord, error)
+	SetMute(ctx context.Context, chatID, userID string, until *time.Time) error
+	SetName(ctx context.Context, chatID, name string, now time.Time) (ChatRecord, error)
 }
 
 // ChatReader reads chats and memberships.
@@ -121,7 +130,7 @@ type ChatServiceConfig struct {
 // leave — because those hold no matter who asks. Authorization is the opposite
 // kind of rule: an owner removing a member and a stranger removing a member
 // are the same write, and only the caller's identity distinguishes them
-// (ADR-006 §8).
+// (ADR-016 §8).
 //
 // The division is not stylistic. Putting authorization in the store would mean
 // threading a caller through every transaction and trusting each call site to
@@ -148,7 +157,7 @@ func NewChatService(cfg ChatServiceConfig) *ChatService {
 
 // CreateChat creates a direct or group chat (ADR-006 §4.1).
 //
-// Any authenticated user may create either kind — ADR-006 §8's first two rows
+// Any authenticated user may create either kind — ADR-016 §8's first two rows
 // — so there is no role check here. What there is instead is validation the
 // store cannot do, because it concerns the request rather than the data: the
 // member list must be the right size and must not contain the caller.
@@ -319,6 +328,289 @@ func (s *ChatService) requireMembership(
 		return MemberRecord{}, err
 	}
 	return membership, nil
+}
+
+// requireRole confirms the caller is a member holding one of the allowed
+// roles (ADR-016 §8). Membership is checked first, via requireMembership, so
+// a non-member sees ErrNotMember rather than ErrForbidden — the two answer
+// different questions ("are you in this chat" vs "are you allowed to do
+// this"), and collapsing them would tell a non-member which was closer.
+func (s *ChatService) requireRole(
+	ctx context.Context, chatID, userID, operation string, allowed ...domain.Role,
+) error {
+	membership, err := s.requireMembership(ctx, chatID, userID, operation)
+	if err != nil {
+		return err
+	}
+	for _, r := range allowed {
+		if membership.Role == r {
+			return nil
+		}
+	}
+	chatAuthzDenialsTotal.Add(ctx, 1, metric.WithAttributes(
+		attribute.String("operation", operation),
+		attribute.String("reason", "insufficient_role"),
+	))
+	return fmt.Errorf(
+		"user %s holds role %q in chat %s, insufficient for %s: %w",
+		userID, membership.Role, chatID, operation, domain.ErrForbidden)
+}
+
+// UpdateChat renames a group chat (ADR-006 §4.4). Owner and admin only; a
+// direct chat is refused by the store, not here — that invariant holds no
+// matter who asks, which is exactly the line ChatService's own doc comment
+// draws between it and authorization.
+func (s *ChatService) UpdateChat(ctx context.Context, callerID, chatID, name string) (*ChatRecord, error) {
+	ctx, span := tracer.Start(ctx, "chat.update")
+	defer span.End()
+	span.SetAttributes(attribute.String("chat.id", chatID))
+
+	if name == "" || len(name) > maxChatNameLength {
+		err := fmt.Errorf("a chat name must be 1-%d characters: %w", maxChatNameLength, domain.ErrInvalidInput)
+		span.RecordError(err)
+		return nil, err
+	}
+
+	if err := s.requireRole(ctx, chatID, callerID, "update_chat", domain.RoleOwner, domain.RoleAdmin); err != nil {
+		span.RecordError(err)
+		return nil, err
+	}
+
+	chat, err := s.writer.SetName(ctx, chatID, name, s.clock.Now())
+	if err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
+		return nil, err
+	}
+
+	return &chat, nil
+}
+
+// AddMember adds a user to a group chat (ADR-006 §4.5).
+//
+// The role being granted is itself an authorization input, which is why the
+// check depends on it: an owner may add a member as ADMIN, but an admin may
+// only add them as MEMBER (ADR-016 §8) — granting a role the caller could not
+// assign directly through UpdateMemberRole would be a second, weaker path to
+// the same privilege.
+func (s *ChatService) AddMember(
+	ctx context.Context, callerID, chatID, userID string, role domain.Role,
+) (*MemberRecord, error) {
+	ctx, span := tracer.Start(ctx, "chat.add_member")
+	defer span.End()
+	span.SetAttributes(attribute.String("chat.id", chatID), attribute.String("member.role", string(role)))
+
+	if role == domain.Role("") {
+		role = domain.RoleMember
+	}
+	if !domain.IsAssignableRole(role) {
+		err := fmt.Errorf("role %q cannot be granted: %w", role, domain.ErrInvalidInput)
+		span.RecordError(err)
+		return nil, err
+	}
+
+	caller, err := s.requireMembership(ctx, chatID, callerID, "add_member")
+	if err != nil {
+		span.RecordError(err)
+		return nil, err
+	}
+
+	allowed := caller.Role == domain.RoleOwner || (caller.Role == domain.RoleAdmin && role == domain.RoleMember)
+	if !allowed {
+		chatAuthzDenialsTotal.Add(ctx, 1, metric.WithAttributes(
+			attribute.String("operation", "add_member"), attribute.String("reason", "insufficient_role")))
+		denyErr := fmt.Errorf("user %s holds role %q, cannot add a member as %q: %w",
+			callerID, caller.Role, role, domain.ErrForbidden)
+		span.RecordError(denyErr)
+		return nil, denyErr
+	}
+
+	member, err := s.writer.AddMember(ctx, chatID, userID, role, s.clock.Now())
+	if err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
+		return nil, err
+	}
+
+	membershipMutationTotal.Add(ctx, 1, metric.WithAttributes(attribute.String("change_type", "added")))
+	return &member, nil
+}
+
+// RemoveMember removes a user from a group chat (ADR-006 §4.6).
+//
+// Self-removal is refused here, not left to the store: "remove yourself" and
+// "leave" are the same write with a different name, and ADR-006 keeps them as
+// two endpoints with two authorization stories rather than one endpoint with
+// a branch — LeaveChat is where the owner-cannot-leave refusal belongs.
+func (s *ChatService) RemoveMember(ctx context.Context, callerID, chatID, userID string) error {
+	ctx, span := tracer.Start(ctx, "chat.remove_member")
+	defer span.End()
+	span.SetAttributes(attribute.String("chat.id", chatID), attribute.String("member.user_id", userID))
+
+	if userID == callerID {
+		err := fmt.Errorf("cannot remove yourself, use leave instead: %w", domain.ErrInvalidOperation)
+		span.RecordError(err)
+		return err
+	}
+
+	caller, err := s.requireMembership(ctx, chatID, callerID, "remove_member")
+	if err != nil {
+		span.RecordError(err)
+		return err
+	}
+
+	allowed := caller.Role == domain.RoleOwner
+	if caller.Role == domain.RoleAdmin {
+		// An admin may remove a plain member only, never another admin or the
+		// owner — checked against the target's actual role, since "can I
+		// remove this person" depends on who they are, not just who is asking.
+		// A target that is not a member at all is left for the store's own
+		// removal to refuse identically; this lookup exists only to see a
+		// role, never to pre-empt that error.
+		target, tErr := s.reader.GetMembership(ctx, chatID, userID)
+		allowed = tErr == nil && target.Role == domain.RoleMember
+	}
+	if !allowed {
+		chatAuthzDenialsTotal.Add(ctx, 1, metric.WithAttributes(
+			attribute.String("operation", "remove_member"), attribute.String("reason", "insufficient_role")))
+		err := fmt.Errorf("user %s holds role %q, cannot remove this member: %w",
+			callerID, caller.Role, domain.ErrForbidden)
+		span.RecordError(err)
+		return err
+	}
+
+	if err := s.writer.RemoveMember(ctx, chatID, userID, s.clock.Now()); err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
+		return err
+	}
+
+	membershipMutationTotal.Add(ctx, 1, metric.WithAttributes(attribute.String("change_type", "removed")))
+	return nil
+}
+
+// UpdateMemberRole changes a member's role (ADR-006 §4.7). Owner only; cannot
+// change the caller's own role. The store separately refuses assigning or
+// demoting the owner role (ADR-016 §4.4 — ownership transfer is out of scope
+// for the MVP), which is why that case is not re-checked here.
+func (s *ChatService) UpdateMemberRole(
+	ctx context.Context, callerID, chatID, userID string, role domain.Role,
+) (*MemberRecord, error) {
+	ctx, span := tracer.Start(ctx, "chat.update_member_role")
+	defer span.End()
+	span.SetAttributes(attribute.String("chat.id", chatID), attribute.String("member.user_id", userID))
+
+	if userID == callerID {
+		err := fmt.Errorf("cannot change your own role: %w", domain.ErrInvalidOperation)
+		span.RecordError(err)
+		return nil, err
+	}
+	if !domain.IsAssignableRole(role) {
+		err := fmt.Errorf("role %q cannot be assigned: %w", role, domain.ErrInvalidInput)
+		span.RecordError(err)
+		return nil, err
+	}
+
+	if err := s.requireRole(ctx, chatID, callerID, "update_member_role", domain.RoleOwner); err != nil {
+		span.RecordError(err)
+		return nil, err
+	}
+
+	member, err := s.writer.SetRole(ctx, chatID, userID, role, s.clock.Now())
+	if err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
+		return nil, err
+	}
+
+	membershipMutationTotal.Add(ctx, 1, metric.WithAttributes(attribute.String("change_type", "role_changed")))
+	return &member, nil
+}
+
+// LeaveChat removes the caller from a group chat (ADR-006 §4.8).
+//
+// No role check beyond membership: the store refuses the owner's departure
+// and any attempt on a direct chat (ADR-016 §4.3), which is every
+// restriction ADR-016 §8's Leave row states — owner excepted, everyone who is
+// a member may leave.
+func (s *ChatService) LeaveChat(ctx context.Context, callerID, chatID string) error {
+	ctx, span := tracer.Start(ctx, "chat.leave")
+	defer span.End()
+	span.SetAttributes(attribute.String("chat.id", chatID))
+
+	if _, err := s.requireMembership(ctx, chatID, callerID, "leave"); err != nil {
+		span.RecordError(err)
+		return err
+	}
+
+	if err := s.writer.Leave(ctx, chatID, callerID, s.clock.Now()); err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
+		return err
+	}
+
+	membershipMutationTotal.Add(ctx, 1, metric.WithAttributes(attribute.String("change_type", "left")))
+	return nil
+}
+
+// MuteChat silences the caller's notifications for a chat (ADR-006 §4.9).
+//
+// The one membership write direct chats allow (ADR-016 §5): it changes the
+// caller's own notification state, not the chat itself, so it needs no role
+// beyond membership. A nil durationHours means indefinite — represented by
+// domain.IndefiniteMuteUntil, since the store's nil already means "not
+// muted" and cannot also stand for "muted forever".
+func (s *ChatService) MuteChat(ctx context.Context, callerID, chatID string, durationHours *int32) (time.Time, error) {
+	ctx, span := tracer.Start(ctx, "chat.mute")
+	defer span.End()
+	span.SetAttributes(attribute.String("chat.id", chatID))
+
+	if durationHours != nil && (*durationHours <= 0 || *durationHours > domain.MaxMuteDurationHours) {
+		err := fmt.Errorf("duration_hours must be 1-%d, got %d: %w",
+			domain.MaxMuteDurationHours, *durationHours, domain.ErrInvalidInput)
+		span.RecordError(err)
+		return time.Time{}, err
+	}
+
+	if _, err := s.requireMembership(ctx, chatID, callerID, "mute"); err != nil {
+		span.RecordError(err)
+		return time.Time{}, err
+	}
+
+	until := domain.IndefiniteMuteUntil
+	if durationHours != nil {
+		until = s.clock.Now().Add(time.Duration(*durationHours) * time.Hour)
+	}
+
+	if err := s.writer.SetMute(ctx, chatID, callerID, &until); err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
+		return time.Time{}, err
+	}
+
+	membershipMutationTotal.Add(ctx, 1, metric.WithAttributes(attribute.String("change_type", "muted")))
+	return until, nil
+}
+
+// UnmuteChat clears the caller's mute (ADR-006 §4.10).
+func (s *ChatService) UnmuteChat(ctx context.Context, callerID, chatID string) error {
+	ctx, span := tracer.Start(ctx, "chat.unmute")
+	defer span.End()
+	span.SetAttributes(attribute.String("chat.id", chatID))
+
+	if _, err := s.requireMembership(ctx, chatID, callerID, "unmute"); err != nil {
+		span.RecordError(err)
+		return err
+	}
+
+	if err := s.writer.SetMute(ctx, chatID, callerID, nil); err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
+		return err
+	}
+
+	membershipMutationTotal.Add(ctx, 1, metric.WithAttributes(attribute.String("change_type", "unmuted")))
+	return nil
 }
 
 // membersWithNames lists a chat's members with their display names filled in.

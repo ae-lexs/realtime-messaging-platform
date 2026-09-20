@@ -14,6 +14,9 @@ const (
 	MaxConcurrentChats    = 500 // Maximum chats a user can be a member of
 	MaxDirectChatsPerPair = 1   // Exactly one direct chat per user pair
 
+	// MaxMuteDurationHours is ADR-006 §4.9's ceiling on a timed mute (one year).
+	MaxMuteDurationHours = 8760
+
 	// Connection limits (ADR-009 §3)
 	MaxConnectionsPerUser     = 5  // Max concurrent WebSocket connections per user
 	MaxConnectionsPerIP       = 20 // Max concurrent connections from a single IP
@@ -113,7 +116,7 @@ func IsValidChatType(ct ChatType) bool {
 	return ct == ChatTypeDirect || ct == ChatTypeGroup
 }
 
-// Role is a member's role in a chat (ADR-006 §8, ADR-016).
+// Role is a member's role in a chat (ADR-016 §8).
 type Role string
 
 const (
@@ -147,3 +150,15 @@ func IsValidRole(r Role) bool {
 func IsAssignableRole(r Role) bool {
 	return r == RoleAdmin || r == RoleMember
 }
+
+// IndefiniteMuteUntil marks a mute with no expiry (ADR-006 §4.9: an absent
+// duration_hours means indefinite, not unmuted).
+//
+// The store's MutedUntil is `*time.Time` where nil already means "not muted"
+// (internal/firestore/documents.go), so indefinite mute needs its own non-nil
+// value distinguishable from every real expiry — a sentinel far enough in the
+// future that no genuine mute (capped at MaxMuteDurationHours, one year) could
+// ever reach it. Anything reading MutedUntil back must compare against this
+// before rendering a timestamp, or an indefinite mute would show a real, if
+// absurd, expiry date instead of the absence ADR-006 specifies.
+var IndefiniteMuteUntil = time.Date(9999, time.January, 1, 0, 0, 0, 0, time.UTC)

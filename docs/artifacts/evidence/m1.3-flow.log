@@ -1,6 +1,6 @@
 # m1.3-flow — captured experiment output
-# captured:  2026-09-20T20:01:47Z
-# commit:    7d90d0cb1ce421dd78100ab8ad630027403b14ba
+# captured:  2026-09-20T20:53:13Z
+# commit:    4ecf4c93fbec0ad12e827fa21e85cd9cdc1a9c61
 # database:  messaging-dev (us-central1)
 # mode:      PESSIMISTIC
 # reps:      1
@@ -9,16 +9,16 @@
 # Re-running requires re-provisioning — the infrastructure this ran
 # against was destroyed at end of session. See docs/artifacts/README.md.
 
- Container realtime-messaging-platform-toolbox-run-6e0b991d4f2d Creating 
- Container realtime-messaging-platform-toolbox-run-6e0b991d4f2d Created 
+ Container realtime-messaging-platform-toolbox-run-e042ee342103 Creating 
+ Container realtime-messaging-platform-toolbox-run-e042ee342103 Created 
 ==> port-forwarding svc/chatmgmt
    ✅ port-forward up
 ==> 1. register three users
-   ✅ user A registered (a89e843a-ab3b-4ad0-9e50-522e42dd23b2)
-   ✅ user B registered (11382a09-3648-4215-a45b-b3a565838be3)
-   ✅ user C registered (a25af0f5-3479-4ac6-9f77-460ff7be590f, not a member of anything A creates)
+   ✅ user A registered (6bf36d1c-ae83-4b54-9cd3-d02b2d138e38)
+   ✅ user B registered (af723763-e265-4804-b331-c49382af06b5)
+   ✅ user C registered (8b17e424-9d22-439d-aa8e-16100926cb67, not a member of anything A creates)
 ==> 2. create a direct chat (A, B)
-   ✅ direct chat created (e49ba4d6-8193-4b7e-9f24-ba5d5edd02db), HTTP 200
+   ✅ direct chat created (5c633ab3-210c-4268-a48a-9ad6e5d33ff6), HTTP 200
 ==> 3. replay create-chat for the same pair
    ✅ same chat returned, is_existing=true
 ==> 4. get-chat as a member (B)
@@ -31,5 +31,25 @@
    ✅ list-chats includes the created chat
 ==> 7. unauthenticated create-chat -> 401
    ✅ unauthenticated request refused
+==> 8. create a group chat (A owner, B member)
+   ✅ group chat created (2d6371b9-ceab-4b74-ac82-b68cc1bb5df1)
+==> 8a. add-member: owner grants C membership -> allowed
+   ✅ owner added C as a member
+==> 8b. add-member: a plain member (B) tries to add -> 403 FORBIDDEN
+   ✅ member refused the right to add
+==> 8c. update-member-role: owner promotes C to admin -> allowed
+   ✅ C promoted to admin by the owner
+==> 8d. add-member: the new admin (C) grants a plain member -> allowed
+   ✅ admin C added a plain member
+==> 8e. add-member: the admin (C) tries to grant ADMIN -> 403
+   ✅ admin refused the right to grant admin — a second path to a privilege UpdateMemberRole restricts to the owner
+==> 8f. update-chat: owner renames -> allowed; a member -> 403
+   ✅ owner renamed; a plain member was refused
+==> 8g. mute + unmute: a member's own state, allowed regardless of role
+   ✅ member muted, then unmuted, their own chat
+==> 8h. leave: a member may leave -> allowed; the owner may not -> 400
+   ✅ member left; the owner was refused (ownership transfer is out of scope for the MVP)
+==> 8i. remove-member: owner removes the admin (C) -> allowed
+   ✅ owner removed the admin
 
-✅ M1.3 flow gate passed: register -> create (+ idempotent replay) -> read -> not-member/not-found -> list -> unauthenticated refusal
+✅ M1.3 flow gate passed: register -> create (+ idempotent replay) -> read -> not-member/not-found -> list -> unauthenticated refusal -> membership-mutation authorization matrix

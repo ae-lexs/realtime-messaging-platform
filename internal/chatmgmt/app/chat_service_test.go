@@ -23,10 +23,17 @@ type fakeChatWriter struct {
 	direct   app.ChatRecord
 	existing bool
 	group    app.ChatRecord
+	member   app.MemberRecord
+	chat     app.ChatRecord
 	err      error
 
 	gotCaller, gotOther, gotOwner, gotName string
 	gotMembers                             []string
+
+	gotChatID, gotUserID                                                                          string
+	gotRole                                                                                       domain.Role
+	gotMutedUntil                                                                                 *time.Time
+	addMemberCalled, removeMemberCalled, leaveCalled, setRoleCalled, setMuteCalled, setNameCalled bool
 }
 
 func (f *fakeChatWriter) CreateDirect(
@@ -41,6 +48,46 @@ func (f *fakeChatWriter) CreateGroup(
 ) (app.ChatRecord, error) {
 	f.gotOwner, f.gotName, f.gotMembers = ownerID, name, memberIDs
 	return f.group, f.err
+}
+
+func (f *fakeChatWriter) AddMember(
+	_ context.Context, chatID, userID string, role domain.Role, _ time.Time,
+) (app.MemberRecord, error) {
+	f.addMemberCalled = true
+	f.gotChatID, f.gotUserID, f.gotRole = chatID, userID, role
+	return f.member, f.err
+}
+
+func (f *fakeChatWriter) RemoveMember(_ context.Context, chatID, userID string, _ time.Time) error {
+	f.removeMemberCalled = true
+	f.gotChatID, f.gotUserID = chatID, userID
+	return f.err
+}
+
+func (f *fakeChatWriter) Leave(_ context.Context, chatID, userID string, _ time.Time) error {
+	f.leaveCalled = true
+	f.gotChatID, f.gotUserID = chatID, userID
+	return f.err
+}
+
+func (f *fakeChatWriter) SetRole(
+	_ context.Context, chatID, userID string, role domain.Role, _ time.Time,
+) (app.MemberRecord, error) {
+	f.setRoleCalled = true
+	f.gotChatID, f.gotUserID, f.gotRole = chatID, userID, role
+	return f.member, f.err
+}
+
+func (f *fakeChatWriter) SetMute(_ context.Context, chatID, userID string, until *time.Time) error {
+	f.setMuteCalled = true
+	f.gotChatID, f.gotUserID, f.gotMutedUntil = chatID, userID, until
+	return f.err
+}
+
+func (f *fakeChatWriter) SetName(_ context.Context, chatID, name string, _ time.Time) (app.ChatRecord, error) {
+	f.setNameCalled = true
+	f.gotChatID, f.gotName = chatID, name
+	return f.chat, f.err
 }
 
 // fakeChatReader serves chats and memberships from maps.
@@ -328,6 +375,373 @@ func TestGetChatToleratesAMemberWithNoUser(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, members, 2)
 	assert.Empty(t, members[1].DisplayName)
+}
+
+// membership seeds a reader with one caller's role in one chat, group by
+// default — every membership-mutation test needs at least this much.
+func membership(reader *fakeChatReader, chatID, userID string, role domain.Role) {
+	reader.chats[chatID] = app.ChatRecord{ChatID: chatID, ChatType: domain.ChatTypeGroup}
+	reader.memberships[chatID+"|"+userID] = app.MemberRecord{ChatID: chatID, UserID: userID, Role: role}
+}
+
+func TestUpdateChatAuthorization(t *testing.T) {
+	tests := []struct {
+		name    string
+		role    domain.Role
+		wantErr error
+	}{
+		{"owner may rename", domain.RoleOwner, nil},
+		{"admin may rename", domain.RoleAdmin, nil},
+		{"a member may not rename", domain.RoleMember, domain.ErrForbidden},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Arrange
+			chatID, caller := domain.GenerateChatID().String(), domain.GenerateUserID().String()
+			reader := emptyReader()
+			membership(reader, chatID, caller, tt.role)
+			writer := &fakeChatWriter{chat: app.ChatRecord{ChatID: chatID, Name: "new name"}}
+			svc := newChatService(writer, reader, &fakeUserStore{})
+
+			// Act
+			_, err := svc.UpdateChat(context.Background(), caller, chatID, "new name")
+
+			// Assert
+			if tt.wantErr == nil {
+				require.NoError(t, err)
+				assert.True(t, writer.setNameCalled)
+			} else {
+				require.ErrorIs(t, err, tt.wantErr)
+				assert.False(t, writer.setNameCalled, "a refused rename must not reach the store")
+			}
+		})
+	}
+}
+
+func TestUpdateChatRefusesAnInvalidName(t *testing.T) {
+	// Arrange
+	chatID, caller := domain.GenerateChatID().String(), domain.GenerateUserID().String()
+	reader := emptyReader()
+	membership(reader, chatID, caller, domain.RoleOwner)
+	writer := &fakeChatWriter{}
+	svc := newChatService(writer, reader, &fakeUserStore{})
+
+	// Act
+	_, err := svc.UpdateChat(context.Background(), caller, chatID, "")
+
+	// Assert — validated before the store is asked who may rename, so an empty
+	// name fails the same way whether or not the caller could have renamed it.
+	require.ErrorIs(t, err, domain.ErrInvalidInput)
+	assert.False(t, writer.setNameCalled)
+}
+
+func TestAddMemberAuthorization(t *testing.T) {
+	tests := []struct {
+		name       string
+		callerRole domain.Role
+		grantRole  domain.Role
+		wantErr    error
+	}{
+		{"owner may add a plain member", domain.RoleOwner, domain.RoleMember, nil},
+		{"owner may add an admin", domain.RoleOwner, domain.RoleAdmin, nil},
+		{"admin may add a plain member", domain.RoleAdmin, domain.RoleMember, nil},
+		{
+			"an admin may not grant admin — a second, weaker path to a privilege " +
+				"UpdateMemberRole restricts to the owner",
+			domain.RoleAdmin, domain.RoleAdmin, domain.ErrForbidden,
+		},
+		{"a member may not add anyone", domain.RoleMember, domain.RoleMember, domain.ErrForbidden},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Arrange
+			chatID, caller, target := domain.GenerateChatID().String(), domain.GenerateUserID().String(), domain.GenerateUserID().String()
+			reader := emptyReader()
+			membership(reader, chatID, caller, tt.callerRole)
+			writer := &fakeChatWriter{member: app.MemberRecord{ChatID: chatID, UserID: target, Role: tt.grantRole}}
+			svc := newChatService(writer, reader, &fakeUserStore{})
+
+			// Act
+			_, err := svc.AddMember(context.Background(), caller, chatID, target, tt.grantRole)
+
+			// Assert
+			if tt.wantErr == nil {
+				require.NoError(t, err)
+				assert.True(t, writer.addMemberCalled)
+				assert.Equal(t, tt.grantRole, writer.gotRole)
+			} else {
+				require.ErrorIs(t, err, tt.wantErr)
+				assert.False(t, writer.addMemberCalled, "a refused add must not reach the store")
+			}
+		})
+	}
+}
+
+func TestAddMemberDefaultsAnUnspecifiedRoleToMember(t *testing.T) {
+	// Arrange
+	chatID, caller, target := domain.GenerateChatID().String(), domain.GenerateUserID().String(), domain.GenerateUserID().String()
+	reader := emptyReader()
+	membership(reader, chatID, caller, domain.RoleOwner)
+	writer := &fakeChatWriter{}
+	svc := newChatService(writer, reader, &fakeUserStore{})
+
+	// Act — the zero value of domain.Role, what an unspecified proto enum maps
+	// to (ADR-006 §4.5: "Defaults to MEMBER when unspecified").
+	_, err := svc.AddMember(context.Background(), caller, chatID, target, domain.Role(""))
+
+	// Assert
+	require.NoError(t, err)
+	assert.Equal(t, domain.RoleMember, writer.gotRole)
+}
+
+func TestAddMemberRefusesGrantingOwner(t *testing.T) {
+	// Arrange
+	chatID, caller, target := domain.GenerateChatID().String(), domain.GenerateUserID().String(), domain.GenerateUserID().String()
+	reader := emptyReader()
+	membership(reader, chatID, caller, domain.RoleOwner)
+	writer := &fakeChatWriter{}
+	svc := newChatService(writer, reader, &fakeUserStore{})
+
+	// Act — ownership is conferred once, by creating the group; there is no
+	// grant path (ADR-016 §4.3).
+	_, err := svc.AddMember(context.Background(), caller, chatID, target, domain.RoleOwner)
+
+	// Assert
+	require.ErrorIs(t, err, domain.ErrInvalidInput)
+	assert.False(t, writer.addMemberCalled)
+}
+
+func TestRemoveMemberAuthorization(t *testing.T) {
+	tests := []struct {
+		name       string
+		callerRole domain.Role
+		targetRole domain.Role
+		wantErr    error
+	}{
+		{"owner may remove a plain member", domain.RoleOwner, domain.RoleMember, nil},
+		{"owner may remove an admin", domain.RoleOwner, domain.RoleAdmin, nil},
+		{"admin may remove a plain member", domain.RoleAdmin, domain.RoleMember, nil},
+		{"an admin may not remove another admin", domain.RoleAdmin, domain.RoleAdmin, domain.ErrForbidden},
+		{"an admin may not remove the owner", domain.RoleAdmin, domain.RoleOwner, domain.ErrForbidden},
+		{"a member may not remove anyone", domain.RoleMember, domain.RoleMember, domain.ErrForbidden},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Arrange
+			chatID, caller, target := domain.GenerateChatID().String(), domain.GenerateUserID().String(), domain.GenerateUserID().String()
+			reader := emptyReader()
+			membership(reader, chatID, caller, tt.callerRole)
+			reader.memberships[chatID+"|"+target] = app.MemberRecord{ChatID: chatID, UserID: target, Role: tt.targetRole}
+			writer := &fakeChatWriter{}
+			svc := newChatService(writer, reader, &fakeUserStore{})
+
+			// Act
+			err := svc.RemoveMember(context.Background(), caller, chatID, target)
+
+			// Assert
+			if tt.wantErr == nil {
+				require.NoError(t, err)
+				assert.True(t, writer.removeMemberCalled)
+			} else {
+				require.ErrorIs(t, err, tt.wantErr)
+				assert.False(t, writer.removeMemberCalled, "a refused removal must not reach the store")
+			}
+		})
+	}
+}
+
+func TestRemoveMemberRefusesSelfRemoval(t *testing.T) {
+	// Arrange
+	chatID, caller := domain.GenerateChatID().String(), domain.GenerateUserID().String()
+	reader := emptyReader()
+	membership(reader, chatID, caller, domain.RoleOwner)
+	writer := &fakeChatWriter{}
+	svc := newChatService(writer, reader, &fakeUserStore{})
+
+	// Act — "remove yourself" and "leave" are the same write; ADR-006 keeps
+	// them as two endpoints with two authorization stories.
+	err := svc.RemoveMember(context.Background(), caller, chatID, caller)
+
+	// Assert
+	require.ErrorIs(t, err, domain.ErrInvalidOperation)
+	assert.False(t, writer.removeMemberCalled)
+}
+
+func TestUpdateMemberRoleAuthorization(t *testing.T) {
+	// Arrange
+	chatID, caller, target := domain.GenerateChatID().String(), domain.GenerateUserID().String(), domain.GenerateUserID().String()
+	reader := emptyReader()
+	membership(reader, chatID, caller, domain.RoleAdmin) // admin, not owner
+	reader.memberships[chatID+"|"+target] = app.MemberRecord{ChatID: chatID, UserID: target, Role: domain.RoleMember}
+	writer := &fakeChatWriter{}
+	svc := newChatService(writer, reader, &fakeUserStore{})
+
+	// Act — only the owner may change roles (ADR-006 §4.7).
+	_, err := svc.UpdateMemberRole(context.Background(), caller, chatID, target, domain.RoleAdmin)
+
+	// Assert
+	require.ErrorIs(t, err, domain.ErrForbidden)
+	assert.False(t, writer.setRoleCalled)
+}
+
+func TestUpdateMemberRoleAllowsTheOwner(t *testing.T) {
+	// Arrange
+	chatID, caller, target := domain.GenerateChatID().String(), domain.GenerateUserID().String(), domain.GenerateUserID().String()
+	reader := emptyReader()
+	membership(reader, chatID, caller, domain.RoleOwner)
+	reader.memberships[chatID+"|"+target] = app.MemberRecord{ChatID: chatID, UserID: target, Role: domain.RoleMember}
+	writer := &fakeChatWriter{member: app.MemberRecord{ChatID: chatID, UserID: target, Role: domain.RoleAdmin}}
+	svc := newChatService(writer, reader, &fakeUserStore{})
+
+	// Act
+	_, err := svc.UpdateMemberRole(context.Background(), caller, chatID, target, domain.RoleAdmin)
+
+	// Assert
+	require.NoError(t, err)
+	assert.True(t, writer.setRoleCalled)
+	assert.Equal(t, domain.RoleAdmin, writer.gotRole)
+}
+
+func TestUpdateMemberRoleRefusesChangingOwnRole(t *testing.T) {
+	// Arrange
+	chatID, caller := domain.GenerateChatID().String(), domain.GenerateUserID().String()
+	reader := emptyReader()
+	membership(reader, chatID, caller, domain.RoleOwner)
+	writer := &fakeChatWriter{}
+	svc := newChatService(writer, reader, &fakeUserStore{})
+
+	// Act
+	_, err := svc.UpdateMemberRole(context.Background(), caller, chatID, caller, domain.RoleAdmin)
+
+	// Assert
+	require.ErrorIs(t, err, domain.ErrInvalidOperation)
+	assert.False(t, writer.setRoleCalled)
+}
+
+func TestUpdateMemberRoleRefusesAssigningOwner(t *testing.T) {
+	// Arrange
+	chatID, caller, target := domain.GenerateChatID().String(), domain.GenerateUserID().String(), domain.GenerateUserID().String()
+	reader := emptyReader()
+	membership(reader, chatID, caller, domain.RoleOwner)
+	reader.memberships[chatID+"|"+target] = app.MemberRecord{ChatID: chatID, UserID: target, Role: domain.RoleMember}
+	writer := &fakeChatWriter{}
+	svc := newChatService(writer, reader, &fakeUserStore{})
+
+	// Act — ownership transfer is out of scope for the MVP (ADR-016 §4.3).
+	_, err := svc.UpdateMemberRole(context.Background(), caller, chatID, target, domain.RoleOwner)
+
+	// Assert
+	require.ErrorIs(t, err, domain.ErrInvalidInput)
+	assert.False(t, writer.setRoleCalled)
+}
+
+func TestLeaveChatRequiresMembership(t *testing.T) {
+	// Arrange
+	chatID := domain.GenerateChatID().String()
+	reader := emptyReader()
+	reader.chats[chatID] = app.ChatRecord{ChatID: chatID, ChatType: domain.ChatTypeGroup}
+	writer := &fakeChatWriter{}
+	svc := newChatService(writer, reader, &fakeUserStore{})
+
+	// Act
+	err := svc.LeaveChat(context.Background(), domain.GenerateUserID().String(), chatID)
+
+	// Assert
+	require.ErrorIs(t, err, domain.ErrNotMember)
+	assert.False(t, writer.leaveCalled)
+}
+
+func TestLeaveChatAllowsAnyMember(t *testing.T) {
+	// Arrange — the store, not the service, refuses the owner (fakeChatWriter
+	// does not re-implement that invariant; internal/firestore's live gate
+	// covers it).
+	chatID, caller := domain.GenerateChatID().String(), domain.GenerateUserID().String()
+	reader := emptyReader()
+	membership(reader, chatID, caller, domain.RoleMember)
+	writer := &fakeChatWriter{}
+	svc := newChatService(writer, reader, &fakeUserStore{})
+
+	// Act
+	err := svc.LeaveChat(context.Background(), caller, chatID)
+
+	// Assert
+	require.NoError(t, err)
+	assert.True(t, writer.leaveCalled)
+}
+
+func TestMuteChatWithADuration(t *testing.T) {
+	// Arrange
+	chatID, caller := domain.GenerateChatID().String(), domain.GenerateUserID().String()
+	reader := emptyReader()
+	membership(reader, chatID, caller, domain.RoleMember)
+	writer := &fakeChatWriter{}
+	svc := newChatService(writer, reader, &fakeUserStore{})
+	hours := int32(24)
+
+	// Act
+	until, err := svc.MuteChat(context.Background(), caller, chatID, &hours)
+
+	// Assert — the fixed clock in newChatService is 2026-08-12T12:00:00Z.
+	require.NoError(t, err)
+	assert.True(t, writer.setMuteCalled)
+	require.NotNil(t, writer.gotMutedUntil)
+	assert.Equal(t, time.Date(2026, 8, 13, 12, 0, 0, 0, time.UTC), *writer.gotMutedUntil)
+	assert.Equal(t, *writer.gotMutedUntil, until)
+}
+
+func TestMuteChatIndefinitely(t *testing.T) {
+	// Arrange
+	chatID, caller := domain.GenerateChatID().String(), domain.GenerateUserID().String()
+	reader := emptyReader()
+	membership(reader, chatID, caller, domain.RoleMember)
+	writer := &fakeChatWriter{}
+	svc := newChatService(writer, reader, &fakeUserStore{})
+
+	// Act — an absent duration means indefinite, not unmuted.
+	until, err := svc.MuteChat(context.Background(), caller, chatID, nil)
+
+	// Assert
+	require.NoError(t, err)
+	require.NotNil(t, writer.gotMutedUntil)
+	assert.Equal(t, domain.IndefiniteMuteUntil, *writer.gotMutedUntil)
+	assert.Equal(t, domain.IndefiniteMuteUntil, until)
+}
+
+func TestMuteChatRejectsADurationBeyondTheCeiling(t *testing.T) {
+	// Arrange
+	chatID, caller := domain.GenerateChatID().String(), domain.GenerateUserID().String()
+	reader := emptyReader()
+	membership(reader, chatID, caller, domain.RoleMember)
+	writer := &fakeChatWriter{}
+	svc := newChatService(writer, reader, &fakeUserStore{})
+	tooLong := int32(domain.MaxMuteDurationHours + 1)
+
+	// Act
+	_, err := svc.MuteChat(context.Background(), caller, chatID, &tooLong)
+
+	// Assert
+	require.ErrorIs(t, err, domain.ErrInvalidInput)
+	assert.False(t, writer.setMuteCalled, "validated before membership is even checked")
+}
+
+func TestUnmuteChatClearsTheMute(t *testing.T) {
+	// Arrange
+	chatID, caller := domain.GenerateChatID().String(), domain.GenerateUserID().String()
+	reader := emptyReader()
+	membership(reader, chatID, caller, domain.RoleMember)
+	writer := &fakeChatWriter{}
+	svc := newChatService(writer, reader, &fakeUserStore{})
+
+	// Act
+	err := svc.UnmuteChat(context.Background(), caller, chatID)
+
+	// Assert
+	require.NoError(t, err)
+	assert.True(t, writer.setMuteCalled)
+	assert.Nil(t, writer.gotMutedUntil)
 }
 
 func TestListChatsSkipsMembershipsWhoseChatIsGone(t *testing.T) {
