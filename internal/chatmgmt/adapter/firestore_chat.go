@@ -112,6 +112,119 @@ func (w *ChatWriter) CreateGroup(
 	return toChatRecord(chat), nil
 }
 
+// AddMember adds a user to a group chat (ADR-006 §4.5).
+func (w *ChatWriter) AddMember(
+	ctx context.Context, chatID, userID string, role domain.Role, now time.Time,
+) (app.MemberRecord, error) {
+	ctx, span := tracer.Start(ctx, "firestore.membership.add")
+	defer span.End()
+	span.SetAttributes(attribute.String("db.collection", firestore.CollectionMemberships))
+
+	chat, user, err := parseIDs(chatID, userID)
+	if err != nil {
+		return app.MemberRecord{}, recordErr(span, err)
+	}
+
+	doc, err := w.tx.AddMember(ctx, chat, user, role, now)
+	if err != nil {
+		return app.MemberRecord{}, recordErr(span, err)
+	}
+
+	return toMemberRecord(doc), nil
+}
+
+// RemoveMember removes a user from a group chat (ADR-006 §4.6).
+func (w *ChatWriter) RemoveMember(ctx context.Context, chatID, userID string, now time.Time) error {
+	ctx, span := tracer.Start(ctx, "firestore.membership.remove")
+	defer span.End()
+	span.SetAttributes(attribute.String("db.collection", firestore.CollectionMemberships))
+
+	chat, user, err := parseIDs(chatID, userID)
+	if err != nil {
+		return recordErr(span, err)
+	}
+
+	if err := w.tx.RemoveMember(ctx, chat, user, now); err != nil {
+		return recordErr(span, err)
+	}
+	return nil
+}
+
+// Leave removes the caller from a group chat (ADR-006 §4.8).
+func (w *ChatWriter) Leave(ctx context.Context, chatID, userID string, now time.Time) error {
+	ctx, span := tracer.Start(ctx, "firestore.membership.leave")
+	defer span.End()
+	span.SetAttributes(attribute.String("db.collection", firestore.CollectionMemberships))
+
+	chat, user, err := parseIDs(chatID, userID)
+	if err != nil {
+		return recordErr(span, err)
+	}
+
+	if err := w.tx.Leave(ctx, chat, user, now); err != nil {
+		return recordErr(span, err)
+	}
+	return nil
+}
+
+// SetRole changes a member's role (ADR-006 §4.7).
+func (w *ChatWriter) SetRole(
+	ctx context.Context, chatID, userID string, role domain.Role, now time.Time,
+) (app.MemberRecord, error) {
+	ctx, span := tracer.Start(ctx, "firestore.membership.set_role")
+	defer span.End()
+	span.SetAttributes(attribute.String("db.collection", firestore.CollectionMemberships))
+
+	chat, user, err := parseIDs(chatID, userID)
+	if err != nil {
+		return app.MemberRecord{}, recordErr(span, err)
+	}
+
+	doc, err := w.tx.SetRole(ctx, chat, user, role, now)
+	if err != nil {
+		return app.MemberRecord{}, recordErr(span, err)
+	}
+
+	return toMemberRecord(doc), nil
+}
+
+// SetMute sets or clears a member's mute (ADR-006 §4.9, §4.10). A nil until
+// clears it.
+func (w *ChatWriter) SetMute(ctx context.Context, chatID, userID string, until *time.Time) error {
+	ctx, span := tracer.Start(ctx, "firestore.membership.set_mute")
+	defer span.End()
+	span.SetAttributes(attribute.String("db.collection", firestore.CollectionMemberships))
+
+	chat, user, err := parseIDs(chatID, userID)
+	if err != nil {
+		return recordErr(span, err)
+	}
+
+	if err := w.tx.SetMute(ctx, chat, user, until); err != nil {
+		return recordErr(span, err)
+	}
+	return nil
+}
+
+// SetName renames a group chat (ADR-006 §4.4).
+func (w *ChatWriter) SetName(ctx context.Context, chatID, name string, now time.Time) (app.ChatRecord, error) {
+	ctx, span := tracer.Start(ctx, "firestore.chat.set_name")
+	defer span.End()
+	span.SetAttributes(attribute.String("db.collection", firestore.CollectionChats))
+
+	id, err := domain.NewChatID(chatID)
+	if err != nil {
+		return app.ChatRecord{}, recordErr(span, fmt.Errorf("chat ID: %w", err))
+	}
+
+	doc, err := w.tx.SetName(ctx, id, name, now)
+	if err != nil {
+		return app.ChatRecord{}, recordErr(span, err)
+	}
+
+	return toChatRecord(doc), nil
+}
+
 // ChatReader reads chats and memberships from Firestore (ADR-023).
 type ChatReader struct {
 	chats       *firestore.Chats

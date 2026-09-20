@@ -194,5 +194,82 @@ code="$(req POST /chats "{\"chatType\":\"CHAT_TYPE_DIRECT\",\"memberIds\":[\"${U
 [[ "${code}" == "401" ]] || fail "expected 401 unauthenticated, got ${code}: $(cat /tmp/chat-response.json)"
 ok "unauthenticated request refused"
 
+# ---------------------------------------------------------------------------
+# 8. The membership-mutation RPCs (UpdateChat, AddMember, UpdateMemberRole,
+#    MuteChat/UnmuteChat, LeaveChat, RemoveMember) — the second half of
+#    M1.3's service layer, added after the flow gate's first version. Unit
+#    tests cover the authorization matrix against fakes; this exercises the
+#    same matrix over the real wire, through the real decorator, against a
+#    real deployed pod.
+# ---------------------------------------------------------------------------
+
+echo "==> 8. create a group chat (A owner, B member)"
+code="$(req POST /chats \
+  "{\"chatType\":\"CHAT_TYPE_GROUP\",\"name\":\"flow-gate-group\",\"memberIds\":[\"${USER_B}\"]}" \
+  -H "Authorization: Bearer ${TOKEN_A}")"
+[[ "${code}" == "200" ]] || fail "create-group returned ${code}: $(cat /tmp/chat-response.json)"
+GROUP_ID="$(field '.chat.chatId')"
+ok "group chat created (${GROUP_ID})"
+
+echo "==> 8a. add-member: owner grants C membership -> allowed"
+code="$(req POST "/chats/${GROUP_ID}/members" \
+  "{\"userId\":\"${USER_C}\",\"role\":\"MEMBER_ROLE_MEMBER\"}" -H "Authorization: Bearer ${TOKEN_A}")"
+[[ "${code}" == "200" ]] || fail "owner add-member returned ${code}: $(cat /tmp/chat-response.json)"
+ok "owner added C as a member"
+
+echo "==> 8b. add-member: a plain member (B) tries to add -> 403 FORBIDDEN"
+code="$(req POST "/chats/${GROUP_ID}/members" \
+  "{\"userId\":\"${USER_C}\",\"role\":\"MEMBER_ROLE_MEMBER\"}" -H "Authorization: Bearer ${TOKEN_B}")"
+[[ "${code}" == "403" ]] || fail "expected 403 for a member adding, got ${code}: $(cat /tmp/chat-response.json)"
+ok "member refused the right to add"
+
+echo "==> 8c. update-member-role: owner promotes C to admin -> allowed"
+code="$(req PATCH "/chats/${GROUP_ID}/members/${USER_C}" \
+  "{\"role\":\"MEMBER_ROLE_ADMIN\"}" -H "Authorization: Bearer ${TOKEN_A}")"
+[[ "${code}" == "200" ]] || fail "owner promote returned ${code}: $(cat /tmp/chat-response.json)"
+[[ "$(field '.member.role')" == "MEMBER_ROLE_ADMIN" ]] || fail "C was not promoted to admin"
+ok "C promoted to admin by the owner"
+
+echo "==> 8d. add-member: the new admin (C) grants a plain member -> allowed"
+NEW_MEMBER="$(cat /proc/sys/kernel/random/uuid)"
+code="$(req POST "/chats/${GROUP_ID}/members" \
+  "{\"userId\":\"${NEW_MEMBER}\",\"role\":\"MEMBER_ROLE_MEMBER\"}" -H "Authorization: Bearer ${TOKEN_C}")"
+[[ "${code}" == "200" ]] || fail "admin add-member returned ${code}: $(cat /tmp/chat-response.json)"
+ok "admin C added a plain member"
+
+echo "==> 8e. add-member: the admin (C) tries to grant ADMIN -> 403"
+code="$(req POST "/chats/${GROUP_ID}/members" \
+  "{\"userId\":\"${USER_B}\",\"role\":\"MEMBER_ROLE_ADMIN\"}" -H "Authorization: Bearer ${TOKEN_C}")"
+[[ "${code}" == "403" ]] || fail "expected 403 for an admin granting admin, got ${code}: $(cat /tmp/chat-response.json)"
+ok "admin refused the right to grant admin — a second path to a privilege UpdateMemberRole restricts to the owner"
+
+echo "==> 8f. update-chat: owner renames -> allowed; a member -> 403"
+code="$(req PATCH "/chats/${GROUP_ID}" "{\"name\":\"renamed-by-owner\"}" -H "Authorization: Bearer ${TOKEN_A}")"
+[[ "${code}" == "200" ]] || fail "owner rename returned ${code}: $(cat /tmp/chat-response.json)"
+[[ "$(field '.chat.name')" == "renamed-by-owner" ]] || fail "chat name did not change"
+code="$(req PATCH "/chats/${GROUP_ID}" "{\"name\":\"renamed-by-member\"}" -H "Authorization: Bearer ${TOKEN_B}")"
+[[ "${code}" == "403" ]] || fail "expected 403 for a member renaming, got ${code}: $(cat /tmp/chat-response.json)"
+ok "owner renamed; a plain member was refused"
+
+echo "==> 8g. mute + unmute: a member's own state, allowed regardless of role"
+code="$(req POST "/chats/${GROUP_ID}/mute" "{\"durationHours\":24}" -H "Authorization: Bearer ${TOKEN_B}")"
+[[ "${code}" == "200" ]] || fail "mute returned ${code}: $(cat /tmp/chat-response.json)"
+[[ "$(field '.mutedUntil')" != "null" ]] || fail "expected a mutedUntil timestamp for a timed mute"
+code="$(req POST "/chats/${GROUP_ID}/unmute" "" -H "Authorization: Bearer ${TOKEN_B}")"
+[[ "${code}" == "200" ]] || fail "unmute returned ${code}: $(cat /tmp/chat-response.json)"
+ok "member muted, then unmuted, their own chat"
+
+echo "==> 8h. leave: a member may leave -> allowed; the owner may not -> 400"
+code="$(req POST "/chats/${GROUP_ID}/leave" "" -H "Authorization: Bearer ${TOKEN_B}")"
+[[ "${code}" == "200" ]] || fail "member leave returned ${code}: $(cat /tmp/chat-response.json)"
+code="$(req POST "/chats/${GROUP_ID}/leave" "" -H "Authorization: Bearer ${TOKEN_A}")"
+[[ "${code}" == "400" ]] || fail "expected 400 for the owner leaving, got ${code}: $(cat /tmp/chat-response.json)"
+ok "member left; the owner was refused (ownership transfer is out of scope for the MVP)"
+
+echo "==> 8i. remove-member: owner removes the admin (C) -> allowed"
+code="$(req DELETE "/chats/${GROUP_ID}/members/${USER_C}" "" -H "Authorization: Bearer ${TOKEN_A}")"
+[[ "${code}" == "200" ]] || fail "owner remove returned ${code}: $(cat /tmp/chat-response.json)"
+ok "owner removed the admin"
+
 echo
-echo "✅ M1.3 flow gate passed: register -> create (+ idempotent replay) -> read -> not-member/not-found -> list -> unauthenticated refusal"
+echo "✅ M1.3 flow gate passed: register -> create (+ idempotent replay) -> read -> not-member/not-found -> list -> unauthenticated refusal -> membership-mutation authorization matrix"

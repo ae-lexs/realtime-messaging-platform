@@ -124,6 +124,12 @@ case "${1:-}" in
     # one exception, the concurrency gate, which asserts the invariant AND
     # records which mechanism refused each loser (RTM-04 C7).
     #
+    # Two packages, deliberately: internal/firestore covers the store's own
+    # invariants; internal/chatmgmt/app (TestService*) covers the seam between
+    # app.ChatService and the real adapter — ID parsing, error wrapping, and
+    # (the reason this pairing exists) the indefinite-mute sentinel actually
+    # surviving a live Firestore round trip, which no fake can prove.
+    #
     # -count=1 disables Go's test cache: a cached "ok" would report success
     # without touching Firestore, which is worthless for a live gate.
     echo "==> M1.3 store gate against ${PROJECT_ID}/${DATABASE} (${REGION})"
@@ -131,8 +137,8 @@ case "${1:-}" in
       docker compose run --rm -T \
       -e FIRESTORE_PROJECT="${PROJECT_ID}" \
       -e FIRESTORE_DATABASE="${DATABASE}" \
-      toolbox go test -race -count=1 -tags=integration -v ./internal/firestore/... \
-      -run 'TestCreateDirect|TestCreateGroup|TestAddMember|TestDirectChatMembershipIsImmutable|TestTheOwnerCannot|TestLeave|TestRemoveMember|TestSetRole|TestSetMute|TestSetName|TestMutationsOnAMissingChat|TestConcurrentCreateDirect'
+      toolbox go test -race -count=1 -tags=integration -v ./internal/firestore/... ./internal/chatmgmt/app/... \
+      -run 'TestCreateDirect|TestCreateGroup|TestAddMember|TestDirectChatMembershipIsImmutable|TestTheOwnerCannot|TestLeave|TestRemoveMember|TestSetRole|TestSetMute|TestSetName|TestMutationsOnAMissingChat|TestConcurrentCreateDirect|TestService'
     ;;
 
   direct-pair)
