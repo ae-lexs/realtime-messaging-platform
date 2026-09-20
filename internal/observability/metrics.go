@@ -5,7 +5,7 @@ import (
 	"fmt"
 
 	"go.opentelemetry.io/otel"
-	"go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetricgrpc"
+	"go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetrichttp"
 	"go.opentelemetry.io/otel/metric"
 	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
 	"go.opentelemetry.io/otel/sdk/resource"
@@ -39,11 +39,14 @@ func InitMetrics(ctx context.Context, cfg MetricsConfig) (*MetricsProvider, erro
 	var opts []sdkmetric.Option
 	opts = append(opts, sdkmetric.WithResource(res))
 
-	// Configure exporter if endpoint is provided
+	// Configure exporter if endpoint is provided. HTTP, not gRPC — see the
+	// matching comment in tracer.go: GKE Managed OpenTelemetry's in-cluster
+	// collector only documents an OTLP/HTTP endpoint, and WithInsecure is
+	// correct for a trusted in-cluster Service, not a gap to close later.
 	if cfg.OTLPEndpoint != "" {
-		exporter, err := otlpmetricgrpc.New(ctx,
-			otlpmetricgrpc.WithEndpoint(cfg.OTLPEndpoint),
-			otlpmetricgrpc.WithInsecure(), // TODO: Configure TLS for production
+		exporter, err := otlpmetrichttp.New(ctx,
+			otlpmetrichttp.WithEndpoint(cfg.OTLPEndpoint),
+			otlpmetrichttp.WithInsecure(),
 		)
 		if err != nil {
 			return nil, fmt.Errorf("create OTLP metric exporter: %w", err)

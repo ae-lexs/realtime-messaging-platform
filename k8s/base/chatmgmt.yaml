@@ -46,6 +46,12 @@ spec:
           env:
             - name: ENVIRONMENT
               value: dev
+            # GKE Managed OpenTelemetry's in-cluster collector (OTLP/HTTP
+            # only — no gRPC port). Forwards traces to Cloud Trace and
+            # metrics to Managed Service for Prometheus; enabled on the
+            # cluster via terraform/modules/gke's managed_opentelemetry_config.
+            - name: OTEL_ENDPOINT
+              value: opentelemetry-collector.gke-managed-otel.svc.cluster.local:4318
             - name: CHATMGMT_HTTP_PORT
               value: "8083"
             - name: CHATMGMT_GRPC_PORT
