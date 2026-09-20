@@ -1,0 +1,152 @@
+# m1.3-store-membership-integration2 — captured experiment output
+# captured:  2026-09-20T21:32:52Z
+# commit:    d5a9e13ebcd5260b65a035444d3c51d02e3297cc
+# database:  messaging-dev (us-central1)
+# mode:      PESSIMISTIC
+# reps:      1
+# project:   redacted
+#
+# Re-running requires re-provisioning — the infrastructure this ran
+# against was destroyed at end of session. See docs/artifacts/README.md.
+
+ Container realtime-messaging-platform-toolbox-run-f9da30dfb225 Creating 
+ Container realtime-messaging-platform-toolbox-run-f9da30dfb225 Created 
+=== RUN   TestCreateDirectChatWritesFourDocuments
+--- PASS: TestCreateDirectChatWritesFourDocuments (1.16s)
+=== RUN   TestCreateDirectChatIsIdempotentInEitherOrder
+--- PASS: TestCreateDirectChatIsIdempotentInEitherOrder (1.40s)
+=== RUN   TestCreateDirectChatRefusesAPairWithItself
+--- PASS: TestCreateDirectChatRefusesAPairWithItself (0.00s)
+=== RUN   TestCreateGroupIsOneTransaction
+--- PASS: TestCreateGroupIsOneTransaction (1.21s)
+=== RUN   TestCreateGroupRefusesMoreThanTheMaximum
+--- PASS: TestCreateGroupRefusesMoreThanTheMaximum (0.00s)
+=== RUN   TestAddMemberMaintainsTheCountAtomically
+--- PASS: TestAddMemberMaintainsTheCountAtomically (1.52s)
+=== RUN   TestAddMemberRefusesAFullChat
+--- PASS: TestAddMemberRefusesAFullChat (1.34s)
+=== RUN   TestAddMemberRefusesADuplicate
+--- PASS: TestAddMemberRefusesADuplicate (1.32s)
+=== RUN   TestDirectChatMembershipIsImmutable
+=== RUN   TestDirectChatMembershipIsImmutable/a_member_cannot_be_added
+=== RUN   TestDirectChatMembershipIsImmutable/a_participant_cannot_be_removed
+=== RUN   TestDirectChatMembershipIsImmutable/a_participant_cannot_leave
+=== RUN   TestDirectChatMembershipIsImmutable/it_cannot_be_renamed
+=== RUN   TestDirectChatMembershipIsImmutable/but_it_can_be_muted
+--- PASS: TestDirectChatMembershipIsImmutable (2.92s)
+    --- PASS: TestDirectChatMembershipIsImmutable/a_member_cannot_be_added (0.35s)
+    --- PASS: TestDirectChatMembershipIsImmutable/a_participant_cannot_be_removed (0.48s)
+    --- PASS: TestDirectChatMembershipIsImmutable/a_participant_cannot_leave (0.63s)
+    --- PASS: TestDirectChatMembershipIsImmutable/it_cannot_be_renamed (0.38s)
+    --- PASS: TestDirectChatMembershipIsImmutable/but_it_can_be_muted (0.27s)
+=== RUN   TestTheOwnerCannotLeaveOrBeRemoved
+=== RUN   TestTheOwnerCannotLeaveOrBeRemoved/the_owner_cannot_leave
+=== RUN   TestTheOwnerCannotLeaveOrBeRemoved/the_owner_cannot_be_removed
+=== RUN   TestTheOwnerCannotLeaveOrBeRemoved/the_owner's_role_cannot_be_changed
+=== RUN   TestTheOwnerCannotLeaveOrBeRemoved/and_the_owner_is_still_there
+--- PASS: TestTheOwnerCannotLeaveOrBeRemoved (2.48s)
+    --- PASS: TestTheOwnerCannotLeaveOrBeRemoved/the_owner_cannot_leave (0.55s)
+    --- PASS: TestTheOwnerCannotLeaveOrBeRemoved/the_owner_cannot_be_removed (0.55s)
+    --- PASS: TestTheOwnerCannotLeaveOrBeRemoved/the_owner's_role_cannot_be_changed (0.56s)
+    --- PASS: TestTheOwnerCannotLeaveOrBeRemoved/and_the_owner_is_still_there (0.20s)
+=== RUN   TestLeaveRemovesTheMemberAndDecrementsTheCount
+--- PASS: TestLeaveRemovesTheMemberAndDecrementsTheCount (1.66s)
+=== RUN   TestRemoveMemberRefusesANonMember
+--- PASS: TestRemoveMemberRefusesANonMember (1.34s)
+=== RUN   TestSetRoleGrantsAdminButNeverOwner
+=== RUN   TestSetRoleGrantsAdminButNeverOwner/a_member_can_be_promoted_to_admin
+=== RUN   TestSetRoleGrantsAdminButNeverOwner/but_nobody_can_be_made_owner
+=== RUN   TestSetRoleGrantsAdminButNeverOwner/and_a_non-member_has_no_role_to_change
+--- PASS: TestSetRoleGrantsAdminButNeverOwner (1.92s)
+    --- PASS: TestSetRoleGrantsAdminButNeverOwner/a_member_can_be_promoted_to_admin (0.57s)
+    --- PASS: TestSetRoleGrantsAdminButNeverOwner/but_nobody_can_be_made_owner (0.00s)
+    --- PASS: TestSetRoleGrantsAdminButNeverOwner/and_a_non-member_has_no_role_to_change (0.55s)
+=== RUN   TestSetMuteClearsWithNil
+--- PASS: TestSetMuteClearsWithNil (1.09s)
+=== RUN   TestSetMuteRefusesANonMember
+--- PASS: TestSetMuteRefusesANonMember (0.81s)
+=== RUN   TestSetNameRenamesAGroup
+--- PASS: TestSetNameRenamesAGroup (1.14s)
+=== RUN   TestMutationsOnAMissingChatAreNotFound
+--- PASS: TestMutationsOnAMissingChatAreNotFound (1.60s)
+=== RUN   TestConcurrentCreateDirectYieldsExactlyOneChat
+    chat_tx_integration_test.go:585: 
+        === MEASURED: M1.3 GATE — concurrent direct-chat creation ===
+        racer 0: replay=false refused=false chat=c40b57e3-f36d-41b0-b899-dc520f9884ee err=<nil>
+        racer 1: replay=true refused=false chat=c40b57e3-f36d-41b0-b899-dc520f9884ee err=<nil>
+        racer 2: replay=true refused=false chat=c40b57e3-f36d-41b0-b899-dc520f9884ee err=<nil>
+        racer 3: replay=true refused=false chat=c40b57e3-f36d-41b0-b899-dc520f9884ee err=<nil>
+        racer 4: replay=true refused=false chat=c40b57e3-f36d-41b0-b899-dc520f9884ee err=<nil>
+        created:  1  <-- must be exactly 1
+        replayed: 4  <-- read the sentinel, returned the winner
+        refused:  0  <-- tx.Create on the sentinel lost
+        === END: M1.3 GATE — concurrent direct-chat creation ===
+--- PASS: TestConcurrentCreateDirectYieldsExactlyOneChat (2.61s)
+PASS
+ok  	github.com/aelexs/realtime-messaging-platform/internal/firestore	26.570s
+=== RUN   TestServiceUpdateChatPersistsTheNewName
+time=2026-09-20T21:32:54.620Z level=INFO msg=chat.create chat_id=e04b9177-05c7-407e-a6ad-8d99bb650f14 chat_type=group caller_id=913f09f5-1c7e-42d4-81e3-5e5635df3186 existing=false
+--- PASS: TestServiceUpdateChatPersistsTheNewName (2.38s)
+=== RUN   TestServiceAddMemberAndRemoveMember
+time=2026-09-20T21:32:56.894Z level=INFO msg=chat.create chat_id=d8be978d-0027-4e3d-a1e7-55a221769f86 chat_type=group caller_id=686f0400-873a-4d7d-9aa9-b65991842196 existing=false
+--- PASS: TestServiceAddMemberAndRemoveMember (3.93s)
+=== RUN   TestServiceUpdateMemberRolePersists
+time=2026-09-20T21:33:00.841Z level=INFO msg=chat.create chat_id=54923a66-a7e7-44c9-a178-e979186a8cd9 chat_type=group caller_id=39a91a9d-a2e0-4c4d-a690-b801a9dec664 existing=false
+--- PASS: TestServiceUpdateMemberRolePersists (2.47s)
+=== RUN   TestServiceRemoveMemberChecksTheTargetsLiveRole
+time=2026-09-20T21:33:03.428Z level=INFO msg=chat.create chat_id=37d92a89-072f-4c72-86b8-6b5da2557454 chat_type=group caller_id=b3f0cccc-a7f2-4353-ac30-c0d28546f293 existing=false
+--- PASS: TestServiceRemoveMemberChecksTheTargetsLiveRole (2.93s)
+=== RUN   TestServiceLeaveChatRemovesTheCaller
+time=2026-09-20T21:33:06.267Z level=INFO msg=chat.create chat_id=a09f9b8a-910d-4c8f-8b31-74aa2a9e8f0d chat_type=group caller_id=1009e668-4bf3-4c35-b4c4-c75b50871739 existing=false
+--- PASS: TestServiceLeaveChatRemovesTheCaller (2.28s)
+=== RUN   TestServiceLeaveChatRefusesTheOwner
+time=2026-09-20T21:33:08.527Z level=INFO msg=chat.create chat_id=bf1e7831-2b4a-44de-bbf1-64a9b55b6ec0 chat_type=group caller_id=f5070261-2ffb-4dd0-9b15-c9f15cacbad0 existing=false
+--- PASS: TestServiceLeaveChatRefusesTheOwner (1.69s)
+=== RUN   TestServiceMuteChatIndefinitelyRoundTripsTheSentinel
+time=2026-09-20T21:33:10.239Z level=INFO msg=chat.create chat_id=45f7e155-b0da-45cc-8b11-1e9c7d79d074 chat_type=group caller_id=8f95c8c5-44f1-4eee-a970-75f84280be80 existing=false
+--- PASS: TestServiceMuteChatIndefinitelyRoundTripsTheSentinel (2.02s)
+=== RUN   TestServiceMuteChatWithADurationThenUnmute
+time=2026-09-20T21:33:12.267Z level=INFO msg=chat.create chat_id=15e3b384-b8c2-40c0-a94d-7369166b1c6d chat_type=group caller_id=66cbc301-ae2c-4bbf-8720-205049cd7d18 existing=false
+--- PASS: TestServiceMuteChatWithADurationThenUnmute (2.95s)
+=== RUN   TestCreateDirectChatUsesTheCallerAsAParticipant
+--- PASS: TestCreateDirectChatUsesTheCallerAsAParticipant (0.00s)
+=== RUN   TestCreateDirectChatReportsAReplay
+--- PASS: TestCreateDirectChatReportsAReplay (0.00s)
+=== RUN   TestAddMemberAuthorization
+=== RUN   TestAddMemberAuthorization/owner_may_add_a_plain_member
+=== RUN   TestAddMemberAuthorization/owner_may_add_an_admin
+=== RUN   TestAddMemberAuthorization/admin_may_add_a_plain_member
+=== RUN   TestAddMemberAuthorization/an_admin_may_not_grant_admin_—_a_second,_weaker_path_to_a_privilege_UpdateMemberRole_restricts_to_the_owner
+=== RUN   TestAddMemberAuthorization/a_member_may_not_add_anyone
+--- PASS: TestAddMemberAuthorization (0.00s)
+    --- PASS: TestAddMemberAuthorization/owner_may_add_a_plain_member (0.00s)
+    --- PASS: TestAddMemberAuthorization/owner_may_add_an_admin (0.00s)
+    --- PASS: TestAddMemberAuthorization/admin_may_add_a_plain_member (0.00s)
+    --- PASS: TestAddMemberAuthorization/an_admin_may_not_grant_admin_—_a_second,_weaker_path_to_a_privilege_UpdateMemberRole_restricts_to_the_owner (0.00s)
+    --- PASS: TestAddMemberAuthorization/a_member_may_not_add_anyone (0.00s)
+=== RUN   TestAddMemberDefaultsAnUnspecifiedRoleToMember
+--- PASS: TestAddMemberDefaultsAnUnspecifiedRoleToMember (0.00s)
+=== RUN   TestAddMemberRefusesGrantingOwner
+--- PASS: TestAddMemberRefusesGrantingOwner (0.00s)
+=== RUN   TestRemoveMemberAuthorization
+=== RUN   TestRemoveMemberAuthorization/owner_may_remove_a_plain_member
+=== RUN   TestRemoveMemberAuthorization/owner_may_remove_an_admin
+=== RUN   TestRemoveMemberAuthorization/admin_may_remove_a_plain_member
+=== RUN   TestRemoveMemberAuthorization/an_admin_may_not_remove_another_admin
+=== RUN   TestRemoveMemberAuthorization/an_admin_may_not_remove_the_owner
+=== RUN   TestRemoveMemberAuthorization/a_member_may_not_remove_anyone
+--- PASS: TestRemoveMemberAuthorization (0.00s)
+    --- PASS: TestRemoveMemberAuthorization/owner_may_remove_a_plain_member (0.00s)
+    --- PASS: TestRemoveMemberAuthorization/owner_may_remove_an_admin (0.00s)
+    --- PASS: TestRemoveMemberAuthorization/admin_may_remove_a_plain_member (0.00s)
+    --- PASS: TestRemoveMemberAuthorization/an_admin_may_not_remove_another_admin (0.00s)
+    --- PASS: TestRemoveMemberAuthorization/an_admin_may_not_remove_the_owner (0.00s)
+    --- PASS: TestRemoveMemberAuthorization/a_member_may_not_remove_anyone (0.00s)
+=== RUN   TestRemoveMemberRefusesSelfRemoval
+--- PASS: TestRemoveMemberRefusesSelfRemoval (0.00s)
+=== RUN   TestLeaveChatRequiresMembership
+--- PASS: TestLeaveChatRequiresMembership (0.00s)
+=== RUN   TestLeaveChatAllowsAnyMember
+--- PASS: TestLeaveChatAllowsAnyMember (0.00s)
+PASS
+ok  	github.com/aelexs/realtime-messaging-platform/internal/chatmgmt/app	21.690s

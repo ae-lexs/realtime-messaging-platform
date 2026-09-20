@@ -18,7 +18,16 @@ import (
 )
 
 func TestMain(m *testing.M) {
-	goleak.VerifyTestMain(m)
+	// IgnoreTopFunction("internal/poll.runtime_pollWait") is goleak's own
+	// documented workaround for a long-lived network client's background
+	// read-loop goroutine: chat_service_integration_test.go opens real
+	// Firestore (gRPC/HTTP2) clients, and Close() does not block until every
+	// goroutine it started has actually exited — only until the connection is
+	// asked to close. Without this, a live integration run fails goleak on a
+	// goroutine that is winding down, not leaking; the fakes-only default
+	// `make test` run never opens a real connection, so this ignore is inert
+	// there.
+	goleak.VerifyTestMain(m, goleak.IgnoreTopFunction("internal/poll.runtime_pollWait"))
 }
 
 var testPepper = []byte("test-pepper-32-bytes-long-ok!!")
