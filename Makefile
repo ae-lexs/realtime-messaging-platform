@@ -261,6 +261,10 @@ chat-test:
 chat-direct-pair:
 	./scripts/chat.sh direct-pair
 
+## M1.3 flow gate: CreateChat/GetChat/ListChats against the deployed pod (needs make deploy)
+chat-flow:
+	./scripts/chat.sh flow
+
 ## Destroy the M1.3 apparatus (Firestore only)
 chat-down:
 	./scripts/chat.sh destroy

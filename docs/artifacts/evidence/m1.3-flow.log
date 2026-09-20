@@ -1,0 +1,35 @@
+# m1.3-flow — captured experiment output
+# captured:  2026-09-20T19:23:07Z
+# commit:    ea4bbd4bb4983ae72f6331206b0064bec686f31d
+# database:  messaging-dev (us-central1)
+# mode:      PESSIMISTIC
+# reps:      1
+# project:   redacted
+#
+# Re-running requires re-provisioning — the infrastructure this ran
+# against was destroyed at end of session. See docs/artifacts/README.md.
+
+ Container realtime-messaging-platform-toolbox-run-c5db190ed4ef Creating 
+ Container realtime-messaging-platform-toolbox-run-c5db190ed4ef Created 
+==> port-forwarding svc/chatmgmt
+   ✅ port-forward up
+==> 1. register three users
+   ✅ user A registered (7a8e8114-bbcd-4c3c-889a-643c803308e3)
+   ✅ user B registered (722c471f-09cb-4f41-b6f3-c13ebd6896f2)
+   ✅ user C registered (e09cd069-b4b9-4c20-9c84-0507babba2d7, not a member of anything A creates)
+==> 2. create a direct chat (A, B)
+   ✅ direct chat created (915b36a0-ffe8-4f07-a0e7-0e92db2e5e8b), HTTP 200
+==> 3. replay create-chat for the same pair
+   ✅ same chat returned, is_existing=true
+==> 4. get-chat as a member (B)
+   ✅ member read succeeds, my_membership resolves to the caller
+==> 5a. get-chat as a non-member (C) on a real chat -> 403 NOT_MEMBER
+   ✅ non-member refused with 403
+==> 5b. get-chat on a chat that does not exist -> 404 NOT_FOUND
+   ✅ missing chat answers 404, distinct from the non-member's 403
+==> 6. list-chats as A
+   ✅ list-chats includes the created chat
+==> 7. unauthenticated create-chat -> 401
+   ✅ unauthenticated request refused
+
+✅ M1.3 flow gate passed: register -> create (+ idempotent replay) -> read -> not-member/not-found -> list -> unauthenticated refusal
