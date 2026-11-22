@@ -17,6 +17,7 @@ package firestore_test
 
 import (
 	"context"
+	"errors"
 	"os"
 	"testing"
 	"time"
@@ -88,10 +89,12 @@ func TestUsersRoundTrip(t *testing.T) {
 	require.NoError(t, err)
 	_, err = users.FindByPhone(ctx, unknown)
 	assert.ErrorIs(t, err, domain.ErrNotFound)
+	t.Logf("users.FindByPhone(unregistered) → %v (ErrNotFound: %t)", err, errors.Is(err, domain.ErrNotFound))
 
 	// An unknown user ID likewise.
 	_, err = users.Get(ctx, domain.GenerateUserID())
 	assert.ErrorIs(t, err, domain.ErrNotFound)
+	t.Logf("users.Get(unknown id) → %v (ErrNotFound: %t)", err, errors.Is(err, domain.ErrNotFound))
 }
 
 func TestChatsRoundTrip(t *testing.T) {
@@ -122,6 +125,7 @@ func TestChatsRoundTrip(t *testing.T) {
 
 	_, err = chats.Get(ctx, domain.GenerateChatID())
 	assert.ErrorIs(t, err, domain.ErrNotFound)
+	t.Logf("chats.Get(unknown id) → %v (ErrNotFound: %t)", err, errors.Is(err, domain.ErrNotFound))
 }
 
 // TestMembershipsRoundTrip exercises the reason the composite document ID
@@ -149,6 +153,7 @@ func TestMembershipsRoundTrip(t *testing.T) {
 	assert.Equal(t, "owner", got.Role)
 	assert.Equal(t, firestore.MembershipDocID(chatID, userID), got.ID)
 	assert.Len(t, got.ID, 74)
+	t.Logf("membership doc id %q — %d bytes (derived: %t)", got.ID, len(got.ID), got.ID == firestore.MembershipDocID(chatID, userID))
 	assert.Nil(t, got.MutedUntil, "an unmuted member stores no muted_until")
 
 	byChat, err := memberships.ListByChat(ctx, chatID)
@@ -166,6 +171,7 @@ func TestMembershipsRoundTrip(t *testing.T) {
 
 	_, err = memberships.Get(ctx, chatID, userID)
 	assert.ErrorIs(t, err, domain.ErrNotFound)
+	t.Logf("memberships.Get(after delete) → %v (ErrNotFound: %t)", err, errors.Is(err, domain.ErrNotFound))
 
 	byChat, err = memberships.ListByChat(ctx, chatID)
 	require.NoError(t, err)
@@ -221,6 +227,7 @@ func TestSessionsRoundTrip(t *testing.T) {
 	stale, err := sessions.Get(ctx, expired)
 	require.NoError(t, err, "an expired session is readable until TTL collects it")
 	assert.True(t, stale.IsExpired(now))
+	t.Logf("expired session read back: expires_at=%s now=%s IsExpired=%t", stale.ExpiresAt.Format(time.RFC3339), now.Format(time.RFC3339), stale.IsExpired(now))
 	assert.Equal(t, "hash-previous", stale.PrevTokenHash, "rotation fields survive the round-trip")
 
 	// The per-user list replaced the user_sessions-index GSI and returns both.
@@ -234,4 +241,5 @@ func TestSessionsRoundTrip(t *testing.T) {
 
 	_, err = sessions.Get(ctx, active)
 	assert.ErrorIs(t, err, domain.ErrNotFound)
+	t.Logf("sessions.Get(after revoke) → %v (ErrNotFound: %t)", err, errors.Is(err, domain.ErrNotFound))
 }
