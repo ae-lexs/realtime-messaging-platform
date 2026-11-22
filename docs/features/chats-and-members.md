@@ -35,20 +35,23 @@ sequenceDiagram
 
 ## 3. The rules
 
-| Rule | How it's enforced |
+Numbers are set in [`internal/domain/constants.go`](../../internal/domain/constants.go) (`constants.go:N`). `chat_service.go` is `internal/chatmgmt/app/chat_service.go`, and `chat_tx.go` is `internal/firestore/chat_tx.go`.
+
+| Rule | How it's enforced, and where |
 |---|---|
-| Only signed-in, non-revoked callers reach any chat action | Every RPC passes `AuthenticatedChatServer`: token check, then the Redis revocation list, failing closed |
-| One direct chat per pair, whichever side opens it | `direct_chats/{min(a,b)}__{max(a,b)}` is read and created inside the creating transaction; a repeat returns the existing chat (200, not 409) |
-| You can't open a direct chat with yourself | Refused before any write |
-| A direct chat's two members never change | Add, remove and leave are refused on direct chats |
-| A group holds at most 100 members | The count on the chat document is read and updated inside the same transaction as the add |
-| Only members can see or act on a chat | Each action does a strongly consistent point read of `memberships/{chat_id}__{user_id}`; a non-member gets "not a member" |
-| Owner and admins rename a group; the owner and admins add people | An admin can add only plain members; only the owner can add an admin |
-| An admin can remove only plain members | The target's stored role is read before the removal |
-| Only the owner changes roles, and nobody can be made owner | `owner` is not an assignable role |
-| The owner can't leave or be removed | Refused in the removal transaction; owner transfer does not exist yet |
-| Removing yourself is "leave", not "remove" | Self-removal through the remove endpoint is refused |
-| Mute lasts 1–8,760 hours, or indefinitely | Out-of-range durations are refused; indefinite is stored as `9999-01-01`, because `null` means "not muted" |
+| Only signed-in, non-revoked callers reach any chat action | Every RPC passes `AuthenticatedChatServer.authenticate`: token check, then the Redis revocation list, failing closed (`internal/chatmgmt/port/authenticated_chat.go:100`, `:111`) |
+| One direct chat per pair, whichever side opens it (`MaxDirectChatsPerPair = 1`, `constants.go:15`) | `direct_chats/{min(a,b)}__{max(a,b)}` is read and created inside the creating transaction (`chat_tx.go:98–99`, `readDirectPair` `:147`); a repeat returns the existing chat (200, not 409) |
+| You can't open a direct chat with yourself | Refused before any write (`chat_tx.go:88`) |
+| A direct chat's two members never change | Add, remove, leave and role changes are refused on direct chats (`chat_tx.go:350`, `:433`, `:497`) |
+| A group holds at most 100 members (`MaxGroupSize`, `constants.go:13`) | At most 99 others at creation (`chat_service.go:800`); the count is checked in the creating transaction (`chat_tx.go:265`) and in every add's transaction (`chat_tx.go:355`) |
+| Only members can see or act on a chat | Each action does a strongly consistent point read of `memberships/{chat_id}__{user_id}`; a non-member gets `ErrNotMember` (`chat_service.go:440–448`) |
+| Owner and admins rename a group | `requireRole(…, RoleOwner, RoleAdmin)` (`chat_service.go:496`) |
+| The owner can add anyone as member or admin; an admin can add only plain members | `chat_service.go:540` |
+| The owner can remove anyone except themselves; an admin only plain members | `chat_service.go:584–594`, reading the target's stored role |
+| Only the owner changes roles; nobody can change their own role; nobody can be made owner | `requireRole(…, RoleOwner)` (`chat_service.go:636`); self-change refused (`:626`); `IsAssignableRole` admits only admin and member (`constants.go:150`) |
+| The owner can't leave or be removed | Refused inside the removal transaction (`chat_tx.go:452`); owner transfer does not exist |
+| Removing yourself is "leave", not "remove" | Self-removal through the remove endpoint is refused (`chat_service.go:573`) |
+| A timed mute lasts 1 to 8,760 hours (`MaxMuteDurationHours`, `constants.go:18`), or it can be indefinite | Out-of-range durations are refused (`chat_service.go:690`); indefinite is stored as `9999-01-01` (`IndefiniteMuteUntil`, `constants.go:164`), because `null` means "not muted" |
 
 ## 4. Where the data lives
 
@@ -103,7 +106,7 @@ The direct chat and its pair document were written in one commit (same `updateTi
 | Chats created | `sum by (chat_type) (chat_created_total)` | `direct` 2, `group` 1 |
 | Direct-chat dedup | `sum by (result) (direct_chat_dedup_total)` | `created` 2; no `existing` (summed without the label it misreads as "2 dedups") |
 | Membership changes | `sum by (change_type) (membership_mutation_total)` | `muted` 1 |
-| Refusals | `sum by (operation, reason) (chat_authz_denials_total)` | not queried on 2026-11-22 |
+| Refusals | `scripts/inspect.sh prom 'sum by (operation, reason) (chat_authz_denials_total)'` | **no series**, which means zero refusals: an OpenTelemetry counter has no series until its first increment, and nothing today attempted a forbidden action |
 | Trace | `root:chat.create` | `2dc313a5…`, 192.7 ms: the transaction 146.2 ms (begin 73.5, read 28.7, commit 43.7), then `list_by_chat` 24.5 ms, then **two `firestore.user.get` in sequence** (7 ms, 14.9 ms) |
 | Trace | `span:firestore.membership.get` | `a564c0b5…`: `chat.mute` 45.9 ms, a 17.7 ms point read, then a 28.1 ms update |
 | Log | `jsonPayload.msg="chat.create"` | 3 lines (`direct` ×2, `group`), all `"existing":false`, each with the `trace_id` of its trace |

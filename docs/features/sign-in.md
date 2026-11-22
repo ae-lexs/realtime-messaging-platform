@@ -2,9 +2,15 @@
 
 Part of [Module 1](README.md). Explanation: sections 1–3. Reference: sections 4–5. How-to: section 6.
 
+**Glossary.** This document uses the technical terms; the plain meaning is:
+- **one-time code** (OTP): the six-digit code sent to the phone; good for one use within 5 minutes.
+- **access token**: the *access pass*. A signed token every request carries, valid for 1 hour.
+- **refresh token**: the *renewal pass*. A long-lived secret (30 days) the app trades for a new access token without asking for a code.
+- **session**: one signed-in device. It holds the hash of its current refresh token; deleting it signs that device out.
+
 ## 1. What it does
 
-A person signs in with their phone number. They ask for a code, receive a six-digit one-time code, and type it back. The first time, this **creates their account**; after that, it **signs them in** on a new device. Each signed-in device holds a **session**: a short-lived access pass (1 hour) that every other request carries, and a long-lived renewal pass (30 days) the app uses to get a fresh access pass without asking for a code again. Signing out ends the session at once. If a renewal pass is ever used twice, which suggests someone copied it, the session is ended for everyone holding it.
+A person signs in with their phone number. They ask for a code, receive a six-digit one-time code, and type it back. The first time, this **creates their account**; after that, it **signs them in** on a new device. Each signed-in device holds a **session**, with a short-lived access token that every other request carries and a long-lived refresh token that the app uses to get a fresh access token without asking for a code again. Signing out ends the session at once. If a refresh token is ever used twice, which suggests someone copied it, the session is ended for everyone holding it.
 
 ## 2. How it flows
 
@@ -23,7 +29,13 @@ sequenceDiagram
     U->>C: types the code
     C->>M: POST /v1/auth/otp/verify
     M->>R: verify limit and lockout check
-    M->>F: one transaction: mark the code used<br/>and create user + phone_index + session
+    M->>F: is there a user with this phone?
+    alt first time: registration
+        M->>F: one transaction: mark the code used<br/>and create user + phone_index + session
+    else returning user: login
+        M->>F: delete and revoke the oldest session<br/>if 5 others are active
+        M->>F: one transaction: mark the code used<br/>and create a session
+    end
     M-->>C: access token (1 h) + refresh token (30 d)
     C->>M: POST /v1/auth/tokens/refresh
     M->>F: read session, check expiry and token hash,<br/>rotate the hash
@@ -35,22 +47,29 @@ sequenceDiagram
 
 ## 3. The rules
 
-| Rule | How it's enforced |
-|---|---|
-| A code is valid for 5 minutes and can be used once | `expires_at` and `status` are checked in code on every verify; a used code is kept as `verified` so replaying it is refused rather than mistaken for "never issued" |
-| An expired code can never be used, even while it is still stored | Expiry is checked in code; the Firestore TTL policy on `expires_at` only cleans up, within about 24 h |
-| A live code is not replaced by asking again | Asking again while a code is pending returns the existing one (`status="existing"`) |
-| Guessing is limited | Redis allows 5 verify attempts per phone per 15 minutes, and 3 code requests per phone (10 per IP) per 15 minutes |
-| One account per phone number | Registration does `tx.Create` on `phone_index/{sha256(phone)}`, which fails if the number is already claimed |
-| Registration is all or nothing | The user, the sentinel, the session and the used code commit in one transaction |
-| At most 5 sessions per person | Signing in on a sixth device deletes and revokes the oldest session (`reason="session_limit"`) |
-| Expired sessions don't work, even before TTL removes them | Every refresh checks `expires_at` in code (`SessionDoc.IsExpired`) |
-| A renewal pass works once | Each refresh rotates the stored hash; the previous hash is kept to recognise a replay |
-| A replayed renewal pass ends the session | Presenting the *previous* token revokes the whole session |
-| Signed-out tokens stop working immediately | Logout deletes the session and puts the access token's ID (JTI) on the Redis revocation list, which every chat request checks |
-| If Redis is down, access is denied, not granted | Rate-limit and revocation checks fail closed |
+Every number below is set in [`internal/domain/constants.go`](../../internal/domain/constants.go) (cited as `constants.go:N`); the second column names the code line that enforces it.
 
-**Known defect:** asking for a new code after the old one expires **resets the failed-attempt count**, so the attempt-based lockout never fires. The Redis verify limit still stops guessing at 5 per 15 minutes. See [Open items](#open-items).
+| Rule | How it's enforced, and where |
+|---|---|
+| A code is valid for 5 minutes (`OTPValidityDuration`, `constants.go:70`) and can be used once | `expires_at` is set at issue (`auth_request_otp.go:92`); verify refuses a used code (`auth_verify_otp.go:130`) and an expired one (`:143`). A used code is kept as `verified`, so a replay is refused rather than mistaken for "never issued" |
+| An expired code can never be used, even while it is still stored | Expiry is checked in code (`auth_verify_otp.go:143`); the Firestore TTL policy on `expires_at` only cleans up, within about 24 h |
+| A live code is not replaced by asking again | A request while a code is pending returns the existing one and counts `status="existing"` (`auth_request_otp.go:111–119`) |
+| At most 3 code requests per phone and 10 per IP per 15 minutes (`constants.go:67–69`) | Redis counters (`auth_request_otp.go:42`, `:63`) |
+| At most 5 verify attempts per phone per 15 minutes (`MaxOTPVerifyAttempts`, `constants.go:71`; window `:69`) | Redis counter `otp_verify:phone:<hash>` (`auth_verify_otp.go:86–91`) |
+| 5 wrong guesses on one code lock the phone for 15 minutes (`constants.go:71–72`) | `attempt_count` reaching 5 sets a Redis lockout (`auth_verify_otp.go:135–137`). **Bypassed by the defect below** |
+| One account per phone number | Registration does `tx.Create` on `phone_index/{sha256(phone)}`, which fails if the number is claimed (`auth_tx.go:95–96`) |
+| Registration and login are all or nothing | User, sentinel, session and the used code commit in one transaction (`auth_tx.go:83` `Register`, `:115` `Login`) |
+| At most 5 sessions per person (`MaxSessionsPerUser`, `constants.go:84`) | Signing in on another device when 5 others are active deletes and revokes the oldest (`auth_verify_otp.go:301–316`, `reason="session_limit"`) |
+| An access token lasts 1 hour (`constants.go:82`); a session and its refresh token last 30 days (`constants.go:83`) | The minter is configured with `AccessTokenLifetime` (`cmd/chatmgmt/main.go:142`); the session's `expires_at` is set from `RefreshTokenLifetime` at sign-in and on every refresh (`auth_verify_otp.go:176`, `:339`; `auth_refresh.go:116`) |
+| Expired sessions don't work, even before TTL removes them | Every refresh checks `expires_at` in code (`auth_refresh.go:59`) |
+| A refresh token works once | Each refresh rotates the stored hash and keeps the previous one (`auth_refresh.go:120`) |
+| A replayed refresh token ends the session | Presenting the *previous* token deletes the session and revokes it (`auth_refresh.go:80–87`) |
+| Signed-out access tokens stop working immediately | Logout deletes the session and puts the access token's ID (JTI) on the Redis revocation list (`auth_logout.go:32`, `:38`), which every chat request checks (`authenticated_chat.go:111`) |
+| If Redis is down, access is denied, not granted | Rate-limit, lockout and revocation errors become `ErrUnavailable` (e.g. `auth_verify_otp.go:93`) |
+
+File paths are under `internal/chatmgmt/app/` unless they start with `auth_tx.go` (`internal/firestore/`), `authenticated_chat.go` (`internal/chatmgmt/port/`) or `cmd/`.
+
+**Known defect:** asking for a new code after the old one expires **resets the failed-attempt count** (`internal/firestore/stores.go:489`), so the attempt-based lockout never fires. The Redis verify limit still stops guessing at 5 per 15 minutes. See [Open items](#open-items).
 
 ## 4. Where the data lives
 
@@ -97,12 +116,12 @@ scripts/inspect.sh phone +525543450      # phone_index/{sha256(phone)}
 ```
 ```
 {"id":"users/8bb12951-…","updateTime":"…15:58:59.226298Z","fields":{"display_name":"","phone_number":"+525543450","phone_verified":true,"created_at":"…15:58:59.081335Z"}}
-{"id":"sessions/e2d2edfa-…","updateTime":"…15:58:59.226298Z","fields":{"user_id":"8bb12951-…","device_id":"lc-a","refresh_token_hash":"a4950cdf…","prev_token_hash":"…","token_generation":1,"created_at":"2026-11-22T15:58:59.081335Z","expires_at":"2026-12-22T15:58:59.081335Z"}}
+{"id":"sessions/e2d2edfa-…","updateTime":"…15:58:59.226298Z","fields":{"user_id":"8bb12951-…","device_id":"lc-a","refresh_token_hash":"a4950cdf…","prev_token_hash":"","token_generation":1,"created_at":"2026-11-22T15:58:59.081335Z","expires_at":"2026-12-22T15:58:59.081335Z"}}
 {"id":"otp_requests/4f5468b2…","updateTime":"…15:58:59.226298Z","fields":{"attempt_count":0,"otp_mac":"bcb25535…","expires_at":"…16:03:56Z","created_at":"…15:58:56Z","status":"verified"}}
 {"id":"phone_index/4f5468b2…","updateTime":"…15:58:59.226298Z","fields":{"user_id":"8bb12951-…","created_at":"…15:58:59.081335Z"}}
 ```
 
-The four documents share one `updateTime`: registration committed them together. The session expires exactly 30 days after creation. `prev_token_hash: "…"` is an empty value printed by an early version of the masking; the tool now prints `""`. The TTL policies are listed with `gcloud firestore fields ttls list --database=messaging-dev`, which returns both as `state: ACTIVE` ([`m1.1-store.log`](../artifacts/evidence/m1.1-store.log)).
+The four documents share one `updateTime`: registration committed them together. The session expires exactly 30 days after creation. `prev_token_hash` is empty and `token_generation` is 1 because this session has never been refreshed; the first refresh moves the current hash into `prev_token_hash`. The TTL policies are listed with `gcloud firestore fields ttls list --database=messaging-dev`, which returns both as `state: ACTIVE` ([`m1.1-store.log`](../artifacts/evidence/m1.1-store.log)).
 
 ## 5. How we know it works
 
@@ -135,10 +154,10 @@ The four documents share one `updateTime`: registration committed them together.
 
 **A user was signed out unexpectedly.**
 1. `scripts/inspect.sh where sessions user_id <user-id>`. A missing session means logout, eviction by a sixth sign-in, or reuse detection.
-2. `scripts/inspect.sh logs "$NS jsonPayload.msg=\"auth.refresh_token_reuse\" jsonPayload.user_id=\"<user-id>\""`. A line here means a renewal pass was replayed and the session was revoked on purpose.
+2. `scripts/inspect.sh logs "$NS jsonPayload.msg=\"auth.refresh_token_reuse\" jsonPayload.user_id=\"<user-id>\""`. A line here means a refresh token was replayed and the session was revoked on purpose.
 3. Check `security_session_revocations_total` by `reason`. A refused refresh itself writes **no log line**; only the metric records it (open item).
 
-**Someone may have stolen a token.** Find the session with the `where` query above, and have the user sign out (`POST /v1/auth/logout`), which deletes the session and revokes the access token in Redis. Without the session document, the stolen renewal pass can no longer refresh. There is no operator "revoke" command yet.
+**Someone may have stolen a token.** Find the session with the `where` query above, and have the user sign out (`POST /v1/auth/logout`), which deletes the session and revokes the access token in Redis. Without the session document, the stolen refresh token can no longer refresh. There is no operator "revoke" command yet.
 
 **Check that expiry cleanup is configured.** `docker compose run --rm -T toolbox gcloud firestore fields ttls list --database=messaging-dev --project="$PROJECT_ID"` lists both `expires_at` policies as `ACTIVE`. Cleanup lags by up to a day; that is expected and harmless, because expiry is checked in code.
 
