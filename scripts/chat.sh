@@ -28,7 +28,7 @@
 #   PROJECT_ID=my-project BILLING_ACCOUNT_ID=XXXXXX-XXXXXX-XXXXXX \
 #     [REGION=us-central1] [FIRESTORE_DATABASE=messaging-dev] \
 #     [REPS=5] [LOG_SUFFIX=-optimistic] \
-#     scripts/chat.sh {apply|store|direct-pair|flow|destroy}
+#     scripts/chat.sh {apply|store|direct-pair|flow|listchats|listchats-cost|telemetry|destroy}
 #
 # `apply` and `destroy` target Firestore only. The experiment needs no cluster,
 # no Redis and no secrets — standing up the rest would cost provisioning time
@@ -174,6 +174,39 @@ case "${1:-}" in
       toolbox bash scripts/chat-flow.sh
     ;;
 
+  listchats)
+    # The ListChats membership-fields gate (M1.3 open item 1) against the
+    # deployed pod: per-item myMembership / otherMember / mutedUntil. The
+    # read-cost half is appended by scripts/telemetry-proof.sh from Cloud Trace.
+    echo "==> ListChats gate against the deployed chatmgmt in ${NAMESPACE}"
+    capture m1.3-listchats \
+      docker compose run --rm -T \
+      -e NAMESPACE="${NAMESPACE}" \
+      -e PHONE_A="${PHONE_A}" \
+      -e PHONE_B="${PHONE_B}" \
+      -e PHONE_C="${PHONE_C}" \
+      toolbox bash scripts/listchats-flow.sh
+    ;;
+
+  listchats-cost)
+    # Appends the chat.list span tree from Cloud Trace to m1.3-listchats.log:
+    # the "at most three Firestore round trips" half of the gate. Run a minute
+    # or two after `listchats`, once the trace has been exported and ingested.
+    echo "==> appending the ListChats read cost (Cloud Trace) to m1.3-listchats.log"
+    docker compose run --rm -T -e PROJECT_ID="${PROJECT_ID}" -e MODE=listchats-cost \
+      toolbox bash scripts/telemetry-proof.sh 2>&1 \
+      | sed -e "s/${PROJECT_ID}/PROJECT_ID/g" | tee -a "${EVIDENCE_DIR}/m1.3-listchats.log"
+    ;;
+
+  telemetry)
+    # Re-checkable telemetry proof: raw Cloud Trace and Managed Prometheus API
+    # responses after the flows above generated traffic (dossier seed doubt 3).
+    echo "==> telemetry proof (Cloud Trace + Managed Prometheus)"
+    capture m1-telemetry \
+      docker compose run --rm -T -e PROJECT_ID="${PROJECT_ID}" -e MODE=telemetry \
+      toolbox bash scripts/telemetry-proof.sh
+    ;;
+
   destroy)
     # Expect ~6 minutes: deleting the TTL fields dominates this teardown.
     echo "==> destroying Firestore (the TTL fields take ~6 min)"
@@ -181,7 +214,7 @@ case "${1:-}" in
     ;;
 
   *)
-    echo "usage: PROJECT_ID=... scripts/chat.sh {apply|store|direct-pair|flow|destroy}" >&2
+    echo "usage: PROJECT_ID=... scripts/chat.sh {apply|store|direct-pair|flow|listchats|listchats-cost|telemetry|destroy}" >&2
     exit 2
     ;;
 esac

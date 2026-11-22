@@ -167,6 +167,22 @@ case "${1:-}" in
       toolbox bash scripts/auth-flow.sh
     ;;
 
+  otp-reissue)
+    # Experiment, not a gate: does reissuing an OTP reset the failed-attempt
+    # count, and does any limit still stop guessing across the reissue?
+    # (NIST SP 800-63B: a new secret SHALL NOT reset the failed count.) Uses its
+    # own phone number, because `flow` exhausts the default one's rate limit.
+    # Takes ~6 minutes: a live OTP cannot be replaced, so it waits for expiry.
+    echo "==> OTP reissue probe against the deployed chatmgmt in ${NAMESPACE}"
+    capture m1.2-otp-reissue \
+      docker compose run --rm -T \
+      -e NAMESPACE="${NAMESPACE}" \
+      -e PROJECT_ID="${PROJECT_ID}" \
+      -e FIRESTORE_DATABASE="${DATABASE}" \
+      -e PHONE="${PROBE_PHONE:-+525599990077}" \
+      toolbox bash scripts/otp-reissue-probe.sh
+    ;;
+
   destroy)
     # Expect ~6 minutes: deleting the TTL fields dominates this teardown.
     echo "==> destroying Firestore + auth secrets (the TTL fields take ~6 min)"
@@ -174,7 +190,7 @@ case "${1:-}" in
     ;;
 
   *)
-    echo "usage: PROJECT_ID=... scripts/auth.sh {apply|store|negative-control|mode [MODE]|flow|destroy}" >&2
+    echo "usage: PROJECT_ID=... scripts/auth.sh {apply|store|negative-control|mode [MODE]|flow|otp-reissue|destroy}" >&2
     exit 2
     ;;
 esac
