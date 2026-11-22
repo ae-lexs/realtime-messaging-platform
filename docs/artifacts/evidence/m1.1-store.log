@@ -1,0 +1,77 @@
+# m1.1-store — captured gate output
+# captured:  2026-11-22T17:38:50Z (step 2; step 1 read shortly before)
+# commit:    1f6397e3f6f6cb34d4660436d879f7a6036cba55
+#            (run from 8a09799's working tree carrying this exact diff, which
+#             adds t.Logf lines only — committed as 1f6397e before this log)
+# database:  messaging-dev (us-central1)
+# mode:      PESSIMISTIC
+# reps:      1
+# project:   redacted
+#
+# Operator-driven: the operator ran each command and pasted its output; this
+# file was assembled verbatim from those pastes, project ID redacted. It was
+# not written by `capture`, so there is no tee'd stream — the commands are
+# reproduced exactly as run.
+#
+# Re-running requires re-provisioning — the infrastructure this ran
+# against was destroyed at end of session. See docs/artifacts/README.md.
+#
+# Not covered here: the third M1.1 gate claim, "destroy removes the database".
+# That is checked at final teardown, not in this log.
+
+# ---- step 1: TTL policies, read back from the Firestore Admin API ----
+$ docker compose run --rm -T toolbox \
+    gcloud firestore fields ttls list --database=messaging-dev --project=PROJECT_ID --format=yaml
+---
+indexConfig:
+  ancestorField: projects/PROJECT_ID/databases/messaging-dev/collectionGroups/__default__/fields/*
+name: projects/PROJECT_ID/databases/messaging-dev/collectionGroups/otp_requests/fields/expires_at
+ttlConfig:
+  state: ACTIVE
+---
+indexConfig:
+  ancestorField: projects/PROJECT_ID/databases/messaging-dev/collectionGroups/__default__/fields/*
+name: projects/PROJECT_ID/databases/messaging-dev/collectionGroups/sessions/fields/expires_at
+ttlConfig:
+  state: ACTIVE
+
+# result: ✅ both TTL policies ACTIVE (sessions.expires_at, otp_requests.expires_at)
+# aside [inference, not a gate claim]: neither field shows usesAncestorConfig:
+# true or an indexes list; the Admin API omits false/empty values, which is
+# consistent with Terraform's `index_config {}` having disabled the automatic
+# single-field indexes on expires_at. `ttls list` may not render the full
+# index config, so this is not verified.
+
+# ---- steps 2-5: CRUD round trip, membership doc ID, expired session, not-found ----
+$ docker compose run --rm -T \
+    -e FIRESTORE_PROJECT=PROJECT_ID -e FIRESTORE_DATABASE=messaging-dev \
+    toolbox go test -race -count=1 -tags=integration -v ./internal/firestore/ \
+    -run 'TestUsersRoundTrip|TestChatsRoundTrip|TestMembershipsRoundTrip|TestSessionsRoundTrip'
+=== RUN   TestUsersRoundTrip
+    stores_integration_test.go:92: users.FindByPhone(unregistered) → firestore: no user with that phone number: resource not found (ErrNotFound: true)
+    stores_integration_test.go:97: users.Get(unknown id) → firestore: get user f136ab44-bae4-4dc2-881f-5a7d3bc96abb: resource not found (ErrNotFound: true)
+--- PASS: TestUsersRoundTrip (1.32s)
+=== RUN   TestChatsRoundTrip
+    stores_integration_test.go:128: chats.Get(unknown id) → firestore: get chat 2088235b-90ad-47ff-82c2-dd2fda6838f8: resource not found (ErrNotFound: true)
+--- PASS: TestChatsRoundTrip (0.86s)
+=== RUN   TestMembershipsRoundTrip
+    stores_integration_test.go:156: membership doc id "0f2af989-fbc1-401d-94ab-2af40f72e6d8__844de9c0-bce0-4453-8d45-8ae32ef27b8f" — 74 bytes (derived: true)
+    stores_integration_test.go:174: memberships.Get(after delete) → firestore: get membership 0f2af989-fbc1-401d-94ab-2af40f72e6d8__844de9c0-bce0-4453-8d45-8ae32ef27b8f: resource not found (ErrNotFound: true)
+--- PASS: TestMembershipsRoundTrip (1.57s)
+=== RUN   TestSessionsRoundTrip
+    stores_integration_test.go:230: expired session read back: expires_at=2026-11-22T16:38:50Z now=2026-11-22T17:38:50Z IsExpired=true
+    stores_integration_test.go:244: sessions.Get(after revoke) → firestore: get session 8906137c-fe34-4d56-9690-dda56df11f7a: resource not found (ErrNotFound: true)
+--- PASS: TestSessionsRoundTrip (1.66s)
+PASS
+ok      github.com/aelexs/realtime-messaging-platform/internal/firestore    6.444s
+
+# result:
+#   step 2 ✅ CRUD round trip passes for users, chats, memberships, sessions
+#            (each test also asserts field-by-field equality, the phone lookup,
+#             both membership list directions, and sessions.ListByUser)
+#   step 3 ✅ membership doc ID = MembershipDocID(chat, user), 74 bytes
+#            (36-byte UUID + "__" + 36-byte UUID)
+#   step 4 ✅ a session expired an hour earlier reads back; IsExpired=true —
+#            TTL is collection, the application check is the gate (ADR-023)
+#   step 5 ✅ five unknown/deleted lookups wrap domain.ErrNotFound
+#            (user by phone, user by ID, chat, membership, session)

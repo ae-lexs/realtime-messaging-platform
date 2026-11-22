@@ -82,15 +82,17 @@ Without a typed entity store there is nowhere authoritative to keep users, chats
 ### Doubts
 
 - **[Doubt — mine]** The ~6-minute Firestore field deletion dominates every teardown. Is that a fixed cost of the TTL field resource, or could the TTL policy be left in place across sessions without leaving a billable database behind? Not investigated.
-- **[Doubt — mine]** M1.1's gate (CRUD round-trip, TTL policy `ACTIVE`, destroy removes the database) is recorded in the plan's status line but has **no committed evidence log**. See seed doubt 2 under M1.2. The same question applies here.
+- **[Doubt — mine]** M1.1's gate (CRUD round-trip, TTL policy `ACTIVE`, destroy removes the database) is recorded in the plan's status line but has **no committed evidence log**. See seed doubt 2 under M1.2. The same question applies here. **Update 2026-11-22:** logged in `m1.1-store.log`, except the destroy claim, which is checked at final teardown.
 
 ### Experiments
 
-- **Live gate** against `messaging-dev` (recorded in `EXECUTION_PLAN.md`, M1.1 status line):
-  - the CRUD round-trip passes for all four collections;
-  - the 74-byte composite membership ID serves the point lookup and both list directions from one document;
-  - an expired session reads back with `IsExpired` true;
-  - the TTL policy reports `state: ACTIVE`.
+- **Live gate** against `messaging-dev`, first run in July (recorded in `EXECUTION_PLAN.md`, M1.1 status line, with no log). **Re-run and logged 2026-11-22** in the PR #32 live session, operator-driven: `docs/artifacts/evidence/m1.1-store.log`. Observed:
+  - both TTL policies, `sessions.expires_at` and `otp_requests.expires_at`, read back from the Admin API as `state: ACTIVE`;
+  - the CRUD round-trip passes for all four collections (users, chats, memberships, sessions; 6.4 s in total);
+  - the derived membership ID `{chat_id}__{user_id}` is **74 bytes** and serves the point lookup and both list directions from one document;
+  - a session that expired an hour earlier still reads back, with `IsExpired` true;
+  - five unknown or deleted lookups (user by phone, user by ID, chat, membership, session) wrap `domain.ErrNotFound`.
+  - Not covered by the log: "destroy removes the database". It is checked at final teardown, together with the teardown-timing experiment from the first doubt above.
 - **Overturned assumption: `terraform destroy` removes the database.** It does not by default. Measured, and fixed with `deletion_policy = DELETE`.
 - **Overturned assumption: the ID is 54 bytes.** ADR-023 computed 54 bytes from ULIDs; with UUIDs it is 74. The plan's gate line carried the stale 54 until v2.8.
 - **Measured: teardown time.** Deleting a `google_firestore_field` takes **~6 minutes**.
@@ -99,7 +101,7 @@ Without a typed entity store there is nowhere authoritative to keep users, chats
 
 - **What shows it works:** unit tests for document shapes and tags (`internal/firestore/documents_test.go`), and the integration suites that every later module runs against the live database. These *use* M1.1's stores, so a broken store fails them.
 - **Not measured:**
-  - no committed M1.1 gate log;
+  - the destroy half of the M1.1 gate has no log yet (the rest is in `m1.1-store.log`);
   - no metric for Firestore read/write counts or latency from the application;
   - no measurement of TTL lag (how long expired sessions actually linger).
 
@@ -138,7 +140,7 @@ Without authentication no other RPC can know who is calling, and every membershi
 
 ### Doubts
 
-- **From voice discussion, 2026-11-22: what is a gate claim worth without a committed artifact?** The plan's M1.2 status says the deployed flow gate (OTP → registration → login → refresh → reuse-revokes-session → logout → rate limit) was met live. But `docs/artifacts/evidence/README.md` lists `m1.2-flow.log` as *pending*. A claim with no artifact can't be re-checked, and the evidence README's own vocabulary only upgrades a claim to *Measured* with a log. [Inference] Until a log exists, the claim should be graded *Implemented*, not *Measured*. Part of the flow (registration, then authenticated calls) is re-exercised by `m1.3-flow.log`, but refresh, reuse detection and logout are not. **Update 2026-11-22:** the artifact now exists. `m1.2-flow.log` was captured against the deployed pod in the PR #32 live session, with all 7 steps passing. The general question (what a claim is worth without one) stands for the M1.1 gate, which still has no log.
+- **From voice discussion, 2026-11-22: what is a gate claim worth without a committed artifact?** The plan's M1.2 status says the deployed flow gate (OTP → registration → login → refresh → reuse-revokes-session → logout → rate limit) was met live. But `docs/artifacts/evidence/README.md` lists `m1.2-flow.log` as *pending*. A claim with no artifact can't be re-checked, and the evidence README's own vocabulary only upgrades a claim to *Measured* with a log. [Inference] Until a log exists, the claim should be graded *Implemented*, not *Measured*. Part of the flow (registration, then authenticated calls) is re-exercised by `m1.3-flow.log`, but refresh, reuse detection and logout are not. **Update 2026-11-22:** the artifact now exists. `m1.2-flow.log` was captured against the deployed pod in the PR #32 live session, with all 7 steps passing. The M1.1 gate now has one too (`m1.1-store.log`, 2026-11-22), except its destroy claim.
 - **[Doubt — mine, now answered]** Does reissuing an OTP let an attacker reset the guess budget? **Partly, yes** (`m1.2-otp-reissue.log`). The per-OTP counter resets and the attempt-based lockout never fires. The Redis per-phone verify limit, keyed by phone, still caps failures at 5 per 15-minute window. Still open: whether a per-window cap "effectively limits the total number of consecutive failed authentication attempts" as NIST requires.
 - **[Doubt — mine]** RFC 9700 treats any invalidated refresh token as evidence of a breach; we act only on the immediately previous one. Is the bounded-storage argument still right now that sessions live in Firestore, which could hold a short history?
 
@@ -353,7 +355,7 @@ The gate ran against the **full deployed stack**, through the REST API, instead 
 | REST Idempotency-Key | M1.4 | ADR-006 v1.1 §10.4–§10.5 |
 | `ListChats` pagination ordered by `updated_at` | unassigned | Today: no pagination, document-ID order |
 | REST JSON conventions vs ADR-006 (envelope, camelCase, enum names, `Timestamp` shape, omitted unset optionals) | unassigned | Affects every endpoint |
-| An M1.1 gate log | unassigned | Seed doubt 2. `m1.2-flow.log` now exists (2026-11-22) |
+| An M1.1 gate log | done, except destroy | `m1.1-store.log` (2026-11-22). The destroy claim is checked at final teardown |
 | A telemetry *gate* that asserts the counter delta | unassigned | Seed doubt 3. A re-checkable proof is committed (`m1-telemetry.log`), but it reports rather than asserts |
 | Golden signals: ADR-012 naming decision (plane for Chat Mgmt), then `otelgrpc` | unassigned | Seed doubt 1 |
 | **M1.2 defect (confirmed):** reissuing an OTP resets the per-OTP failed-attempt count, which NIST SP 800-63B forbids | unassigned (plan, M1.2 open defect) | Confirmed live (`m1.2-otp-reissue.log`): the count resets 4 → 0 and the lockout never fires; the Redis verify limit still caps at 5 per 15 minutes. The fix goes in its own PR |
@@ -386,6 +388,7 @@ The gate ran against the **full deployed stack**, through the REST API, instead 
 
 | Version | Date | Change |
 |---|---|---|
+| v1.3 | 2026-11-22 | **M1.1:** gate re-run against the live database and logged (`m1.1-store.log`): TTL policies `ACTIVE`, CRUD round trip, the 74-byte membership ID, expired-session readability, not-found errors. Experiments rewritten from recorded to observed; the destroy claim stays open until final teardown. |
 | v1.2 | 2026-11-22 | Results of the PR #32 live session. **ListChats:** gate met against the deployed pod, with 3 Firestore round trips per page measured from Cloud Trace (`m1.3-listchats.log`); Experiments and Measurement rewritten from planned to observed. **M1.2:** the deployed flow captured (`m1.2-flow.log`), and the OTP-reissue defect confirmed (`m1.2-otp-reissue.log`). **Telemetry:** a re-checkable proof committed (`m1-telemetry.log`), which also verifies trace-to-log correlation through `jsonPayload.trace_id`. Open items updated to match. |
 | v1.1 | 2026-11-22 | Consolidated into the ListChats PR. The `ListChats` section now quotes the ADR-023 v1.5 text that ships with it instead of describing it. Its status, the map and the open-items table reflect "in review, gate not run". Checked against the code: the read cost is "at most three round trips", because the user read is skipped when there are no direct chats. The two findings are now explicit open items, recorded and not fixed: the M1.2 OTP reissue defect candidate and the outdated gRPC-endpoint comment. |
 | v1.0 | 2026-11-22 | First Feature Dossier. M1.1–M1.3 written retrospectively; `ListChats` membership fields written forward-looking from its live gate. Records two findings made while writing: the OTP reissue resets the per-OTP attempt counter (compare NIST 800-63B), and Google now documents a gRPC endpoint (`:4317`) the code comments say does not exist. |
