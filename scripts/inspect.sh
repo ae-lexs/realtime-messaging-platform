@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Operator lookups against a running dev environment — the commands behind the
-# "Verify and operate" sections of docs/features/*.md.
+# "Where the data lives" and "How to operate" sections of docs/features/*.md.
 #
 # Read-only: every subcommand is a GET (or a Firestore runQuery, also a read).
 # Output is safe to paste into a published log: the project ID is replaced by

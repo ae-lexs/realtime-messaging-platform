@@ -6,7 +6,7 @@ They are committed because they cannot be regenerated. Infrastructure in this pr
 
 Each file carries a provenance header: capture time, the commit the code was at, the database and region, and a note that re-running requires re-provisioning. **Project identifiers are redacted at capture time**, because these logs are published under [CC-BY-4.0](../../LICENSE).
 
-A log here is what upgrades a claim in the ledger from *Implemented* to *Measured-and-logged*. See [../README.md](../README.md) for the status vocabulary.
+A log here is what upgrades a claim in the ledger from *Implemented* to *Measured-and-logged*. See [../README.md](../README.md) for the status vocabulary. Which capability each log evidences, and how to re-check it on a live stack, is in the capability documents: [`docs/features/`](../../features/README.md).
 
 Not every log here is a gate. An **experiment** log records a measurement whose
 outcome was not known in advance, and its arms assert only that the harness was
