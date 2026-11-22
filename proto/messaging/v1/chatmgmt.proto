@@ -190,9 +190,11 @@ message CreateChatResponse {
   Chat chat = 1;
 
   // True when a direct chat for this pair already existed and is being
-  // returned rather than created (ADR-006 §4.1). REST maps this to
-  // 200 OK + `X-Idempotent-Replay: true` instead of 201 Created; it is not
-  // an error, and a caller may create a direct chat without checking first.
+  // returned rather than created (ADR-006 §4.1); it is not an error, and a
+  // caller may create a direct chat without checking first. ADR-006 maps this
+  // to 200 OK + `X-Idempotent-Replay: true` instead of 201 Created over REST.
+  // The REST bridge does not do that mapping yet: every CreateChat currently
+  // answers 200 with no replay header. Delivered by M1.4 (EXECUTION_PLAN.md).
   bool is_existing = 2;
 
   // Members of the chat, the creator included.
