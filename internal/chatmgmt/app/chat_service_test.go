@@ -96,9 +96,26 @@ type fakeChatReader struct {
 	memberships map[string]app.MemberRecord // keyed chatID+"|"+userID
 	byChat      map[string][]app.MemberRecord
 	byUser      map[string][]app.MemberRecord
+
+	// getChatCalls and getChatsCalls count per-chat and batched reads, so a
+	// test can prove ListChats makes no per-chat round trip.
+	getChatCalls  int
+	getChatsCalls int
+}
+
+func (f *fakeChatReader) GetChats(_ context.Context, chatIDs []string) (map[string]app.ChatRecord, error) {
+	f.getChatsCalls++
+	out := make(map[string]app.ChatRecord, len(chatIDs))
+	for _, id := range chatIDs {
+		if chat, ok := f.chats[id]; ok {
+			out[id] = chat
+		}
+	}
+	return out, nil
 }
 
 func (f *fakeChatReader) GetChat(_ context.Context, chatID string) (app.ChatRecord, error) {
+	f.getChatCalls++
 	chat, ok := f.chats[chatID]
 	if !ok {
 		return app.ChatRecord{}, domain.ErrNotFound
@@ -123,7 +140,25 @@ func (f *fakeChatReader) ListUserChats(_ context.Context, userID string) ([]app.
 }
 
 // fakeUserStore resolves display names.
-type fakeUserStore struct{ users map[string]app.UserRecord }
+type fakeUserStore struct {
+	users map[string]app.UserRecord
+
+	// getByIDsCalls counts batched reads; getByIDsArgs records what each asked for.
+	getByIDsCalls int
+	getByIDsArgs  [][]string
+}
+
+func (f *fakeUserStore) GetByIDs(_ context.Context, userIDs []string) (map[string]app.UserRecord, error) {
+	f.getByIDsCalls++
+	f.getByIDsArgs = append(f.getByIDsArgs, userIDs)
+	out := make(map[string]app.UserRecord, len(userIDs))
+	for _, id := range userIDs {
+		if u, ok := f.users[id]; ok {
+			out[id] = u
+		}
+	}
+	return out, nil
+}
 
 func (f *fakeUserStore) GetByID(_ context.Context, userID string) (*app.UserRecord, error) {
 	u, ok := f.users[userID]
@@ -757,10 +792,169 @@ func TestListChatsSkipsMembershipsWhoseChatIsGone(t *testing.T) {
 	svc := newChatService(&fakeChatWriter{}, reader, &fakeUserStore{})
 
 	// Act
-	chats, err := svc.ListChats(context.Background(), caller)
+	entries, err := svc.ListChats(context.Background(), caller)
 
 	// Assert — one bad reference must not fail the whole listing.
 	require.NoError(t, err)
-	require.Len(t, chats, 1)
-	assert.Equal(t, live, chats[0].ChatID)
+	require.Len(t, entries, 1)
+	assert.Equal(t, live, entries[0].Chat.ChatID)
+}
+
+// listChatsFixture is a caller with one muted group and two direct chats. The
+// caller sorts first in one pair and second in the other, so both branches of
+// the other-participant lookup are exercised.
+type listChatsFixture struct {
+	caller, carol, dave     string
+	group, directC, directD string
+	mutedUntil              time.Time
+	reader                  *fakeChatReader
+	users                   *fakeUserStore
+}
+
+func newListChatsFixture() listChatsFixture {
+	f := listChatsFixture{
+		caller:     domain.GenerateUserID().String(),
+		carol:      domain.GenerateUserID().String(),
+		dave:       domain.GenerateUserID().String(),
+		group:      domain.GenerateChatID().String(),
+		directC:    domain.GenerateChatID().String(),
+		directD:    domain.GenerateChatID().String(),
+		mutedUntil: time.Date(2026, 9, 1, 0, 0, 0, 0, time.UTC),
+		reader:     emptyReader(),
+	}
+	joined := time.Date(2026, 8, 1, 9, 0, 0, 0, time.UTC)
+
+	f.reader.chats[f.group] = app.ChatRecord{ChatID: f.group, ChatType: domain.ChatTypeGroup, Name: "Team", MemberCount: 3}
+	f.reader.chats[f.directC] = app.ChatRecord{
+		ChatID: f.directC, ChatType: domain.ChatTypeDirect, MemberCount: 2,
+		ParticipantIDs: sortedPair(f.caller, f.carol),
+	}
+	f.reader.chats[f.directD] = app.ChatRecord{
+		ChatID: f.directD, ChatType: domain.ChatTypeDirect, MemberCount: 2,
+		ParticipantIDs: sortedPair(f.caller, f.dave),
+	}
+	f.reader.byUser[f.caller] = []app.MemberRecord{
+		{ChatID: f.group, UserID: f.caller, Role: domain.RoleAdmin, JoinedAt: joined, MutedUntil: &f.mutedUntil},
+		{ChatID: f.directC, UserID: f.caller, Role: domain.RoleMember, JoinedAt: joined.Add(time.Hour)},
+		{ChatID: f.directD, UserID: f.caller, Role: domain.RoleMember, JoinedAt: joined.Add(2 * time.Hour)},
+	}
+	f.users = &fakeUserStore{users: map[string]app.UserRecord{
+		f.carol: {UserID: f.carol, DisplayName: "Carol"},
+		f.dave:  {UserID: f.dave, DisplayName: "Dave"},
+	}}
+	return f
+}
+
+func sortedPair(a, b string) []string {
+	if b < a {
+		a, b = b, a
+	}
+	return []string{a, b}
+}
+
+func TestListChatsMixedPageCarriesMembershipAndOtherMember(t *testing.T) {
+	// Arrange
+	f := newListChatsFixture()
+	svc := newChatService(&fakeChatWriter{}, f.reader, f.users)
+
+	// Act
+	entries, err := svc.ListChats(context.Background(), f.caller)
+
+	// Assert — order is the membership query's, untouched.
+	require.NoError(t, err)
+	require.Len(t, entries, 3)
+	assert.Equal(t, []string{f.group, f.directC, f.directD},
+		[]string{entries[0].Chat.ChatID, entries[1].Chat.ChatID, entries[2].Chat.ChatID})
+
+	// Every entry carries the caller's own membership, exactly as listed.
+	for i, m := range f.reader.byUser[f.caller] {
+		assert.Equal(t, m, entries[i].Membership, "entry %d membership", i)
+	}
+	require.NotNil(t, entries[0].Membership.MutedUntil)
+	assert.Equal(t, f.mutedUntil, *entries[0].Membership.MutedUntil, "the muted group shows muted_until")
+
+	// The group has no other member; each direct chat names the right one.
+	assert.Nil(t, entries[0].OtherMember)
+	assert.Equal(t, &app.OtherMemberRecord{UserID: f.carol, DisplayName: "Carol"}, entries[1].OtherMember)
+	assert.Equal(t, &app.OtherMemberRecord{UserID: f.dave, DisplayName: "Dave"}, entries[2].OtherMember)
+}
+
+func TestListChatsReadsInBatchesNotPerChat(t *testing.T) {
+	// Arrange
+	f := newListChatsFixture()
+	svc := newChatService(&fakeChatWriter{}, f.reader, f.users)
+
+	// Act
+	_, err := svc.ListChats(context.Background(), f.caller)
+
+	// Assert — one batched chat read, no per-chat reads, and one batched user
+	// read naming exactly the two other participants. The caller's memberships
+	// are not re-read.
+	require.NoError(t, err)
+	assert.Equal(t, 1, f.reader.getChatsCalls)
+	assert.Zero(t, f.reader.getChatCalls)
+	require.Equal(t, 1, f.users.getByIDsCalls)
+	assert.ElementsMatch(t, []string{f.carol, f.dave}, f.users.getByIDsArgs[0])
+}
+
+func TestListChatsWithoutDirectChatsMakesNoUserRead(t *testing.T) {
+	// Arrange
+	f := newListChatsFixture()
+	f.reader.byUser[f.caller] = f.reader.byUser[f.caller][:1] // the group only
+	svc := newChatService(&fakeChatWriter{}, f.reader, f.users)
+
+	// Act
+	entries, err := svc.ListChats(context.Background(), f.caller)
+
+	// Assert
+	require.NoError(t, err)
+	require.Len(t, entries, 1)
+	assert.Zero(t, f.users.getByIDsCalls)
+}
+
+func TestListChatsKeepsAnOtherMemberWhoseUserIsGone(t *testing.T) {
+	// Arrange — Carol's user document is missing.
+	f := newListChatsFixture()
+	delete(f.users.users, f.carol)
+	svc := newChatService(&fakeChatWriter{}, f.reader, f.users)
+
+	// Act
+	entries, err := svc.ListChats(context.Background(), f.caller)
+
+	// Assert — the membership is real, so the chat stays, named by ID only.
+	require.NoError(t, err)
+	assert.Equal(t, &app.OtherMemberRecord{UserID: f.carol}, entries[1].OtherMember)
+}
+
+func TestListChatsDoesNotGuessAnOtherMemberFromBadParticipants(t *testing.T) {
+	stranger := domain.GenerateUserID().String()
+	tests := []struct {
+		name         string
+		participants func(f listChatsFixture) []string
+	}{
+		{"missing", func(listChatsFixture) []string { return nil }},
+		{"one participant", func(f listChatsFixture) []string { return []string{f.caller} }},
+		{"caller not named", func(f listChatsFixture) []string { return sortedPair(f.carol, stranger) }},
+		{"caller twice", func(f listChatsFixture) []string { return []string{f.caller, f.caller} }},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Arrange
+			f := newListChatsFixture()
+			chat := f.reader.chats[f.directC]
+			chat.ParticipantIDs = tt.participants(f)
+			f.reader.chats[f.directC] = chat
+			svc := newChatService(&fakeChatWriter{}, f.reader, f.users)
+
+			// Act
+			entries, err := svc.ListChats(context.Background(), f.caller)
+
+			// Assert — the chat is still listed, with no other member invented.
+			require.NoError(t, err)
+			require.Len(t, entries, 3)
+			assert.Nil(t, entries[1].OtherMember)
+			assert.Equal(t, f.dave, entries[2].OtherMember.UserID, "the healthy direct chat is unaffected")
+		})
+	}
 }

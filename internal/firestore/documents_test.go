@@ -34,7 +34,7 @@ func TestDocumentFieldNamesMatchTheSchema(t *testing.T) {
 			// transaction that writes a membership.
 			name:     "chats",
 			doc:      firestore.ChatDoc{},
-			wantTags: []string{"chat_type", "name", "created_by", "member_count", "created_at", "updated_at"},
+			wantTags: []string{"chat_type", "name", "created_by", "member_count", "participant_ids,omitempty", "created_at", "updated_at"},
 		},
 		{
 			name:     "memberships",

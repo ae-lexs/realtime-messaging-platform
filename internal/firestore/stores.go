@@ -73,6 +73,27 @@ func (s *Users) FindByPhone(ctx context.Context, phone domain.PhoneNumber) (User
 	return doc, nil
 }
 
+// GetMany returns the users that exist among userIDs, keyed by user ID, in one
+// round trip. Absent users are simply missing from the map — the caller
+// decides what an absent user means — and duplicate IDs are read once.
+func (s *Users) GetMany(ctx context.Context, userIDs []domain.UserID) (map[string]UserDoc, error) {
+	snapshots, err := s.client.getMany(ctx, CollectionUsers, userIDStrings(userIDs))
+	if err != nil {
+		return nil, err
+	}
+
+	docs := make(map[string]UserDoc, len(snapshots))
+	for _, snapshot := range snapshots {
+		var doc UserDoc
+		if err := snapshot.DataTo(&doc); err != nil {
+			return nil, fmt.Errorf("firestore: decode user %s: %w", snapshot.Ref.ID, err)
+		}
+		doc.ID = snapshot.Ref.ID
+		docs[doc.ID] = doc
+	}
+	return docs, nil
+}
+
 // Set writes the user document at doc.ID, replacing any existing one.
 func (s *Users) Set(ctx context.Context, doc UserDoc) error {
 	ctx, cancel := s.client.withTimeout(ctx)
@@ -111,6 +132,33 @@ func (s *Chats) Get(ctx context.Context, chatID domain.ChatID) (ChatDoc, error) 
 	doc.ID = snapshot.Ref.ID
 
 	return doc, nil
+}
+
+// GetMany returns the chats that exist among chatIDs, keyed by chat ID, in one
+// round trip — ListChats's batch read (ADR-006 §4.2). Absent chats are missing
+// from the map rather than an error, so one dangling membership cannot fail a
+// whole listing; the caller logs it.
+func (s *Chats) GetMany(ctx context.Context, chatIDs []domain.ChatID) (map[string]ChatDoc, error) {
+	ids := make([]string, 0, len(chatIDs))
+	for _, id := range chatIDs {
+		ids = append(ids, id.String())
+	}
+
+	snapshots, err := s.client.getMany(ctx, CollectionChats, ids)
+	if err != nil {
+		return nil, err
+	}
+
+	docs := make(map[string]ChatDoc, len(snapshots))
+	for _, snapshot := range snapshots {
+		var doc ChatDoc
+		if err := snapshot.DataTo(&doc); err != nil {
+			return nil, fmt.Errorf("firestore: decode chat %s: %w", snapshot.Ref.ID, err)
+		}
+		doc.ID = snapshot.Ref.ID
+		docs[doc.ID] = doc
+	}
+	return docs, nil
 }
 
 // Set writes the chat document at doc.ID, replacing any existing one.
@@ -492,4 +540,51 @@ func wrapErr(op, id string, err error) error {
 		return fmt.Errorf("firestore: %s %s: %w", op, id, domain.ErrNotFound)
 	}
 	return fmt.Errorf("firestore: %s %s: %w", op, id, err)
+}
+
+// getMany reads the documents named by ids from one collection in a single
+// round trip, returning only the snapshots that exist, in input order.
+//
+// Client.GetAll returns one snapshot per reference, in order, and reports an
+// absent document through Exists() rather than an error — so absence is
+// filtered here and left for the caller to interpret. Duplicate IDs are read
+// once. No IDs means no call at all.
+func (c *Client) getMany(ctx context.Context, collection string, ids []string) ([]*firestore.DocumentSnapshot, error) {
+	if len(ids) == 0 {
+		return nil, nil
+	}
+
+	ctx, cancel := c.withTimeout(ctx)
+	defer cancel()
+
+	seen := make(map[string]struct{}, len(ids))
+	refs := make([]*firestore.DocumentRef, 0, len(ids))
+	for _, id := range ids {
+		if _, dup := seen[id]; dup {
+			continue
+		}
+		seen[id] = struct{}{}
+		refs = append(refs, c.FS.Collection(collection).Doc(id))
+	}
+
+	snapshots, err := c.FS.GetAll(ctx, refs)
+	if err != nil {
+		return nil, fmt.Errorf("firestore: batch get %s: %w", collection, err)
+	}
+
+	present := make([]*firestore.DocumentSnapshot, 0, len(snapshots))
+	for _, snapshot := range snapshots {
+		if snapshot.Exists() {
+			present = append(present, snapshot)
+		}
+	}
+	return present, nil
+}
+
+func userIDStrings(ids []domain.UserID) []string {
+	out := make([]string, 0, len(ids))
+	for _, id := range ids {
+		out = append(out, id.String())
+	}
+	return out
 }

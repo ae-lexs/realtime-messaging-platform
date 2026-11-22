@@ -16,7 +16,7 @@ import (
 type chatService interface {
 	CreateChat(ctx context.Context, params app.CreateChatParams) (*app.CreateChatResult, error)
 	GetChat(ctx context.Context, callerID, chatID string) (*app.ChatRecord, []app.MemberRecord, error)
-	ListChats(ctx context.Context, callerID string) ([]app.ChatRecord, error)
+	ListChats(ctx context.Context, callerID string) ([]app.ChatListEntry, error)
 	UpdateChat(ctx context.Context, callerID, chatID, name string) (*app.ChatRecord, error)
 	AddMember(ctx context.Context, callerID, chatID, userID string, role domain.Role) (*app.MemberRecord, error)
 	RemoveMember(ctx context.Context, callerID, chatID, userID string) error
@@ -113,14 +113,18 @@ func (h *ChatHandler) ListChats(
 		return nil, errmap.ToGRPCError(err)
 	}
 
-	chats, err := h.svc.ListChats(ctx, caller.UserID)
+	entries, err := h.svc.ListChats(ctx, caller.UserID)
 	if err != nil {
 		return nil, errmap.ToGRPCError(err)
 	}
 
-	out := make([]*messagingv1.Chat, 0, len(chats))
-	for _, c := range chats {
-		out = append(out, chatToProto(c))
+	// items is the ADR-006 §4.2 shape; chats is deprecated but still filled,
+	// in the same order, so existing clients keep working.
+	items := make([]*messagingv1.ChatListItem, 0, len(entries))
+	chats := make([]*messagingv1.Chat, 0, len(entries))
+	for _, e := range entries {
+		items = append(items, chatListItemToProto(e))
+		chats = append(chats, chatToProto(e.Chat))
 	}
 
 	// Pagination is declared in the proto and not yet honoured: ADR-006 §4.2's
@@ -129,7 +133,7 @@ func (h *ChatHandler) ListChats(
 	// the MaxConcurrentChats ceiling and is not a silent truncation — the
 	// response carries no next_page_token, so a client cannot mistake a partial
 	// answer for a complete one.
-	return &messagingv1.ListChatsResponse{Chats: out}, nil
+	return &messagingv1.ListChatsResponse{Chats: chats, Items: items}, nil
 }
 
 // UpdateChat renames a group chat (ADR-006 §4.4).
@@ -359,6 +363,33 @@ func chatToProto(c app.ChatRecord) *messagingv1.Chat {
 		// LastSequence is served from the Postgres write path and stays zero
 		// until M2.2 (documented on the proto field).
 	}
+}
+
+// chatListItemToProto renders one ListChats entry (ADR-006 §4.2): the chat's
+// fields flat, the caller's own membership, and for a direct chat the other
+// participant. The chat fields mirror chatToProto; TestChatListItemCoversChat
+// fails if Chat gains a field this mapping neither carries nor leaves out.
+func chatListItemToProto(e app.ChatListEntry) *messagingv1.ChatListItem {
+	item := &messagingv1.ChatListItem{
+		ChatId:      e.Chat.ChatID,
+		ChatType:    chatTypeToProto(e.Chat.ChatType),
+		Name:        e.Chat.Name,
+		MemberCount: clampInt32(e.Chat.MemberCount),
+		CreatedAt:   timeToProtoTimestamp(e.Chat.CreatedAt),
+		UpdatedAt:   timeToProtoTimestamp(e.Chat.UpdatedAt),
+		MyMembership: &messagingv1.MyMembership{
+			Role:       roleToProto(e.Membership.Role),
+			JoinedAt:   timeToProtoTimestamp(e.Membership.JoinedAt),
+			MutedUntil: mutedUntilToProto(e.Membership.MutedUntil),
+		},
+	}
+	if e.OtherMember != nil {
+		item.OtherMember = &messagingv1.OtherMember{
+			UserId:      e.OtherMember.UserID,
+			DisplayName: e.OtherMember.DisplayName,
+		}
+	}
+	return item
 }
 
 func memberToProto(m app.MemberRecord) *messagingv1.ChatMember {

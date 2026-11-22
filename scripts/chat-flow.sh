@@ -180,9 +180,17 @@ ok "missing chat answers 404, distinct from the non-member's 403"
 echo "==> 6. list-chats as A"
 code="$(req GET "/chats" "" -H "Authorization: Bearer ${TOKEN_A}")"
 [[ "${code}" == "200" ]] || fail "list-chats returned ${code}: $(cat /tmp/chat-response.json)"
-FOUND="$(jq -r --arg id "${CHAT_ID}" '[.chats[]?.chatId] | index($id) != null' /tmp/chat-response.json)"
+FOUND="$(jq -r --arg id "${CHAT_ID}" '[.items[]?.chatId] | index($id) != null' /tmp/chat-response.json)"
 [[ "${FOUND}" == "true" ]] || fail "created chat not present in list-chats"
 ok "list-chats includes the created chat"
+# ADR-006 §4.2: each item carries the caller's own membership and, for a
+# direct chat, the other participant.
+ITEM="$(jq -c --arg id "${CHAT_ID}" '.items[] | select(.chatId == $id)' /tmp/chat-response.json)"
+[[ "$(jq -r '.myMembership.role' <<<"${ITEM}")" == "MEMBER_ROLE_MEMBER" ]] \
+  || fail "list-chats item lacks my_membership: ${ITEM}"
+[[ "$(jq -r '.otherMember.userId' <<<"${ITEM}")" == "${USER_B}" ]] \
+  || fail "list-chats direct item does not name B as other_member: ${ITEM}"
+ok "list-chats item carries my_membership and other_member (B)"
 
 # ---------------------------------------------------------------------------
 # 7. Unauthenticated call — proves the decorator is on the wire, not just

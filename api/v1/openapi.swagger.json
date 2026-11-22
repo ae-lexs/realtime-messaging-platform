@@ -765,6 +765,43 @@
       },
       "description": "Chat represents a chat room."
     },
+    "v1ChatListItem": {
+      "type": "object",
+      "properties": {
+        "chatId": {
+          "type": "string"
+        },
+        "chatType": {
+          "$ref": "#/definitions/v1ChatType"
+        },
+        "name": {
+          "type": "string",
+          "description": "Empty for direct chats, which cannot be named."
+        },
+        "memberCount": {
+          "type": "integer",
+          "format": "int32",
+          "description": "Number of members. Display only (ADR-016 §3.2)."
+        },
+        "createdAt": {
+          "$ref": "#/definitions/v1Timestamp",
+          "description": "When the chat was created."
+        },
+        "updatedAt": {
+          "$ref": "#/definitions/v1Timestamp",
+          "description": "When the chat metadata last changed."
+        },
+        "myMembership": {
+          "$ref": "#/definitions/v1MyMembership",
+          "description": "The caller's own membership. Always set."
+        },
+        "otherMember": {
+          "$ref": "#/definitions/v1OtherMember",
+          "description": "The other participant. Set for direct chats only."
+        }
+      },
+      "description": "ChatListItem is one chat as seen by the caller (ADR-006 §4.2).\n\nIt is deliberately not a Chat: my_membership depends on who is asking, so it\ncannot live on the shared Chat resource. The chat fields are repeated here,\nflat, because §4.2 lists them flat beside my_membership; their names match\nChat's wherever the meaning is the same, and a test fails if Chat gains a\nfield this message neither carries nor explicitly leaves out.\n\nNot yet carried: last_message (needs the Postgres messages table, M2.2) and\npending_ack_count (needs delivery_state)."
+    },
     "v1ChatMember": {
       "type": "object",
       "properties": {
@@ -784,7 +821,7 @@
         },
         "displayName": {
           "type": "string",
-          "description": "Denormalized for display, so rendering a member list costs no extra\nuser lookups (ADR-006 §4.3)."
+          "description": "The member's display name, for rendering (ADR-006 §4.3). Not stored on\nthe membership: it is read from the member's user document when the\nresponse is built, one read per member. Empty if that document is missing."
         },
         "mutedUntil": {
           "$ref": "#/definitions/v1Timestamp",
@@ -842,7 +879,7 @@
         },
         "isExisting": {
           "type": "boolean",
-          "description": "True when a direct chat for this pair already existed and is being\nreturned rather than created (ADR-006 §4.1). REST maps this to\n200 OK + `X-Idempotent-Replay: true` instead of 201 Created; it is not\nan error, and a caller may create a direct chat without checking first."
+          "description": "True when a direct chat for this pair already existed and is being\nreturned rather than created (ADR-006 §4.1); it is not an error, and a\ncaller may create a direct chat without checking first. ADR-006 maps this\nto 200 OK + `X-Idempotent-Replay: true` instead of 201 Created over REST.\nThe REST bridge does not do that mapping yet: every CreateChat currently\nanswers 200 with no replay header. Delivered by M1.4 (EXECUTION_PLAN.md)."
         },
         "members": {
           "type": "array",
@@ -907,11 +944,19 @@
             "type": "object",
             "$ref": "#/definitions/v1Chat"
           },
-          "description": "Chats the user is a member of."
+          "description": "Chats the user is a member of.\n\nDeprecated: use items, which carries the caller's own membership and, for\na direct chat, the other participant (ADR-006 §4.2). Still populated, in\nthe same order as items, so existing clients keep working."
         },
         "page": {
           "$ref": "#/definitions/v1PageResponse",
           "description": "Pagination metadata."
+        },
+        "items": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "$ref": "#/definitions/v1ChatListItem"
+          },
+          "description": "One entry per chat, as ADR-006 §4.2 lists it."
         }
       },
       "description": "ListChatsResponse contains the user's chats."
@@ -992,6 +1037,37 @@
         }
       },
       "description": "MuteChatResponse reports the resulting mute."
+    },
+    "v1MyMembership": {
+      "type": "object",
+      "properties": {
+        "role": {
+          "$ref": "#/definitions/v1MemberRole",
+          "description": "The caller's role in the chat."
+        },
+        "joinedAt": {
+          "$ref": "#/definitions/v1Timestamp",
+          "description": "When the caller joined."
+        },
+        "mutedUntil": {
+          "$ref": "#/definitions/v1Timestamp",
+          "description": "When the caller's mute lapses. Absent when not muted."
+        }
+      },
+      "description": "MyMembership is the caller's own membership in a chat (ADR-006 §4.2)."
+    },
+    "v1OtherMember": {
+      "type": "object",
+      "properties": {
+        "userId": {
+          "type": "string"
+        },
+        "displayName": {
+          "type": "string",
+          "description": "Read from the user's document. Empty if the user document is missing."
+        }
+      },
+      "description": "OtherMember is the other participant of a direct chat (ADR-006 §4.2)."
     },
     "v1PageRequest": {
       "type": "object",

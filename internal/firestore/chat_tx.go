@@ -192,8 +192,13 @@ func (t *ChatTx) writeDirectPair(
 		// (ADR-006 §4.1).
 		CreatedBy:   params.UserA.String(),
 		MemberCount: 2,
-		CreatedAt:   params.Now,
-		UpdatedAt:   params.Now,
+
+		// The same sorted pair as the sentinel ID, so ListChats can name the
+		// other participant without a per-chat membership query.
+		ParticipantIDs: SortedPair(params.UserA, params.UserB),
+
+		CreatedAt: params.Now,
+		UpdatedAt: params.Now,
 	}
 	if err := chat.Validate(); err != nil {
 		return ChatDoc{}, err

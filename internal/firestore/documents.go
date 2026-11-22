@@ -47,6 +47,15 @@ type ChatDoc struct {
 	// way rather than by counting memberships with a query.
 	MemberCount int `firestore:"member_count"`
 
+	// ParticipantIDs is the two user IDs of a direct chat, sorted, as in its
+	// `direct_chats` sentinel ID (ADR-023 v1.5). Empty for groups.
+	//
+	// It lets ListChats name a direct chat's other participant from the chat
+	// document it already reads, instead of querying memberships per chat
+	// (ADR-006 §4.2's other_member). It cannot go stale: a direct chat's
+	// membership is immutable — no add, remove or leave (ADR-006 §4.1).
+	ParticipantIDs []string `firestore:"participant_ids,omitempty"`
+
 	CreatedAt time.Time `firestore:"created_at"`
 	UpdatedAt time.Time `firestore:"updated_at"`
 }

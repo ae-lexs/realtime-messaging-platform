@@ -45,6 +45,33 @@ type ChatRecord struct {
 	MemberCount int
 	CreatedAt   time.Time
 	UpdatedAt   time.Time
+
+	// ParticipantIDs is a direct chat's two user IDs, sorted; empty for a
+	// group. It is how ListChats names the other participant (ADR-006 §4.2).
+	ParticipantIDs []string
+}
+
+// ChatListEntry is one chat as the caller sees it in ListChats (ADR-006 §4.2):
+// the chat, the caller's own membership, and for a direct chat the other
+// participant.
+type ChatListEntry struct {
+	Chat ChatRecord
+
+	// Membership is the caller's own, taken from the memberships ListChats
+	// started from — never re-read.
+	Membership MemberRecord
+
+	// OtherMember is set for direct chats only, and nil when it cannot be
+	// resolved from the chat document (logged as drift).
+	OtherMember *OtherMemberRecord
+}
+
+// OtherMemberRecord is the other participant of a direct chat.
+type OtherMemberRecord struct {
+	UserID string
+
+	// DisplayName is empty when the user document is missing.
+	DisplayName string
 }
 
 // MemberRecord is the service's view of a membership.
@@ -54,8 +81,8 @@ type MemberRecord struct {
 	Role     domain.Role
 	JoinedAt time.Time
 
-	// DisplayName is denormalized for rendering (ADR-006 §4.3). It is filled by
-	// the service from the user store, not held on the membership.
+	// DisplayName is for rendering (ADR-006 §4.3). It is filled by the service
+	// from the user store at read time; it is not held on the membership.
 	DisplayName string
 
 	// MutedUntil is nil when the member is not muted.
@@ -107,6 +134,22 @@ type ChatReader interface {
 	GetMembership(ctx context.Context, chatID, userID string) (MemberRecord, error)
 	ListMembers(ctx context.Context, chatID string) ([]MemberRecord, error)
 	ListUserChats(ctx context.Context, userID string) ([]MemberRecord, error)
+
+	// GetChats reads many chats in one round trip, keyed by chat ID. A chat
+	// that does not exist is absent from the map, not an error.
+	GetChats(ctx context.Context, chatIDs []string) (map[string]ChatRecord, error)
+}
+
+// ChatUserStore is the user access the chat service needs: the auth service's
+// UserStore, so there is still one way to read a user in this process, plus a
+// batch read for ListChats. The batch method lives here rather than on
+// UserStore because only this service needs it.
+type ChatUserStore interface {
+	UserStore
+
+	// GetByIDs reads many users in one round trip, keyed by user ID. A user
+	// that does not exist is absent from the map, not an error.
+	GetByIDs(ctx context.Context, userIDs []string) (map[string]UserRecord, error)
 }
 
 // ChatServiceConfig is the dependency set for NewChatService.
@@ -114,9 +157,8 @@ type ChatServiceConfig struct {
 	Writer ChatWriter
 	Reader ChatReader
 
-	// Users resolves display names. The same interface the auth service uses,
-	// so there is one way to read a user in this process.
-	Users UserStore
+	// Users resolves display names.
+	Users ChatUserStore
 
 	Clock  domain.Clock
 	Logger *slog.Logger
@@ -139,7 +181,7 @@ type ChatServiceConfig struct {
 type ChatService struct {
 	writer ChatWriter
 	reader ChatReader
-	users  UserStore
+	users  ChatUserStore
 	clock  domain.Clock
 	logger *slog.Logger
 }
@@ -275,7 +317,17 @@ func (s *ChatService) GetChat(ctx context.Context, callerID, chatID string) (*Ch
 // Driven from the caller's own memberships, so it needs no authorization check
 // of its own — a user can only ever reach chats they are a member of, and the
 // query is keyed by their ID.
-func (s *ChatService) ListChats(ctx context.Context, callerID string) ([]ChatRecord, error) {
+//
+// Each entry carries the caller's own membership and, for a direct chat, the
+// other participant (ADR-006 §4.2). The cost is three round trips whatever the
+// number of chats: the membership query (M reads), one batched chat read (M
+// reads) and one batched user read for the direct chats' other participants
+// (D reads) — 2M + D reads in all. The caller's membership comes from the
+// first query and is not read again.
+//
+// Order is the membership query's, unchanged; pagination is not applied here
+// (see the handler).
+func (s *ChatService) ListChats(ctx context.Context, callerID string) ([]ChatListEntry, error) {
 	ctx, span := tracer.Start(ctx, "chat.list")
 	defer span.End()
 
@@ -285,26 +337,95 @@ func (s *ChatService) ListChats(ctx context.Context, callerID string) ([]ChatRec
 		return nil, fmt.Errorf("list chats: %w", err)
 	}
 
-	chats := make([]ChatRecord, 0, len(memberships))
+	chatIDs := make([]string, 0, len(memberships))
 	for _, m := range memberships {
-		chat, err := s.reader.GetChat(ctx, m.ChatID)
-		if err != nil {
-			if domain.IsNotFound(err) {
-				// A membership pointing at a chat that no longer exists is
-				// cross-store drift, not a reason to fail the whole listing
-				// (ADR-023: these references are application-enforced). Skip it
-				// and record it, because it should not happen.
-				s.logger.WarnContext(ctx, "membership references a missing chat",
-					"chat_id", m.ChatID, "user_id", callerID)
-				continue
-			}
-			return nil, err
-		}
-		chats = append(chats, chat)
+		chatIDs = append(chatIDs, m.ChatID)
+	}
+	chats, err := s.reader.GetChats(ctx, chatIDs)
+	if err != nil {
+		span.RecordError(err)
+		return nil, fmt.Errorf("list chats: read chats: %w", err)
 	}
 
-	span.SetAttributes(attribute.Int("chat.count", len(chats)))
-	return chats, nil
+	entries := make([]ChatListEntry, 0, len(memberships))
+	var otherIDs []string
+	for _, m := range memberships {
+		chat, ok := chats[m.ChatID]
+		if !ok {
+			// A membership pointing at a chat that no longer exists is
+			// cross-store drift, not a reason to fail the whole listing
+			// (ADR-023: these references are application-enforced). Skip it
+			// and record it, because it should not happen.
+			s.logger.WarnContext(ctx, "membership references a missing chat",
+				"chat_id", m.ChatID, "user_id", callerID)
+			continue
+		}
+
+		entry := ChatListEntry{Chat: chat, Membership: m}
+		if chat.ChatType == domain.ChatTypeDirect {
+			if otherID, found := otherParticipant(chat.ParticipantIDs, callerID); found {
+				entry.OtherMember = &OtherMemberRecord{UserID: otherID}
+				otherIDs = append(otherIDs, otherID)
+			} else {
+				s.logger.WarnContext(ctx, "direct chat does not name the caller and one other participant",
+					"chat_id", chat.ChatID, "user_id", callerID, "participants", len(chat.ParticipantIDs))
+			}
+		}
+		entries = append(entries, entry)
+	}
+
+	if err := s.fillOtherNames(ctx, entries, otherIDs); err != nil {
+		span.RecordError(err)
+		return nil, err
+	}
+
+	span.SetAttributes(
+		attribute.Int("chat.count", len(entries)),
+		attribute.Int("chat.direct_count", len(otherIDs)),
+	)
+	return entries, nil
+}
+
+// fillOtherNames resolves every direct chat's other participant in one batched
+// read. A missing user keeps its ID and gets no name — the same choice
+// membersWithNames makes, since the membership is still real.
+func (s *ChatService) fillOtherNames(ctx context.Context, entries []ChatListEntry, otherIDs []string) error {
+	if len(otherIDs) == 0 {
+		return nil
+	}
+
+	users, err := s.users.GetByIDs(ctx, otherIDs)
+	if err != nil {
+		return fmt.Errorf("list chats: resolve other members: %w", err)
+	}
+
+	for i := range entries {
+		other := entries[i].OtherMember
+		if other == nil {
+			continue
+		}
+		if user, ok := users[other.UserID]; ok {
+			other.DisplayName = user.DisplayName
+		}
+	}
+	return nil
+}
+
+// otherParticipant returns the participant of a direct chat who is not the
+// caller. It reports false unless the chat names exactly two participants, one
+// of them the caller — anything else is drift, never a guess.
+func otherParticipant(participants []string, callerID string) (string, bool) {
+	if len(participants) != 2 {
+		return "", false
+	}
+	switch callerID {
+	case participants[0]:
+		return participants[1], participants[1] != callerID
+	case participants[1]:
+		return participants[0], true
+	default:
+		return "", false
+	}
 }
 
 // requireMembership fetches the caller's membership or refuses.
