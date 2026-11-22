@@ -117,7 +117,7 @@ Eight modules. Each PR lists what it delivers, the ADRs it implements, its scope
 - **Open (not gate items):**
   1. **`ListChats` per-item membership fields:** ADR-006 §4.2 returns `my_membership` (role, joined_at, muted_until) and, for direct chats, `other_member` on each item. The proto's `ListChatsResponse` is `repeated Chat`, which has neither. Firestore-only; a follow-up PR.
   2. **`ListChats` `last_message`:** needs the Postgres `messages` table, so it cannot land before M2.2.
-  3. **`GetMessages`** (REST message history, ADR-006 §5) returns Unimplemented and is **assigned to no milestone**. It needs M2.1/M2.2's `messages` table.
+  3. **`GetMessages`** (REST message history, ADR-006 §5) returns Unimplemented. **Assigned to M5.2**: it is served through Ingest's `ReadMessages`, since Chat Mgmt never reads Postgres.
   4. **`Idempotency-Key` (ADR-006 §10)** was never in M1.3's scope and is now **M1.4**.
 - **Delivers:** `internal/chatmgmt` REST/gRPC — create chat (direct dedup + group), add/remove/leave member, role change, mute, list chats, get chat; writes `chats`/`memberships` to Firestore.
 - **Scope decision (2026-08-10): entity-event publication moves to M2.3.** M1.3 was to publish `chats.created` / `memberships.changed` at-least-once (ADR-022 D4), but no Kafka **producer** exists in the repo — M2.3 builds the first one for the outbox relay, and the wire format (`internal/events` serde, both event protos, the registry client) is already in place from M0.3. Building a second producer here to retire it there helps nobody, and the obligation M1.3 owes the critical path is membership **reads** (M2.2 validates against Firestore), which it keeps. M2.3 gains the entity-event half, where the producer it needs already lives.
@@ -144,14 +144,16 @@ Eight modules. Each PR lists what it delivers, the ADRs it implements, its scope
   - A key never exists without its operation, and an operation run under a key never commits without it (one transaction).
   - Expiry is enforced in code: an expired key is treated as absent, whether or not TTL has collected it.
   - The same key with a different body gets 409 and writes nothing.
-  - Only successful outcomes are recorded.
+  - Only successful outcomes are recorded. A retry after a refusal such as `CHAT_FULL` re-executes and may succeed.
+  - A replay reports the recorded outcome against current state and never re-executes. A deleted chat or a since-removed member gives 404, never a re-create or re-add (ADR-006 v1.2).
+  - `request_hash` excludes unknown fields and all per-attempt metadata. A deploy between an original and its retry may rarely cause a false 409, an accepted risk (ADR-006 v1.2).
   - Keys are scoped per user and per method.
   - For direct chats the key is read before the sentinel, and both mechanisms hold (ADR-006 §10.5).
 - **Gate:**
   1. **N concurrent retries of one group `CreateChat` with the same key → exactly one group.** Every response carries the same `chat_id` and all but one are replays, **with the refusing mechanism recorded**: transaction contention (abort and re-read) counted separately from a `tx.Create` `AlreadyExists`. This is M1.3's discipline (RTM-04 C7): a gate that accepts any refusal certifies a mechanism it may never fire.
   2. **Same key, different body → 409**, and no second chat.
   3. **A key whose `expires_at` has passed but which TTL has not yet collected → treated as absent:** a new operation commits and the key is overwritten.
-  4. **`AddMember` replay with the same key → the existing membership**, not the duplicate-member error.
+  4. **`AddMember` replay with the same key → the existing membership**, not the duplicate-member error. **If the member has since been removed, the replay returns 404 `NOT_FOUND` with `X-Idempotent-Replay: true`, and the member is not re-added:** the membership document is still absent after the replay (ADR-006 v1.2 §10.4, replay against changed state). A replay never re-executes.
   5. **Over REST:** a first creation returns 201, and a replay returns 200 + `X-Idempotent-Replay: true`.
 - **Dependencies:** M1.3. **Not on the critical path,** since M2.2 does not read idempotency keys, so it can run alongside Module 2. Teardown grows by the ~6-minute Firestore field deletion M1.1 measured.
 
@@ -207,11 +209,24 @@ Eight modules. Each PR lists what it delivers, the ADRs it implements, its scope
 - **Key invariant (the headline):** **every `send_message_ack` corresponds to a committed Postgres record** — "ACK = Durability" (Artifact 00). Ingest crash between commit and response → client retries, idempotency yields one record.
 - **Gate:** Client A → Client B receives via WS; ack after commit; per-chat order at recipient.
 
-**M5.2 — Sync-on-reconnect + client ack → watermark**
-- **Delivers:** `sync_request`/`sync_response` (`WHERE chat_id=$1 AND sequence > $watermark ORDER BY sequence`, paginated, primary read); client `ack` → `delivery_state` watermark update.
-- **ADRs:** ADR-001 (sync completeness), ADR-005 (sync), ADR-008 (ack → watermark).
+**M5.2 — Sync-on-reconnect + client ack → watermark + message history (`GetMessages`)**
+- **Delivers:**
+  - `sync_request`/`sync_response` (`WHERE chat_id=$1 AND sequence > $watermark ORDER BY sequence`, paginated, primary read).
+  - Client `ack` → `delivery_state` watermark update.
+  - **(v2.8) One Ingest read RPC, `ReadMessages(chat_id, caller_id, after_sequence?, before_sequence?, direction, limit)`,** paginated and read from the primary. It serves both callers: the Gateway's `sync_request` (`forward`, `after_sequence` = watermark) and Chat Mgmt's **`GetMessages`** (ADR-006 §5.1; its opaque cursor is translated to a sequence bound). `direction` is required because `GetMessages` defaults to `backward`.
+  - Chat Mgmt's `GetMessages` handler, which today returns Unimplemented.
+- **Plane rule (v2.8):** Chat Mgmt never reads Postgres. **Ingest is the only service holding Postgres credentials**, and history is its responsibility (ADR-002 §2.1, "History Queries").
+- **Membership is checked twice:** Chat Mgmt checks Firestore before calling, and Ingest checks again, as `PersistMessage` does. So a removal that races the first check still yields 403 `NOT_A_MEMBER` (ADR-006 §5.0).
+- **Trade-off, accepted:**
+  - Every history page costs an extra hop (Chat Mgmt → Ingest).
+  - History reads share the Cloud SQL primary with the write transactions, since all reads are pinned to the primary (M2.1, ADR-023). ADR-006 §5.1's page cap of 100 bounds each read.
+  - A read replica would break the primary-only rule and is out of scope.
+- **ADRs:** ADR-001 (sync completeness), ADR-005 (sync), ADR-008 (ack → watermark), ADR-006 §5 (history contract, v1.2 serving path), ADR-002 §2.1 (Durability Plane serves history).
 - **Key invariant:** sync returns exactly the unacked messages, ascending, no gaps/dupes.
-- **Gate:** send 10, ack 5, reconnect → receive 6–10 in order; end-to-end trace covers all planes (ADR-012).
+- **Gate:**
+  1. Send 10, ack 5, reconnect → receive 6–10 in order; end-to-end trace covers all planes (ADR-012).
+  2. **`GetMessages` pages are complete, ordered and gap-tolerant.** Following cursors in either direction returns every persisted message in range exactly once. Each page is strictly ordered by `sequence`. A sequence gap left by a failed write appears as a gap, never as an error or an invented row (ADR-006 §5.1 ordering guarantees).
+  3. **An ex-member gets 403 `NOT_A_MEMBER` from both layers.** This is shown by calling Ingest directly, bypassing Chat Mgmt's check.
 
 ### Module 6 — Analytics Data Lake
 
@@ -284,11 +299,11 @@ flowchart TD
 | ADR | Topic | Module(s) |
 |---|---|---|
 | ADR-001 | Ordering & idempotency | M2.2, M5.2 |
-| ADR-002 | Three-plane architecture | M2.2, M3.2, M4.1, M5.1 |
+| ADR-002 | Three-plane architecture | M2.2, M3.2, M4.1, M5.1, M5.2 (history via Ingest) |
 | ADR-003 | Source of truth (Postgres/Firestore→Kafka→Redis; +BigQuery) | M2.2, M4.1, M6.1 |
 | ADR-004 | Sequence allocation (Option 5) | M2.2 |
 | ADR-005 | WebSocket protocol | M3.2, M5.1, M5.2 |
-| ADR-006 | REST API (§10 Idempotency-Key → M1.4) | M1.2, M1.3, M1.4 |
+| ADR-006 | REST API (§10 Idempotency-Key → M1.4; §5 history → M5.2) | M1.2, M1.3, M1.4, M5.2 |
 | ADR-007 | Data model (superseded → ADR-023) | see ADR-023 |
 | ADR-008 | Delivery acks / watermarks | M4.1, M5.2 |
 | ADR-009 | Failure handling / backpressure | M3.2, M4.1, M7.4 |
@@ -364,4 +379,4 @@ Deliberate scope boundaries, carried from v1 and updated for the GCP substrate.
 | 2026-07-26 | **v2.5 (M1.2 done).** Marked **M1.2 Done** — both halves of the gate met live: the Firestore semantics (conditional OTP write across the TTL-lag window, transaction atomicity, five-way concurrent registration yielding exactly one user, single-use rotation, byte-exact `expires_at` round-trip) and the full deployed flow (OTP → registration → login → refresh → reuse-revokes-session → logout → Memorystore rate limit). Recorded three defects only a deploy could surface — **key enumeration is ungrantable** (`secretmanager.secrets.list` is project-scoped, so per-secret bindings cannot satisfy it; keys are resolved by name, ADR-015 v1.2), a **consumed OTP blocked reissue** (ADR-015 §1.2 has three disjuncts, the code had two), and **protojson omitting false bools** from REST responses. Also recorded that **Workload Identity was correct on the first deploy**, that Private Services Access + Memorystore came up in 1m3s and 4m25s, and that `kubectl wait` can drop its HTTP/2 connection and fail the deploy script while every pod is in fact healthy. | Alexis + Claude |
 | 2026-07-27 | **v2.6 (M1.3 prerequisite specified).** Sharpened M1.3's direct-chat invariant, which said "Firestore transaction on the deterministic direct-pair doc id" — phrasing that reads as a deterministic *chat* ID, the option **ADR-023 v1.3** rejects because a chat ID travels through URLs, Kafka partition keys and lake rows, and deriving it from its members would publish the membership everywhere it appears. The invariant is `tx.Create` on the **`direct_chats/{min}__{max}` sentinel**, with the race loser re-reading it and returning the winner's `chat_id` as 200 OK (ADR-006 §4.1). No scope change; M1.3 is unblocked. | Alexis + Claude |
 | 2026-08-10 | **v2.7 (M1.3 premise measured; one scope move).** M1.3's headline invariant rested on a reason that was **measured false before the module's code was written**: ADR-023 v1.3 justified the `direct_chats` sentinel with *a query matching nothing locks nothing*, and on the direct-chat path the naive alternative produced exactly one chat in 15/15 repetitions under both concurrency modes, against a query-deleted control producing five every time. The sentinel ships regardless — **ADR-023 v1.4** states the three surviving grounds, led by the one that never depended on concurrency: it is the lookup ADR-006 §4.1's idempotent create reads. Two consequences for this plan. **(1) Entity-event publication moves M1.3 → M2.3**, because no Kafka producer exists yet and M2.3 builds the first one; M1.3's obligation to the critical path is membership reads, which is unchanged, so `M1.3 → M2.2` still holds. **(2) M1.3's gate now requires the *refusing mechanism* to be recorded**, not merely that exactly one chat survives — the sentinel refused zero racers in thirty repetitions, so a gate accepting any refusal would certify a mechanism it never fires (RTM-04 C7, reproduced prospectively). Also folded in from the same run: ADR-016 §3.1–§3.3 are superseded (two-phase group creation is a DynamoDB artefact), and every multi-document Firestore write must be caller-retryable, since the client library does not retry the `InvalidArgument` its own retry can provoke. | Alexis + Claude |
-| 2026-11-21 | **v2.8 (status catch-up; M1.4 added).** **M1.3 marked Done:** its four gate items were checked against `main` @ `54a745c` and the committed `m1.3-*` evidence logs. PRs #22 and #24–#29 (2026-08-12 to 2026-09-20) had landed with no plan update. Its open, non-gate items are listed: `ListChats` per-item `my_membership`/`other_member`; `last_message`, which waits on M2.2; and `GetMessages`, which no milestone owned. **New M1.4, REST Idempotency-Key (ADR-006 §10):** the header had been assigned to no milestone, and its storage was still DynamoDB. ADR-006 v1.1 re-homes it to a Firestore `rest_idempotency_keys` collection, written in the operation's own transaction, with expiry enforced in code. M1.4's gate requires concurrent same-key retries to yield exactly one group, with the refusing mechanism recorded. It is a leaf off M1.3 and not on the critical path; the dependency graph, traceability matrix and sequencing are updated. **Corrections:** M1.1's gate line said 54 bytes where its Status says 74 (UUIDs, not ULIDs). The revision-history rows are back in version order (v2.7 had been inserted above v2.6–v2.2). The `CreateChatResponse.is_existing` comment in `chatmgmt.proto` no longer claims a REST mapping the bridge does not perform; M1.4 delivers it. | Alexis + Claude |
+| 2026-11-21 | **v2.8 (status catch-up; M1.4 added).** **M1.3 marked Done:** its four gate items were checked against `main` @ `54a745c` and the committed `m1.3-*` evidence logs. PRs #22 and #24–#29 (2026-08-12 to 2026-09-20) had landed with no plan update. Its open, non-gate items are listed: `ListChats` per-item `my_membership`/`other_member`; `last_message`, which waits on M2.2; and `GetMessages`, which no milestone owned. **New M1.4, REST Idempotency-Key (ADR-006 §10):** the header had been assigned to no milestone, and its storage was still DynamoDB. ADR-006 v1.1 re-homes it to a Firestore `rest_idempotency_keys` collection, written in the operation's own transaction, with expiry enforced in code. M1.4's gate requires concurrent same-key retries to yield exactly one group, with the refusing mechanism recorded. It is a leaf off M1.3 and not on the critical path; the dependency graph, traceability matrix and sequencing are updated. **Corrections:** M1.1's gate line said 54 bytes where its Status says 74 (UUIDs, not ULIDs). The revision-history rows are back in version order (v2.7 had been inserted above v2.6–v2.2). The `CreateChatResponse.is_existing` comment in `chatmgmt.proto` no longer claims a REST mapping the bridge does not perform; M1.4 delivers it. **Review addendum (same day, PR #30):** **`GetMessages` assigned to M5.2.** Chat Mgmt never reads Postgres. One Ingest `ReadMessages` RPC, which takes a direction because history defaults to `backward`, serves both the Gateway's sync and `GetMessages`. Membership is checked by Chat Mgmt and again by Ingest. The extra hop and reads on the write primary are accepted. M5.2's Delivers, gate and ADRs, the traceability matrix and M1.3's open items are updated. **M1.4:** gate 4 now covers a replay after the member was removed (404, never re-added), and its invariants gain the replay-against-current-state rule and the request-hash scope (ADR-006 v1.2). | Alexis + Claude |
