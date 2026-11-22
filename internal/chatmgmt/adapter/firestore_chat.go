@@ -312,6 +312,37 @@ func (r *ChatReader) ListUserChats(ctx context.Context, userID string) ([]app.Me
 	return toMemberRecords(docs), nil
 }
 
+// GetChats reads many chats in one round trip, keyed by chat ID. A chat that
+// does not exist is absent from the map; ListChats logs and skips it.
+func (r *ChatReader) GetChats(ctx context.Context, chatIDs []string) (map[string]app.ChatRecord, error) {
+	ctx, span := tracer.Start(ctx, "firestore.chat.get_many")
+	defer span.End()
+	span.SetAttributes(
+		attribute.String("db.collection", firestore.CollectionChats),
+		attribute.Int("db.batch_size", len(chatIDs)),
+	)
+
+	ids := make([]domain.ChatID, 0, len(chatIDs))
+	for _, chatID := range chatIDs {
+		id, err := domain.NewChatID(chatID)
+		if err != nil {
+			return nil, recordErr(span, fmt.Errorf("chat ID: %w", err))
+		}
+		ids = append(ids, id)
+	}
+
+	docs, err := r.chats.GetMany(ctx, ids)
+	if err != nil {
+		return nil, recordErr(span, err)
+	}
+
+	records := make(map[string]app.ChatRecord, len(docs))
+	for id, doc := range docs {
+		records[id] = toChatRecord(doc)
+	}
+	return records, nil
+}
+
 func parseIDs(chatID, userID string) (domain.ChatID, domain.UserID, error) {
 	chat, err := domain.NewChatID(chatID)
 	if err != nil {
@@ -333,6 +364,8 @@ func toChatRecord(doc firestore.ChatDoc) app.ChatRecord {
 		MemberCount: doc.MemberCount,
 		CreatedAt:   doc.CreatedAt,
 		UpdatedAt:   doc.UpdatedAt,
+
+		ParticipantIDs: doc.ParticipantIDs,
 	}
 }
 

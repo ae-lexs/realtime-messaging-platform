@@ -69,9 +69,17 @@ func MembershipDocID(chatID domain.ChatID, userID domain.UserID) string {
 // It shares MembershipDocID's separator and therefore its 74-byte bound: both
 // are two UUIDs joined by two characters, far inside MaxDocIDBytes.
 func DirectChatDocID(a, b domain.UserID) string {
+	pair := SortedPair(a, b)
+	return pair[0] + membershipIDSeparator + pair[1]
+}
+
+// SortedPair returns the two user IDs as strings, sorted lexicographically —
+// the order DirectChatDocID joins them in, and the order a direct chat's
+// participant_ids are stored in. One function, so the two cannot disagree.
+func SortedPair(a, b domain.UserID) []string {
 	lo, hi := a.String(), b.String()
 	if hi < lo {
 		lo, hi = hi, lo
 	}
-	return lo + membershipIDSeparator + hi
+	return []string{lo, hi}
 }

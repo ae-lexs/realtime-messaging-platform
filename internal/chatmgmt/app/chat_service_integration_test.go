@@ -26,6 +26,7 @@ package app_test
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"os"
 	"testing"
@@ -317,4 +318,103 @@ func findMember(members []app.MemberRecord, userID string) *app.MemberRecord {
 		}
 	}
 	return nil
+}
+
+// TestServiceListChatsMixedPage is the M1.3 open-item-1 gate (ADR-006 §4.2),
+// against the live database: a page mixing a group and two direct chats
+// returns the caller's own membership on every item, the right other_member
+// on every direct item, and muted_until on the muted chat.
+//
+// One direct chat is opened by the caller and the other by the peer, so the
+// stored participant pair is exercised whichever side created the chat.
+func TestServiceListChatsMixedPage(t *testing.T) {
+	// Arrange
+	ctx := context.Background()
+	client := liveFirestoreClient(t)
+	svc := liveChatService(t)
+	users := firestore.NewUsers(client)
+
+	caller := domain.GenerateUserID().String()
+	carol := domain.GenerateUserID().String()
+	dave := domain.GenerateUserID().String()
+	now := time.Now().UTC().Truncate(time.Millisecond)
+	for i, u := range []struct{ id, name string }{{caller, "Caller"}, {carol, "Carol"}, {dave, "Dave"}} {
+		require.NoError(t, users.Set(ctx, firestore.UserDoc{
+			ID: u.id, PhoneNumber: fmt.Sprintf("+5255000000%02d", i), DisplayName: u.name,
+			CreatedAt: now, UpdatedAt: now,
+		}))
+	}
+
+	group, err := svc.CreateChat(ctx, app.CreateChatParams{
+		CallerID: caller, ChatType: domain.ChatTypeGroup, Name: "list gate", MemberIDs: []string{carol},
+	})
+	require.NoError(t, err)
+	withCarol, err := svc.CreateChat(ctx, app.CreateChatParams{
+		CallerID: caller, ChatType: domain.ChatTypeDirect, MemberIDs: []string{carol},
+	})
+	require.NoError(t, err)
+	withDave, err := svc.CreateChat(ctx, app.CreateChatParams{
+		CallerID: dave, ChatType: domain.ChatTypeDirect, MemberIDs: []string{caller},
+	})
+	require.NoError(t, err)
+
+	hours := int32(1)
+	mutedUntil, err := svc.MuteChat(ctx, caller, group.Chat.ChatID, &hours)
+	require.NoError(t, err)
+
+	// Act
+	entries, err := svc.ListChats(ctx, caller)
+
+	// Assert
+	require.NoError(t, err)
+	require.Len(t, entries, 3)
+	byID := make(map[string]app.ChatListEntry, len(entries))
+	for _, e := range entries {
+		assert.Equal(t, caller, e.Membership.UserID, "every item carries the caller's own membership")
+		assert.Equal(t, e.Chat.ChatID, e.Membership.ChatID)
+		byID[e.Chat.ChatID] = e
+	}
+
+	g := byID[group.Chat.ChatID]
+	assert.Equal(t, domain.RoleOwner, g.Membership.Role)
+	require.NotNil(t, g.Membership.MutedUntil, "the muted chat shows muted_until")
+	assert.True(t, mutedUntil.Equal(*g.Membership.MutedUntil))
+	assert.Nil(t, g.OtherMember, "a group has no other_member")
+
+	c := byID[withCarol.Chat.ChatID]
+	assert.Equal(t, domain.RoleMember, c.Membership.Role)
+	assert.Nil(t, c.Membership.MutedUntil)
+	assert.Equal(t, &app.OtherMemberRecord{UserID: carol, DisplayName: "Carol"}, c.OtherMember)
+	assert.ElementsMatch(t, []string{caller, carol}, c.Chat.ParticipantIDs, "participant_ids persisted")
+
+	d := byID[withDave.Chat.ChatID]
+	assert.Equal(t, &app.OtherMemberRecord{UserID: dave, DisplayName: "Dave"}, d.OtherMember,
+		"the peer-opened direct chat names the peer too")
+}
+
+// TestStoreGetManySkipsMissingChats proves the batch read's absence rule
+// against the live store: a chat that does not exist is missing from the
+// result, not an error, so one dangling membership cannot fail a listing.
+func TestStoreGetManySkipsMissingChats(t *testing.T) {
+	// Arrange
+	ctx := context.Background()
+	client := liveFirestoreClient(t)
+	svc := liveChatService(t)
+	owner := domain.GenerateUserID().String()
+	created, err := svc.CreateChat(ctx, app.CreateChatParams{
+		CallerID: owner, ChatType: domain.ChatTypeGroup, Name: "get-many gate",
+		MemberIDs: []string{domain.GenerateUserID().String()},
+	})
+	require.NoError(t, err)
+	present, err := domain.NewChatID(created.Chat.ChatID)
+	require.NoError(t, err)
+	absent := domain.GenerateChatID()
+
+	// Act
+	docs, err := firestore.NewChats(client).GetMany(ctx, []domain.ChatID{present, absent, present})
+
+	// Assert
+	require.NoError(t, err)
+	assert.Len(t, docs, 1)
+	assert.Contains(t, docs, present.String())
 }

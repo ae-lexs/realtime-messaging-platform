@@ -26,13 +26,13 @@ func init() {
 	m := otel.Meter("chatmgmt/app")
 
 	chatCreatedTotal, _ = m.Int64Counter("chat_created_total",
-		metric.WithDescription("Chats created, by type (ADR-016 §10)"))
+		metric.WithDescription("Chats created, by type (ADR-016 Â§10)"))
 	chatDedupTotal, _ = m.Int64Counter("direct_chat_dedup_total",
-		metric.WithDescription("Direct-chat creation outcomes: created or existing (ADR-016 §10)"))
+		metric.WithDescription("Direct-chat creation outcomes: created or existing (ADR-016 Â§10)"))
 	chatAuthzDenialsTotal, _ = m.Int64Counter("chat_authz_denials_total",
-		metric.WithDescription("Chat operations refused by the authorization matrix (ADR-016 §8)"))
+		metric.WithDescription("Chat operations refused by the authorization matrix (ADR-016 Â§8)"))
 	membershipMutationTotal, _ = m.Int64Counter("membership_mutation_total",
-		metric.WithDescription("Membership changes, by change_type (ADR-016 §10)"))
+		metric.WithDescription("Membership changes, by change_type (ADR-016 Â§10)"))
 }
 
 // ChatRecord is the service's view of a chat. Adapters map the store's shape
@@ -45,6 +45,33 @@ type ChatRecord struct {
 	MemberCount int
 	CreatedAt   time.Time
 	UpdatedAt   time.Time
+
+	// ParticipantIDs is a direct chat's two user IDs, sorted; empty for a
+	// group. It is how ListChats names the other participant (ADR-006 Â§4.2).
+	ParticipantIDs []string
+}
+
+// ChatListEntry is one chat as the caller sees it in ListChats (ADR-006 Â§4.2):
+// the chat, the caller's own membership, and for a direct chat the other
+// participant.
+type ChatListEntry struct {
+	Chat ChatRecord
+
+	// Membership is the caller's own, taken from the memberships ListChats
+	// started from â never re-read.
+	Membership MemberRecord
+
+	// OtherMember is set for direct chats only, and nil when it cannot be
+	// resolved from the chat document (logged as drift).
+	OtherMember *OtherMemberRecord
+}
+
+// OtherMemberRecord is the other participant of a direct chat.
+type OtherMemberRecord struct {
+	UserID string
+
+	// DisplayName is empty when the user document is missing.
+	DisplayName string
 }
 
 // MemberRecord is the service's view of a membership.
@@ -54,8 +81,8 @@ type MemberRecord struct {
 	Role     domain.Role
 	JoinedAt time.Time
 
-	// DisplayName is denormalized for rendering (ADR-006 §4.3). It is filled by
-	// the service from the user store, not held on the membership.
+	// DisplayName is for rendering (ADR-006 Â§4.3). It is filled by the service
+	// from the user store at read time; it is not held on the membership.
 	DisplayName string
 
 	// MutedUntil is nil when the member is not muted.
@@ -73,7 +100,7 @@ type CreateChatParams struct {
 	ChatType domain.ChatType
 	Name     string
 
-	// MemberIDs excludes the caller (ADR-006 §4.1).
+	// MemberIDs excludes the caller (ADR-006 Â§4.1).
 	MemberIDs []string
 }
 
@@ -83,7 +110,7 @@ type CreateChatResult struct {
 	Members []MemberRecord
 
 	// Existing reports that a direct chat for this pair already existed and is
-	// being returned rather than created — ADR-006 §4.1's 200-with-replay
+	// being returned rather than created â ADR-006 Â§4.1's 200-with-replay
 	// contract, not an error.
 	Existing bool
 }
@@ -107,6 +134,22 @@ type ChatReader interface {
 	GetMembership(ctx context.Context, chatID, userID string) (MemberRecord, error)
 	ListMembers(ctx context.Context, chatID string) ([]MemberRecord, error)
 	ListUserChats(ctx context.Context, userID string) ([]MemberRecord, error)
+
+	// GetChats reads many chats in one round trip, keyed by chat ID. A chat
+	// that does not exist is absent from the map, not an error.
+	GetChats(ctx context.Context, chatIDs []string) (map[string]ChatRecord, error)
+}
+
+// ChatUserStore is the user access the chat service needs: the auth service's
+// UserStore, so there is still one way to read a user in this process, plus a
+// batch read for ListChats. The batch method lives here rather than on
+// UserStore because only this service needs it.
+type ChatUserStore interface {
+	UserStore
+
+	// GetByIDs reads many users in one round trip, keyed by user ID. A user
+	// that does not exist is absent from the map, not an error.
+	GetByIDs(ctx context.Context, userIDs []string) (map[string]UserRecord, error)
 }
 
 // ChatServiceConfig is the dependency set for NewChatService.
@@ -114,9 +157,8 @@ type ChatServiceConfig struct {
 	Writer ChatWriter
 	Reader ChatReader
 
-	// Users resolves display names. The same interface the auth service uses,
-	// so there is one way to read a user in this process.
-	Users UserStore
+	// Users resolves display names.
+	Users ChatUserStore
 
 	Clock  domain.Clock
 	Logger *slog.Logger
@@ -125,12 +167,12 @@ type ChatServiceConfig struct {
 // ChatService orchestrates chat lifecycle operations (ADR-016).
 //
 // It owns exactly one thing the store below it cannot: **who may act**.
-// internal/firestore enforces the chat's own invariants — a direct chat's
+// internal/firestore enforces the chat's own invariants â a direct chat's
 // membership never changes, a group never exceeds its cap, an owner cannot
-// leave — because those hold no matter who asks. Authorization is the opposite
+// leave â because those hold no matter who asks. Authorization is the opposite
 // kind of rule: an owner removing a member and a stranger removing a member
 // are the same write, and only the caller's identity distinguishes them
-// (ADR-016 §8).
+// (ADR-016 Â§8).
 //
 // The division is not stylistic. Putting authorization in the store would mean
 // threading a caller through every transaction and trusting each call site to
@@ -139,7 +181,7 @@ type ChatServiceConfig struct {
 type ChatService struct {
 	writer ChatWriter
 	reader ChatReader
-	users  UserStore
+	users  ChatUserStore
 	clock  domain.Clock
 	logger *slog.Logger
 }
@@ -155,10 +197,10 @@ func NewChatService(cfg ChatServiceConfig) *ChatService {
 	}
 }
 
-// CreateChat creates a direct or group chat (ADR-006 §4.1).
+// CreateChat creates a direct or group chat (ADR-006 Â§4.1).
 //
-// Any authenticated user may create either kind — ADR-016 §8's first two rows
-// — so there is no role check here. What there is instead is validation the
+// Any authenticated user may create either kind â ADR-016 Â§8's first two rows
+// â so there is no role check here. What there is instead is validation the
 // store cannot do, because it concerns the request rather than the data: the
 // member list must be the right size and must not contain the caller.
 func (s *ChatService) CreateChat(ctx context.Context, params CreateChatParams) (*CreateChatResult, error) {
@@ -239,11 +281,11 @@ func (s *ChatService) createGroup(ctx context.Context, params CreateChatParams) 
 	return CreateChatResult{Chat: chat}, nil
 }
 
-// GetChat returns a chat with its members (ADR-006 §4.3).
+// GetChat returns a chat with its members (ADR-006 Â§4.3).
 //
 // Membership is the authorization: a non-member gets 403 NOT_A_MEMBER, not
 // 404, because the chat's existence is not a secret from someone who was told
-// its ID — but its contents are. The distinction matters the other way too: a
+// its ID â but its contents are. The distinction matters the other way too: a
 // chat that does not exist must not answer 403, or the API becomes an oracle
 // for which chat IDs are real.
 func (s *ChatService) GetChat(ctx context.Context, callerID, chatID string) (*ChatRecord, []MemberRecord, error) {
@@ -270,12 +312,23 @@ func (s *ChatService) GetChat(ctx context.Context, callerID, chatID string) (*Ch
 	return &chat, members, nil
 }
 
-// ListChats returns the chats the caller belongs to (ADR-006 §4.2).
+// ListChats returns the chats the caller belongs to (ADR-006 Â§4.2).
 //
 // Driven from the caller's own memberships, so it needs no authorization check
-// of its own — a user can only ever reach chats they are a member of, and the
+// of its own â a user can only ever reach chats they are a member of, and the
 // query is keyed by their ID.
-func (s *ChatService) ListChats(ctx context.Context, callerID string) ([]ChatRecord, error) {
+//
+// Each entry carries the caller's own membership and, for a direct chat, the
+// other participant (ADR-006 §4.2). The cost is at most three round trips
+// whatever the number of chats: the membership query (M reads), one batched
+// chat read (M reads; skipped when M is 0) and one batched user read for the
+// direct chats' other participants (D reads; skipped when D is 0) — 2M + D
+// reads in all. The caller's membership comes from the
+// first query and is not read again.
+//
+// Order is the membership query's, unchanged; pagination is not applied here
+// (see the handler).
+func (s *ChatService) ListChats(ctx context.Context, callerID string) ([]ChatListEntry, error) {
 	ctx, span := tracer.Start(ctx, "chat.list")
 	defer span.End()
 
@@ -285,31 +338,100 @@ func (s *ChatService) ListChats(ctx context.Context, callerID string) ([]ChatRec
 		return nil, fmt.Errorf("list chats: %w", err)
 	}
 
-	chats := make([]ChatRecord, 0, len(memberships))
+	chatIDs := make([]string, 0, len(memberships))
 	for _, m := range memberships {
-		chat, err := s.reader.GetChat(ctx, m.ChatID)
-		if err != nil {
-			if domain.IsNotFound(err) {
-				// A membership pointing at a chat that no longer exists is
-				// cross-store drift, not a reason to fail the whole listing
-				// (ADR-023: these references are application-enforced). Skip it
-				// and record it, because it should not happen.
-				s.logger.WarnContext(ctx, "membership references a missing chat",
-					"chat_id", m.ChatID, "user_id", callerID)
-				continue
-			}
-			return nil, err
-		}
-		chats = append(chats, chat)
+		chatIDs = append(chatIDs, m.ChatID)
+	}
+	chats, err := s.reader.GetChats(ctx, chatIDs)
+	if err != nil {
+		span.RecordError(err)
+		return nil, fmt.Errorf("list chats: read chats: %w", err)
 	}
 
-	span.SetAttributes(attribute.Int("chat.count", len(chats)))
-	return chats, nil
+	entries := make([]ChatListEntry, 0, len(memberships))
+	var otherIDs []string
+	for _, m := range memberships {
+		chat, ok := chats[m.ChatID]
+		if !ok {
+			// A membership pointing at a chat that no longer exists is
+			// cross-store drift, not a reason to fail the whole listing
+			// (ADR-023: these references are application-enforced). Skip it
+			// and record it, because it should not happen.
+			s.logger.WarnContext(ctx, "membership references a missing chat",
+				"chat_id", m.ChatID, "user_id", callerID)
+			continue
+		}
+
+		entry := ChatListEntry{Chat: chat, Membership: m}
+		if chat.ChatType == domain.ChatTypeDirect {
+			if otherID, found := otherParticipant(chat.ParticipantIDs, callerID); found {
+				entry.OtherMember = &OtherMemberRecord{UserID: otherID}
+				otherIDs = append(otherIDs, otherID)
+			} else {
+				s.logger.WarnContext(ctx, "direct chat does not name the caller and one other participant",
+					"chat_id", chat.ChatID, "user_id", callerID, "participants", len(chat.ParticipantIDs))
+			}
+		}
+		entries = append(entries, entry)
+	}
+
+	if err := s.fillOtherNames(ctx, entries, otherIDs); err != nil {
+		span.RecordError(err)
+		return nil, err
+	}
+
+	span.SetAttributes(
+		attribute.Int("chat.count", len(entries)),
+		attribute.Int("chat.direct_count", len(otherIDs)),
+	)
+	return entries, nil
+}
+
+// fillOtherNames resolves every direct chat's other participant in one batched
+// read. A missing user keeps its ID and gets no name â the same choice
+// membersWithNames makes, since the membership is still real.
+func (s *ChatService) fillOtherNames(ctx context.Context, entries []ChatListEntry, otherIDs []string) error {
+	if len(otherIDs) == 0 {
+		return nil
+	}
+
+	users, err := s.users.GetByIDs(ctx, otherIDs)
+	if err != nil {
+		return fmt.Errorf("list chats: resolve other members: %w", err)
+	}
+
+	for i := range entries {
+		other := entries[i].OtherMember
+		if other == nil {
+			continue
+		}
+		if user, ok := users[other.UserID]; ok {
+			other.DisplayName = user.DisplayName
+		}
+	}
+	return nil
+}
+
+// otherParticipant returns the participant of a direct chat who is not the
+// caller. It reports false unless the chat names exactly two participants, one
+// of them the caller â anything else is drift, never a guess.
+func otherParticipant(participants []string, callerID string) (string, bool) {
+	if len(participants) != 2 {
+		return "", false
+	}
+	switch callerID {
+	case participants[0]:
+		return participants[1], participants[1] != callerID
+	case participants[1]:
+		return participants[0], true
+	default:
+		return "", false
+	}
 }
 
 // requireMembership fetches the caller's membership or refuses.
 //
-// Returns domain.ErrNotMember, which ADR-006 maps to 403 NOT_A_MEMBER — never
+// Returns domain.ErrNotMember, which ADR-006 maps to 403 NOT_A_MEMBER â never
 // ErrNotFound, which would tell the caller the chat is absent when it is
 // merely none of their business.
 func (s *ChatService) requireMembership(
@@ -331,8 +453,8 @@ func (s *ChatService) requireMembership(
 }
 
 // requireRole confirms the caller is a member holding one of the allowed
-// roles (ADR-016 §8). Membership is checked first, via requireMembership, so
-// a non-member sees ErrNotMember rather than ErrForbidden — the two answer
+// roles (ADR-016 Â§8). Membership is checked first, via requireMembership, so
+// a non-member sees ErrNotMember rather than ErrForbidden â the two answer
 // different questions ("are you in this chat" vs "are you allowed to do
 // this"), and collapsing them would tell a non-member which was closer.
 func (s *ChatService) requireRole(
@@ -356,8 +478,8 @@ func (s *ChatService) requireRole(
 		userID, membership.Role, chatID, operation, domain.ErrForbidden)
 }
 
-// UpdateChat renames a group chat (ADR-006 §4.4). Owner and admin only; a
-// direct chat is refused by the store, not here — that invariant holds no
+// UpdateChat renames a group chat (ADR-006 Â§4.4). Owner and admin only; a
+// direct chat is refused by the store, not here â that invariant holds no
 // matter who asks, which is exactly the line ChatService's own doc comment
 // draws between it and authorization.
 func (s *ChatService) UpdateChat(ctx context.Context, callerID, chatID, name string) (*ChatRecord, error) {
@@ -386,11 +508,11 @@ func (s *ChatService) UpdateChat(ctx context.Context, callerID, chatID, name str
 	return &chat, nil
 }
 
-// AddMember adds a user to a group chat (ADR-006 §4.5).
+// AddMember adds a user to a group chat (ADR-006 Â§4.5).
 //
 // The role being granted is itself an authorization input, which is why the
 // check depends on it: an owner may add a member as ADMIN, but an admin may
-// only add them as MEMBER (ADR-016 §8) — granting a role the caller could not
+// only add them as MEMBER (ADR-016 Â§8) â granting a role the caller could not
 // assign directly through UpdateMemberRole would be a second, weaker path to
 // the same privilege.
 func (s *ChatService) AddMember(
@@ -436,12 +558,12 @@ func (s *ChatService) AddMember(
 	return &member, nil
 }
 
-// RemoveMember removes a user from a group chat (ADR-006 §4.6).
+// RemoveMember removes a user from a group chat (ADR-006 Â§4.6).
 //
 // Self-removal is refused here, not left to the store: "remove yourself" and
 // "leave" are the same write with a different name, and ADR-006 keeps them as
 // two endpoints with two authorization stories rather than one endpoint with
-// a branch — LeaveChat is where the owner-cannot-leave refusal belongs.
+// a branch â LeaveChat is where the owner-cannot-leave refusal belongs.
 func (s *ChatService) RemoveMember(ctx context.Context, callerID, chatID, userID string) error {
 	ctx, span := tracer.Start(ctx, "chat.remove_member")
 	defer span.End()
@@ -462,7 +584,7 @@ func (s *ChatService) RemoveMember(ctx context.Context, callerID, chatID, userID
 	allowed := caller.Role == domain.RoleOwner
 	if caller.Role == domain.RoleAdmin {
 		// An admin may remove a plain member only, never another admin or the
-		// owner — checked against the target's actual role, since "can I
+		// owner â checked against the target's actual role, since "can I
 		// remove this person" depends on who they are, not just who is asking.
 		// A target that is not a member at all is left for the store's own
 		// removal to refuse identically; this lookup exists only to see a
@@ -489,9 +611,9 @@ func (s *ChatService) RemoveMember(ctx context.Context, callerID, chatID, userID
 	return nil
 }
 
-// UpdateMemberRole changes a member's role (ADR-006 §4.7). Owner only; cannot
+// UpdateMemberRole changes a member's role (ADR-006 Â§4.7). Owner only; cannot
 // change the caller's own role. The store separately refuses assigning or
-// demoting the owner role (ADR-016 §4.4 — ownership transfer is out of scope
+// demoting the owner role (ADR-016 Â§4.4 â ownership transfer is out of scope
 // for the MVP), which is why that case is not re-checked here.
 func (s *ChatService) UpdateMemberRole(
 	ctx context.Context, callerID, chatID, userID string, role domain.Role,
@@ -527,11 +649,11 @@ func (s *ChatService) UpdateMemberRole(
 	return &member, nil
 }
 
-// LeaveChat removes the caller from a group chat (ADR-006 §4.8).
+// LeaveChat removes the caller from a group chat (ADR-006 Â§4.8).
 //
 // No role check beyond membership: the store refuses the owner's departure
-// and any attempt on a direct chat (ADR-016 §4.3), which is every
-// restriction ADR-016 §8's Leave row states — owner excepted, everyone who is
+// and any attempt on a direct chat (ADR-016 Â§4.3), which is every
+// restriction ADR-016 Â§8's Leave row states â owner excepted, everyone who is
 // a member may leave.
 func (s *ChatService) LeaveChat(ctx context.Context, callerID, chatID string) error {
 	ctx, span := tracer.Start(ctx, "chat.leave")
@@ -553,11 +675,11 @@ func (s *ChatService) LeaveChat(ctx context.Context, callerID, chatID string) er
 	return nil
 }
 
-// MuteChat silences the caller's notifications for a chat (ADR-006 §4.9).
+// MuteChat silences the caller's notifications for a chat (ADR-006 Â§4.9).
 //
-// The one membership write direct chats allow (ADR-016 §5): it changes the
+// The one membership write direct chats allow (ADR-016 Â§5): it changes the
 // caller's own notification state, not the chat itself, so it needs no role
-// beyond membership. A nil durationHours means indefinite — represented by
+// beyond membership. A nil durationHours means indefinite â represented by
 // domain.IndefiniteMuteUntil, since the store's nil already means "not
 // muted" and cannot also stand for "muted forever".
 func (s *ChatService) MuteChat(ctx context.Context, callerID, chatID string, durationHours *int32) (time.Time, error) {
@@ -592,7 +714,7 @@ func (s *ChatService) MuteChat(ctx context.Context, callerID, chatID string, dur
 	return until, nil
 }
 
-// UnmuteChat clears the caller's mute (ADR-006 §4.10).
+// UnmuteChat clears the caller's mute (ADR-006 Â§4.10).
 func (s *ChatService) UnmuteChat(ctx context.Context, callerID, chatID string) error {
 	ctx, span := tracer.Start(ctx, "chat.unmute")
 	defer span.End()
@@ -643,7 +765,7 @@ func (s *ChatService) membersWithNames(ctx context.Context, chatID string) ([]Me
 	return members, nil
 }
 
-// validateCreate applies ADR-006 §4.1's request rules.
+// validateCreate applies ADR-006 Â§4.1's request rules.
 //
 // These are about the request, not the stored data, which is why they live
 // here and not in the store: the store cannot know that member_ids was meant
@@ -685,5 +807,5 @@ func validateCreate(params CreateChatParams) error {
 	return nil
 }
 
-// maxChatNameLength is ADR-006 §4.1's validation rule for a group name.
+// maxChatNameLength is ADR-006 Â§4.1's validation rule for a group name.
 const maxChatNameLength = 128

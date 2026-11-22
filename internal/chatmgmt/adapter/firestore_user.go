@@ -12,8 +12,12 @@ import (
 	"github.com/aelexs/realtime-messaging-platform/internal/firestore"
 )
 
-// Compile-time check: UserStore satisfies app.UserStore.
-var _ app.UserStore = (*UserStore)(nil)
+// Compile-time checks: UserStore satisfies both the auth service's UserStore
+// and the chat service's superset of it.
+var (
+	_ app.UserStore     = (*UserStore)(nil)
+	_ app.ChatUserStore = (*UserStore)(nil)
+)
 
 // UserStore reads users from Firestore (ADR-023).
 //
@@ -88,6 +92,42 @@ func (s *UserStore) FindByPhone(ctx context.Context, phone string) (*app.UserRec
 
 	record := toUserRecord(doc)
 	return &record, nil
+}
+
+// GetByIDs reads many users in one round trip, keyed by user ID. A user that
+// does not exist is absent from the map, not an error.
+func (s *UserStore) GetByIDs(ctx context.Context, userIDs []string) (map[string]app.UserRecord, error) {
+	ctx, span := tracer.Start(ctx, "firestore.user.get_many")
+	defer span.End()
+	span.SetAttributes(
+		attribute.String("db.system", "firestore"),
+		attribute.String("db.collection", firestore.CollectionUsers),
+		attribute.Int("db.batch_size", len(userIDs)),
+	)
+
+	ids := make([]domain.UserID, 0, len(userIDs))
+	for _, userID := range userIDs {
+		id, err := domain.NewUserID(userID)
+		if err != nil {
+			span.RecordError(err)
+			span.SetStatus(codes.Error, err.Error())
+			return nil, fmt.Errorf("get users: %w", err)
+		}
+		ids = append(ids, id)
+	}
+
+	docs, err := s.users.GetMany(ctx, ids)
+	if err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
+		return nil, fmt.Errorf("get users: %w", err)
+	}
+
+	records := make(map[string]app.UserRecord, len(docs))
+	for id, doc := range docs {
+		records[id] = toUserRecord(doc)
+	}
+	return records, nil
 }
 
 // toUserRecord maps the stored document onto the service's record.

@@ -1,0 +1,718 @@
+# m1-telemetry — captured experiment output
+# captured:  2026-11-22T15:59:45Z
+# commit:    8651af218c69d88adcdbab41bbd270185e012d7a
+# database:  messaging-dev (us-central1)
+# mode:      PESSIMISTIC
+# reps:      1
+# project:   redacted
+#
+# Re-running requires re-provisioning — the infrastructure this ran
+# against was destroyed at end of session. See docs/artifacts/README.md.
+
+ Container realtime-messaging-platform-toolbox-run-7d327cf697a8 Creating 
+ Container realtime-messaging-platform-toolbox-run-7d327cf697a8 Created 
+==> Cloud Trace v1: latest trace rooted at auth.verify_otp (since 2026-11-22T13:59:45Z)
+--- span tree (rendered from the raw response below)
+trace_id: 30de4a495382e5917d6fc58952c12b45
+- auth.verify_otp  [2026-11-22T15:59:21.924768151Z → 2026-11-22T15:59:22.063962558Z]
+  - redis.ratelimit.check  [2026-11-22T15:59:21.924816620Z → 2026-11-22T15:59:21.925621894Z]
+  - redis.ratelimit.check_lockout  [2026-11-22T15:59:21.925659114Z → 2026-11-22T15:59:21.926196170Z]
+  - firestore.otp.get  [2026-11-22T15:59:21.926216539Z → 2026-11-22T15:59:21.933466499Z]
+    - cloud.google.com/go/firestore.DocumentRef.Get  [2026-11-22T15:59:21.926243999Z → 2026-11-22T15:59:21.933451489Z]
+      - cloud.google.com/go/firestore.Client.BatchGetDocuments  [2026-11-22T15:59:21.926245889Z → 2026-11-22T15:59:21.933449409Z]
+        - google.firestore.v1.Firestore/BatchGetDocuments  [2026-11-22T15:59:21.926280428Z → 2026-11-22T15:59:21.933400480Z]
+  - firestore.user.find_by_phone  [2026-11-22T15:59:21.933485499Z → 2026-11-22T15:59:21.958565273Z]
+    - cloud.google.com/go/firestore.Query.RunQuery  [2026-11-22T15:59:21.933543799Z → 2026-11-22T15:59:21.958445004Z]
+      - google.firestore.v1.Firestore/RunQuery  [2026-11-22T15:59:21.933576748Z → 2026-11-22T15:59:21.958514774Z]
+  - firestore.session.list_by_user  [2026-11-22T15:59:21.958578243Z → 2026-11-22T15:59:21.986609283Z]
+    - cloud.google.com/go/firestore.Query.RunQuery  [2026-11-22T15:59:21.958764782Z → 2026-11-22T15:59:21.986548734Z]
+      - google.firestore.v1.Firestore/RunQuery  [2026-11-22T15:59:21.958796141Z → 2026-11-22T15:59:21.986580073Z]
+  - firestore.auth.login  [2026-11-22T15:59:21.986627583Z → 2026-11-22T15:59:22.062323661Z]
+    - cloud.google.com/go/firestore.Client.RunTransaction  [2026-11-22T15:59:21.986650893Z → 2026-11-22T15:59:22.062319321Z]
+      - cloud.google.com/go/firestore.Client.BeginTransaction  [2026-11-22T15:59:21.986656513Z → 2026-11-22T15:59:22.013046227Z]
+        - google.firestore.v1.Firestore/BeginTransaction  [2026-11-22T15:59:21.986727722Z → 2026-11-22T15:59:22.013011636Z]
+        - cloud.google.com/go/firestore.Client.BatchGetDocuments  [2026-11-22T15:59:22.013057426Z → 2026-11-22T15:59:22.025417994Z]
+          - google.firestore.v1.Firestore/BatchGetDocuments  [2026-11-22T15:59:22.013148285Z → 2026-11-22T15:59:22.025365945Z]
+        - cloud.google.com/go/firestore.Client.Commit  [2026-11-22T15:59:22.025470204Z → 2026-11-22T15:59:22.062317081Z]
+          - google.firestore.v1.Firestore/Commit  [2026-11-22T15:59:22.025504714Z → 2026-11-22T15:59:22.062269023Z]
+--- raw response
+{
+  "traces": [
+    {
+      "projectId": "PROJECT_ID",
+      "traceId": "30de4a495382e5917d6fc58952c12b45",
+      "spans": [
+        {
+          "spanId": "7812158162764277521",
+          "name": "auth.verify_otp",
+          "startTime": "2026-11-22T15:59:21.924768151Z",
+          "endTime": "2026-11-22T15:59:22.063962558Z",
+          "labels": {
+            "k8s.pod.name": "chatmgmt-5bd45c8484-x2dtw",
+            "cloud.account.id": "PROJECT_ID",
+            "deployment.environment": "dev",
+            "service.version": "0.1.0",
+            "auth.is_new_user": "false",
+            "cloud.platform": "gcp_kubernetes_engine",
+            "k8s.pod.uid": "9d14d4ce-1901-4bb6-8d1e-f43b1fbd88ae",
+            "gcp.project_id": "PROJECT_ID",
+            "k8s.pod.start_time": "2026-11-22T15:56:13Z",
+            "cloud.provider": "gcp",
+            "k8s.deployment.name": "chatmgmt",
+            "cloud.region": "us-central1",
+            "k8s.node.name": "gk3-messaging-dev-gke-nap-xw4sl3p3-fffb8b98-xgh4",
+            "k8s.replicaset.name": "chatmgmt-5bd45c8484",
+            "k8s.namespace.name": "messaging",
+            "service.name": "chatmgmt",
+            "k8s.cluster.name": "messaging-dev-gke"
+          }
+        },
+        {
+          "spanId": "2026564686469661959",
+          "name": "redis.ratelimit.check",
+          "startTime": "2026-11-22T15:59:21.924816620Z",
+          "endTime": "2026-11-22T15:59:21.925621894Z",
+          "parentSpanId": "7812158162764277521",
+          "labels": {
+            "cloud.platform": "gcp_kubernetes_engine",
+            "cloud.account.id": "PROJECT_ID",
+            "gcp.project_id": "PROJECT_ID",
+            "k8s.pod.name": "chatmgmt-5bd45c8484-x2dtw",
+            "k8s.namespace.name": "messaging",
+            "cloud.provider": "gcp",
+            "k8s.pod.uid": "9d14d4ce-1901-4bb6-8d1e-f43b1fbd88ae",
+            "k8s.deployment.name": "chatmgmt",
+            "k8s.node.name": "gk3-messaging-dev-gke-nap-xw4sl3p3-fffb8b98-xgh4",
+            "deployment.environment": "dev",
+            "k8s.replicaset.name": "chatmgmt-5bd45c8484",
+            "service.version": "0.1.0",
+            "cloud.region": "us-central1",
+            "db.operation": "EVAL",
+            "service.name": "chatmgmt",
+            "db.system": "redis",
+            "k8s.pod.start_time": "2026-11-22T15:56:13Z",
+            "k8s.cluster.name": "messaging-dev-gke"
+          }
+        },
+        {
+          "spanId": "10771788819725745371",
+          "name": "redis.ratelimit.check_lockout",
+          "startTime": "2026-11-22T15:59:21.925659114Z",
+          "endTime": "2026-11-22T15:59:21.926196170Z",
+          "parentSpanId": "7812158162764277521",
+          "labels": {
+            "k8s.pod.start_time": "2026-11-22T15:56:13Z",
+            "k8s.cluster.name": "messaging-dev-gke",
+            "db.operation": "EXISTS",
+            "cloud.region": "us-central1",
+            "db.system": "redis",
+            "service.name": "chatmgmt",
+            "deployment.environment": "dev",
+            "k8s.pod.uid": "9d14d4ce-1901-4bb6-8d1e-f43b1fbd88ae",
+            "gcp.project_id": "PROJECT_ID",
+            "cloud.provider": "gcp",
+            "cloud.account.id": "PROJECT_ID",
+            "cloud.platform": "gcp_kubernetes_engine",
+            "k8s.node.name": "gk3-messaging-dev-gke-nap-xw4sl3p3-fffb8b98-xgh4",
+            "k8s.replicaset.name": "chatmgmt-5bd45c8484",
+            "k8s.pod.name": "chatmgmt-5bd45c8484-x2dtw",
+            "k8s.namespace.name": "messaging",
+            "service.version": "0.1.0",
+            "k8s.deployment.name": "chatmgmt"
+          }
+        },
+        {
+          "spanId": "7141882639954294143",
+          "name": "firestore.otp.get",
+          "startTime": "2026-11-22T15:59:21.926216539Z",
+          "endTime": "2026-11-22T15:59:21.933466499Z",
+          "parentSpanId": "7812158162764277521",
+          "labels": {
+            "db.collection": "otp_requests",
+            "cloud.account.id": "PROJECT_ID",
+            "deployment.environment": "dev",
+            "service.name": "chatmgmt",
+            "cloud.region": "us-central1",
+            "k8s.node.name": "gk3-messaging-dev-gke-nap-xw4sl3p3-fffb8b98-xgh4",
+            "k8s.replicaset.name": "chatmgmt-5bd45c8484",
+            "cloud.platform": "gcp_kubernetes_engine",
+            "k8s.namespace.name": "messaging",
+            "cloud.provider": "gcp",
+            "gcp.project_id": "PROJECT_ID",
+            "db.system": "firestore",
+            "k8s.deployment.name": "chatmgmt",
+            "k8s.pod.start_time": "2026-11-22T15:56:13Z",
+            "service.version": "0.1.0",
+            "k8s.pod.uid": "9d14d4ce-1901-4bb6-8d1e-f43b1fbd88ae",
+            "k8s.pod.name": "chatmgmt-5bd45c8484-x2dtw",
+            "k8s.cluster.name": "messaging-dev-gke"
+          }
+        },
+        {
+          "spanId": "8291182804626005358",
+          "name": "cloud.google.com/go/firestore.DocumentRef.Get",
+          "startTime": "2026-11-22T15:59:21.926243999Z",
+          "endTime": "2026-11-22T15:59:21.933451489Z",
+          "parentSpanId": "7141882639954294143",
+          "labels": {
+            "cloud.platform": "gcp_kubernetes_engine",
+            "cloud.provider": "gcp",
+            "cloud.account.id": "PROJECT_ID",
+            "gcp.project_id": "PROJECT_ID",
+            "service.version": "0.1.0",
+            "k8s.pod.name": "chatmgmt-5bd45c8484-x2dtw",
+            "k8s.pod.uid": "9d14d4ce-1901-4bb6-8d1e-f43b1fbd88ae",
+            "k8s.node.name": "gk3-messaging-dev-gke-nap-xw4sl3p3-fffb8b98-xgh4",
+            "k8s.pod.start_time": "2026-11-22T15:56:13Z",
+            "k8s.replicaset.name": "chatmgmt-5bd45c8484",
+            "deployment.environment": "dev",
+            "service.name": "chatmgmt",
+            "k8s.deployment.name": "chatmgmt",
+            "cloud.region": "us-central1",
+            "k8s.namespace.name": "messaging",
+            "k8s.cluster.name": "messaging-dev-gke"
+          }
+        },
+        {
+          "spanId": "9164562281317986204",
+          "name": "cloud.google.com/go/firestore.Client.BatchGetDocuments",
+          "startTime": "2026-11-22T15:59:21.926245889Z",
+          "endTime": "2026-11-22T15:59:21.933449409Z",
+          "parentSpanId": "8291182804626005358",
+          "labels": {
+            "k8s.pod.start_time": "2026-11-22T15:56:13Z",
+            "k8s.pod.uid": "9d14d4ce-1901-4bb6-8d1e-f43b1fbd88ae",
+            "service.name": "chatmgmt",
+            "deployment.environment": "dev",
+            "service.version": "0.1.0",
+            "cloud.region": "us-central1",
+            "cloud.account.id": "PROJECT_ID",
+            "cloud.provider": "gcp",
+            "gcp.project_id": "PROJECT_ID",
+            "k8s.cluster.name": "messaging-dev-gke",
+            "cloud.platform": "gcp_kubernetes_engine",
+            "k8s.deployment.name": "chatmgmt",
+            "k8s.node.name": "gk3-messaging-dev-gke-nap-xw4sl3p3-fffb8b98-xgh4",
+            "k8s.replicaset.name": "chatmgmt-5bd45c8484",
+            "k8s.namespace.name": "messaging",
+            "k8s.pod.name": "chatmgmt-5bd45c8484-x2dtw"
+          }
+        },
+        {
+          "spanId": "16793975321916111628",
+          "kind": "RPC_CLIENT",
+          "name": "google.firestore.v1.Firestore/BatchGetDocuments",
+          "startTime": "2026-11-22T15:59:21.926280428Z",
+          "endTime": "2026-11-22T15:59:21.933400480Z",
+          "parentSpanId": "9164562281317986204",
+          "labels": {
+            "k8s.cluster.name": "messaging-dev-gke",
+            "k8s.pod.name": "chatmgmt-5bd45c8484-x2dtw",
+            "cloud.platform": "gcp_kubernetes_engine",
+            "cloud.provider": "gcp",
+            "k8s.pod.uid": "9d14d4ce-1901-4bb6-8d1e-f43b1fbd88ae",
+            "gcp.project_id": "PROJECT_ID",
+            "deployment.environment": "dev",
+            "k8s.deployment.name": "chatmgmt",
+            "server.address": "173.194.192.95",
+            "k8s.namespace.name": "messaging",
+            "k8s.replicaset.name": "chatmgmt-5bd45c8484",
+            "server.port": "443",
+            "service.version": "0.1.0",
+            "service.name": "chatmgmt",
+            "rpc.system.name": "grpc",
+            "k8s.pod.start_time": "2026-11-22T15:56:13Z",
+            "k8s.node.name": "gk3-messaging-dev-gke-nap-xw4sl3p3-fffb8b98-xgh4",
+            "cloud.region": "us-central1",
+            "rpc.method": "google.firestore.v1.Firestore/BatchGetDocuments",
+            "rpc.response.status_code": "OK",
+            "cloud.account.id": "PROJECT_ID"
+          }
+        },
+        {
+          "spanId": "13681041805178784084",
+          "name": "firestore.user.find_by_phone",
+          "startTime": "2026-11-22T15:59:21.933485499Z",
+          "endTime": "2026-11-22T15:59:21.958565273Z",
+          "parentSpanId": "7812158162764277521",
+          "labels": {
+            "cloud.region": "us-central1",
+            "service.version": "0.1.0",
+            "service.name": "chatmgmt",
+            "k8s.cluster.name": "messaging-dev-gke",
+            "k8s.node.name": "gk3-messaging-dev-gke-nap-xw4sl3p3-fffb8b98-xgh4",
+            "k8s.pod.start_time": "2026-11-22T15:56:13Z",
+            "db.collection": "users",
+            "k8s.namespace.name": "messaging",
+            "k8s.pod.name": "chatmgmt-5bd45c8484-x2dtw",
+            "k8s.replicaset.name": "chatmgmt-5bd45c8484",
+            "db.system": "firestore",
+            "k8s.pod.uid": "9d14d4ce-1901-4bb6-8d1e-f43b1fbd88ae",
+            "k8s.deployment.name": "chatmgmt",
+            "gcp.project_id": "PROJECT_ID",
+            "cloud.provider": "gcp",
+            "cloud.account.id": "PROJECT_ID",
+            "cloud.platform": "gcp_kubernetes_engine",
+            "deployment.environment": "dev"
+          }
+        },
+        {
+          "spanId": "5033425473378017232",
+          "name": "cloud.google.com/go/firestore.Query.RunQuery",
+          "startTime": "2026-11-22T15:59:21.933543799Z",
+          "endTime": "2026-11-22T15:59:21.958445004Z",
+          "parentSpanId": "13681041805178784084",
+          "labels": {
+            "k8s.cluster.name": "messaging-dev-gke",
+            "cloud.region": "us-central1",
+            "service.name": "chatmgmt",
+            "k8s.pod.uid": "9d14d4ce-1901-4bb6-8d1e-f43b1fbd88ae",
+            "k8s.node.name": "gk3-messaging-dev-gke-nap-xw4sl3p3-fffb8b98-xgh4",
+            "k8s.namespace.name": "messaging",
+            "gcp.project_id": "PROJECT_ID",
+            "k8s.pod.name": "chatmgmt-5bd45c8484-x2dtw",
+            "k8s.deployment.name": "chatmgmt",
+            "cloud.provider": "gcp",
+            "cloud.platform": "gcp_kubernetes_engine",
+            "k8s.replicaset.name": "chatmgmt-5bd45c8484",
+            "k8s.pod.start_time": "2026-11-22T15:56:13Z",
+            "service.version": "0.1.0",
+            "deployment.environment": "dev",
+            "cloud.account.id": "PROJECT_ID"
+          }
+        },
+        {
+          "spanId": "12143376599452438360",
+          "kind": "RPC_CLIENT",
+          "name": "google.firestore.v1.Firestore/RunQuery",
+          "startTime": "2026-11-22T15:59:21.933576748Z",
+          "endTime": "2026-11-22T15:59:21.958514774Z",
+          "parentSpanId": "5033425473378017232",
+          "labels": {
+            "rpc.system.name": "grpc",
+            "server.port": "443",
+            "service.version": "0.1.0",
+            "k8s.cluster.name": "messaging-dev-gke",
+            "k8s.node.name": "gk3-messaging-dev-gke-nap-xw4sl3p3-fffb8b98-xgh4",
+            "k8s.pod.name": "chatmgmt-5bd45c8484-x2dtw",
+            "k8s.namespace.name": "messaging",
+            "k8s.pod.uid": "9d14d4ce-1901-4bb6-8d1e-f43b1fbd88ae",
+            "k8s.replicaset.name": "chatmgmt-5bd45c8484",
+            "k8s.deployment.name": "chatmgmt",
+            "service.name": "chatmgmt",
+            "k8s.pod.start_time": "2026-11-22T15:56:13Z",
+            "cloud.region": "us-central1",
+            "server.address": "173.194.192.95",
+            "rpc.response.status_code": "OK",
+            "deployment.environment": "dev",
+            "cloud.platform": "gcp_kubernetes_engine",
+            "cloud.provider": "gcp",
+            "gcp.project_id": "PROJECT_ID",
+            "cloud.account.id": "PROJECT_ID",
+            "rpc.method": "google.firestore.v1.Firestore/RunQuery"
+          }
+        },
+        {
+          "spanId": "2830059136953251525",
+          "name": "firestore.session.list_by_user",
+          "startTime": "2026-11-22T15:59:21.958578243Z",
+          "endTime": "2026-11-22T15:59:21.986609283Z",
+          "parentSpanId": "7812158162764277521",
+          "labels": {
+            "cloud.account.id": "PROJECT_ID",
+            "db.system": "firestore",
+            "k8s.pod.start_time": "2026-11-22T15:56:13Z",
+            "k8s.node.name": "gk3-messaging-dev-gke-nap-xw4sl3p3-fffb8b98-xgh4",
+            "k8s.pod.name": "chatmgmt-5bd45c8484-x2dtw",
+            "k8s.deployment.name": "chatmgmt",
+            "service.version": "0.1.0",
+            "db.collection": "sessions",
+            "k8s.replicaset.name": "chatmgmt-5bd45c8484",
+            "k8s.namespace.name": "messaging",
+            "deployment.environment": "dev",
+            "gcp.project_id": "PROJECT_ID",
+            "cloud.provider": "gcp",
+            "k8s.pod.uid": "9d14d4ce-1901-4bb6-8d1e-f43b1fbd88ae",
+            "cloud.platform": "gcp_kubernetes_engine",
+            "k8s.cluster.name": "messaging-dev-gke",
+            "cloud.region": "us-central1",
+            "service.name": "chatmgmt"
+          }
+        },
+        {
+          "spanId": "11502486772839878632",
+          "name": "cloud.google.com/go/firestore.Query.RunQuery",
+          "startTime": "2026-11-22T15:59:21.958764782Z",
+          "endTime": "2026-11-22T15:59:21.986548734Z",
+          "parentSpanId": "2830059136953251525",
+          "labels": {
+            "k8s.cluster.name": "messaging-dev-gke",
+            "service.version": "0.1.0",
+            "k8s.deployment.name": "chatmgmt",
+            "cloud.region": "us-central1",
+            "gcp.project_id": "PROJECT_ID",
+            "service.name": "chatmgmt",
+            "cloud.provider": "gcp",
+            "k8s.replicaset.name": "chatmgmt-5bd45c8484",
+            "cloud.platform": "gcp_kubernetes_engine",
+            "k8s.pod.start_time": "2026-11-22T15:56:13Z",
+            "deployment.environment": "dev",
+            "k8s.namespace.name": "messaging",
+            "k8s.node.name": "gk3-messaging-dev-gke-nap-xw4sl3p3-fffb8b98-xgh4",
+            "k8s.pod.uid": "9d14d4ce-1901-4bb6-8d1e-f43b1fbd88ae",
+            "k8s.pod.name": "chatmgmt-5bd45c8484-x2dtw",
+            "cloud.account.id": "PROJECT_ID"
+          }
+        },
+        {
+          "spanId": "8699223047764337621",
+          "kind": "RPC_CLIENT",
+          "name": "google.firestore.v1.Firestore/RunQuery",
+          "startTime": "2026-11-22T15:59:21.958796141Z",
+          "endTime": "2026-11-22T15:59:21.986580073Z",
+          "parentSpanId": "11502486772839878632",
+          "labels": {
+            "k8s.pod.start_time": "2026-11-22T15:56:13Z",
+            "service.version": "0.1.0",
+            "k8s.replicaset.name": "chatmgmt-5bd45c8484",
+            "cloud.account.id": "PROJECT_ID",
+            "rpc.system.name": "grpc",
+            "k8s.deployment.name": "chatmgmt",
+            "rpc.response.status_code": "OK",
+            "k8s.node.name": "gk3-messaging-dev-gke-nap-xw4sl3p3-fffb8b98-xgh4",
+            "k8s.pod.name": "chatmgmt-5bd45c8484-x2dtw",
+            "deployment.environment": "dev",
+            "server.port": "443",
+            "server.address": "173.194.192.95",
+            "rpc.method": "google.firestore.v1.Firestore/RunQuery",
+            "k8s.namespace.name": "messaging",
+            "k8s.pod.uid": "9d14d4ce-1901-4bb6-8d1e-f43b1fbd88ae",
+            "service.name": "chatmgmt",
+            "cloud.region": "us-central1",
+            "cloud.platform": "gcp_kubernetes_engine",
+            "k8s.cluster.name": "messaging-dev-gke",
+            "gcp.project_id": "PROJECT_ID",
+            "cloud.provider": "gcp"
+          }
+        },
+        {
+          "spanId": "8134446318691567361",
+          "name": "firestore.auth.login",
+          "startTime": "2026-11-22T15:59:21.986627583Z",
+          "endTime": "2026-11-22T15:59:22.062323661Z",
+          "parentSpanId": "7812158162764277521",
+          "labels": {
+            "k8s.cluster.name": "messaging-dev-gke",
+            "gcp.project_id": "PROJECT_ID",
+            "cloud.provider": "gcp",
+            "cloud.platform": "gcp_kubernetes_engine",
+            "deployment.environment": "dev",
+            "k8s.pod.name": "chatmgmt-5bd45c8484-x2dtw",
+            "db.system": "firestore",
+            "k8s.node.name": "gk3-messaging-dev-gke-nap-xw4sl3p3-fffb8b98-xgh4",
+            "service.version": "0.1.0",
+            "k8s.pod.start_time": "2026-11-22T15:56:13Z",
+            "service.name": "chatmgmt",
+            "db.operation": "transaction",
+            "cloud.region": "us-central1",
+            "k8s.namespace.name": "messaging",
+            "k8s.deployment.name": "chatmgmt",
+            "cloud.account.id": "PROJECT_ID",
+            "k8s.replicaset.name": "chatmgmt-5bd45c8484",
+            "k8s.pod.uid": "9d14d4ce-1901-4bb6-8d1e-f43b1fbd88ae"
+          }
+        },
+        {
+          "spanId": "12255939040604961068",
+          "name": "cloud.google.com/go/firestore.Client.RunTransaction",
+          "startTime": "2026-11-22T15:59:21.986650893Z",
+          "endTime": "2026-11-22T15:59:22.062319321Z",
+          "parentSpanId": "8134446318691567361",
+          "labels": {
+            "gcp.project_id": "PROJECT_ID",
+            "cloud.provider": "gcp",
+            "cloud.platform": "gcp_kubernetes_engine",
+            "service.name": "chatmgmt",
+            "k8s.pod.start_time": "2026-11-22T15:56:13Z",
+            "cloud.account.id": "PROJECT_ID",
+            "deployment.environment": "dev",
+            "cloud.region": "us-central1",
+            "k8s.replicaset.name": "chatmgmt-5bd45c8484",
+            "k8s.deployment.name": "chatmgmt",
+            "k8s.node.name": "gk3-messaging-dev-gke-nap-xw4sl3p3-fffb8b98-xgh4",
+            "k8s.pod.name": "chatmgmt-5bd45c8484-x2dtw",
+            "k8s.pod.uid": "9d14d4ce-1901-4bb6-8d1e-f43b1fbd88ae",
+            "k8s.cluster.name": "messaging-dev-gke",
+            "k8s.namespace.name": "messaging",
+            "service.version": "0.1.0"
+          }
+        },
+        {
+          "spanId": "11074861397900072805",
+          "name": "cloud.google.com/go/firestore.Client.BeginTransaction",
+          "startTime": "2026-11-22T15:59:21.986656513Z",
+          "endTime": "2026-11-22T15:59:22.013046227Z",
+          "parentSpanId": "12255939040604961068",
+          "labels": {
+            "k8s.pod.uid": "9d14d4ce-1901-4bb6-8d1e-f43b1fbd88ae",
+            "cloud.region": "us-central1",
+            "cloud.account.id": "PROJECT_ID",
+            "service.name": "chatmgmt",
+            "k8s.pod.start_time": "2026-11-22T15:56:13Z",
+            "service.version": "0.1.0",
+            "k8s.node.name": "gk3-messaging-dev-gke-nap-xw4sl3p3-fffb8b98-xgh4",
+            "k8s.replicaset.name": "chatmgmt-5bd45c8484",
+            "k8s.pod.name": "chatmgmt-5bd45c8484-x2dtw",
+            "k8s.deployment.name": "chatmgmt",
+            "cloud.platform": "gcp_kubernetes_engine",
+            "gcp.project_id": "PROJECT_ID",
+            "cloud.provider": "gcp",
+            "k8s.namespace.name": "messaging",
+            "deployment.environment": "dev",
+            "k8s.cluster.name": "messaging-dev-gke"
+          }
+        },
+        {
+          "spanId": "11591839026412570160",
+          "kind": "RPC_CLIENT",
+          "name": "google.firestore.v1.Firestore/BeginTransaction",
+          "startTime": "2026-11-22T15:59:21.986727722Z",
+          "endTime": "2026-11-22T15:59:22.013011636Z",
+          "parentSpanId": "11074861397900072805",
+          "labels": {
+            "cloud.provider": "gcp",
+            "rpc.system.name": "grpc",
+            "gcp.project_id": "PROJECT_ID",
+            "rpc.method": "google.firestore.v1.Firestore/BeginTransaction",
+            "service.version": "0.1.0",
+            "cloud.platform": "gcp_kubernetes_engine",
+            "k8s.pod.start_time": "2026-11-22T15:56:13Z",
+            "service.name": "chatmgmt",
+            "k8s.node.name": "gk3-messaging-dev-gke-nap-xw4sl3p3-fffb8b98-xgh4",
+            "cloud.account.id": "PROJECT_ID",
+            "server.address": "173.194.192.95",
+            "cloud.region": "us-central1",
+            "k8s.replicaset.name": "chatmgmt-5bd45c8484",
+            "k8s.pod.uid": "9d14d4ce-1901-4bb6-8d1e-f43b1fbd88ae",
+            "deployment.environment": "dev",
+            "k8s.deployment.name": "chatmgmt",
+            "k8s.cluster.name": "messaging-dev-gke",
+            "server.port": "443",
+            "rpc.response.status_code": "OK",
+            "k8s.namespace.name": "messaging",
+            "k8s.pod.name": "chatmgmt-5bd45c8484-x2dtw"
+          }
+        },
+        {
+          "spanId": "674427551568682702",
+          "name": "cloud.google.com/go/firestore.Client.BatchGetDocuments",
+          "startTime": "2026-11-22T15:59:22.013057426Z",
+          "endTime": "2026-11-22T15:59:22.025417994Z",
+          "parentSpanId": "11074861397900072805",
+          "labels": {
+            "service.version": "0.1.0",
+            "cloud.platform": "gcp_kubernetes_engine",
+            "cloud.provider": "gcp",
+            "k8s.node.name": "gk3-messaging-dev-gke-nap-xw4sl3p3-fffb8b98-xgh4",
+            "gcp.project_id": "PROJECT_ID",
+            "k8s.pod.uid": "9d14d4ce-1901-4bb6-8d1e-f43b1fbd88ae",
+            "service.name": "chatmgmt",
+            "k8s.cluster.name": "messaging-dev-gke",
+            "cloud.region": "us-central1",
+            "k8s.pod.start_time": "2026-11-22T15:56:13Z",
+            "k8s.deployment.name": "chatmgmt",
+            "cloud.account.id": "PROJECT_ID",
+            "k8s.namespace.name": "messaging",
+            "k8s.replicaset.name": "chatmgmt-5bd45c8484",
+            "deployment.environment": "dev",
+            "k8s.pod.name": "chatmgmt-5bd45c8484-x2dtw"
+          }
+        },
+        {
+          "spanId": "12661165194676083346",
+          "kind": "RPC_CLIENT",
+          "name": "google.firestore.v1.Firestore/BatchGetDocuments",
+          "startTime": "2026-11-22T15:59:22.013148285Z",
+          "endTime": "2026-11-22T15:59:22.025365945Z",
+          "parentSpanId": "674427551568682702",
+          "labels": {
+            "k8s.node.name": "gk3-messaging-dev-gke-nap-xw4sl3p3-fffb8b98-xgh4",
+            "cloud.account.id": "PROJECT_ID",
+            "k8s.replicaset.name": "chatmgmt-5bd45c8484",
+            "cloud.region": "us-central1",
+            "k8s.namespace.name": "messaging",
+            "k8s.deployment.name": "chatmgmt",
+            "service.name": "chatmgmt",
+            "rpc.method": "google.firestore.v1.Firestore/BatchGetDocuments",
+            "k8s.pod.uid": "9d14d4ce-1901-4bb6-8d1e-f43b1fbd88ae",
+            "deployment.environment": "dev",
+            "rpc.response.status_code": "OK",
+            "k8s.pod.start_time": "2026-11-22T15:56:13Z",
+            "cloud.platform": "gcp_kubernetes_engine",
+            "gcp.project_id": "PROJECT_ID",
+            "cloud.provider": "gcp",
+            "k8s.cluster.name": "messaging-dev-gke",
+            "server.port": "443",
+            "service.version": "0.1.0",
+            "k8s.pod.name": "chatmgmt-5bd45c8484-x2dtw",
+            "rpc.system.name": "grpc",
+            "server.address": "173.194.192.95"
+          }
+        },
+        {
+          "spanId": "5391832224715031242",
+          "name": "cloud.google.com/go/firestore.Client.Commit",
+          "startTime": "2026-11-22T15:59:22.025470204Z",
+          "endTime": "2026-11-22T15:59:22.062317081Z",
+          "parentSpanId": "11074861397900072805",
+          "labels": {
+            "cloud.region": "us-central1",
+            "k8s.pod.uid": "9d14d4ce-1901-4bb6-8d1e-f43b1fbd88ae",
+            "cloud.account.id": "PROJECT_ID",
+            "service.name": "chatmgmt",
+            "k8s.namespace.name": "messaging",
+            "k8s.deployment.name": "chatmgmt",
+            "k8s.node.name": "gk3-messaging-dev-gke-nap-xw4sl3p3-fffb8b98-xgh4",
+            "k8s.replicaset.name": "chatmgmt-5bd45c8484",
+            "k8s.pod.start_time": "2026-11-22T15:56:13Z",
+            "service.version": "0.1.0",
+            "k8s.pod.name": "chatmgmt-5bd45c8484-x2dtw",
+            "cloud.platform": "gcp_kubernetes_engine",
+            "cloud.provider": "gcp",
+            "gcp.project_id": "PROJECT_ID",
+            "k8s.cluster.name": "messaging-dev-gke",
+            "deployment.environment": "dev"
+          }
+        },
+        {
+          "spanId": "2340268063845723923",
+          "kind": "RPC_CLIENT",
+          "name": "google.firestore.v1.Firestore/Commit",
+          "startTime": "2026-11-22T15:59:22.025504714Z",
+          "endTime": "2026-11-22T15:59:22.062269023Z",
+          "parentSpanId": "5391832224715031242",
+          "labels": {
+            "k8s.pod.name": "chatmgmt-5bd45c8484-x2dtw",
+            "k8s.replicaset.name": "chatmgmt-5bd45c8484",
+            "k8s.pod.uid": "9d14d4ce-1901-4bb6-8d1e-f43b1fbd88ae",
+            "k8s.node.name": "gk3-messaging-dev-gke-nap-xw4sl3p3-fffb8b98-xgh4",
+            "deployment.environment": "dev",
+            "k8s.deployment.name": "chatmgmt",
+            "k8s.pod.start_time": "2026-11-22T15:56:13Z",
+            "k8s.cluster.name": "messaging-dev-gke",
+            "server.port": "443",
+            "cloud.account.id": "PROJECT_ID",
+            "k8s.namespace.name": "messaging",
+            "cloud.region": "us-central1",
+            "rpc.system.name": "grpc",
+            "server.address": "173.194.192.95",
+            "service.version": "0.1.0",
+            "rpc.response.status_code": "OK",
+            "service.name": "chatmgmt",
+            "cloud.platform": "gcp_kubernetes_engine",
+            "cloud.provider": "gcp",
+            "gcp.project_id": "PROJECT_ID",
+            "rpc.method": "google.firestore.v1.Firestore/Commit"
+          }
+        }
+      ]
+    }
+  ],
+  "nextPageToken": "GgoQmeSA4OWpmvUYIAMpHb/uIsAAFJsyMAgBGiwovoOU7YmpmvUYMiAzMGRlNGE0OTUzODJlNTkxN2Q2ZmM1ODk1MmMxMmI0NQ=="
+}
+
+==> Managed Prometheus instant query: auth_otp_requests_total
+{
+  "status": "success",
+  "data": {
+    "resultType": "vector",
+    "result": [
+      {
+        "metric": {
+          "__name__": "auth_otp_requests_total",
+          "cluster": "messaging-dev-gke",
+          "instance": "chatmgmt-5bd45c8484-x2dtw",
+          "job": "chatmgmt",
+          "location": "us-central1",
+          "namespace": "messaging",
+          "otel_scope_name": "chatmgmt/app",
+          "project_id": "PROJECT_ID",
+          "status": "success",
+          "top_level_controller_name": "chatmgmt",
+          "top_level_controller_type": "Deployment"
+        },
+        "value": [
+          1795363187.774,
+          "7"
+        ]
+      }
+    ]
+  }
+}
+
+==> Managed Prometheus instant query: chat_created_total
+{
+  "status": "success",
+  "data": {
+    "resultType": "vector",
+    "result": [
+      {
+        "metric": {
+          "__name__": "chat_created_total",
+          "chat_type": "direct",
+          "cluster": "messaging-dev-gke",
+          "instance": "chatmgmt-5bd45c8484-x2dtw",
+          "job": "chatmgmt",
+          "location": "us-central1",
+          "namespace": "messaging",
+          "otel_scope_name": "chatmgmt/app",
+          "project_id": "PROJECT_ID",
+          "top_level_controller_name": "chatmgmt",
+          "top_level_controller_type": "Deployment"
+        },
+        "value": [
+          1795363187.993,
+          "2"
+        ]
+      },
+      {
+        "metric": {
+          "__name__": "chat_created_total",
+          "chat_type": "group",
+          "cluster": "messaging-dev-gke",
+          "instance": "chatmgmt-5bd45c8484-x2dtw",
+          "job": "chatmgmt",
+          "location": "us-central1",
+          "namespace": "messaging",
+          "otel_scope_name": "chatmgmt/app",
+          "project_id": "PROJECT_ID",
+          "top_level_controller_name": "chatmgmt",
+          "top_level_controller_type": "Deployment"
+        },
+        "value": [
+          1795363187.993,
+          "1"
+        ]
+      }
+    ]
+  }
+}
+
+==> Managed Prometheus instant query: sum by (status) (auth_otp_requests_total)
+{
+  "status": "success",
+  "data": {
+    "resultType": "vector",
+    "result": [
+      {
+        "metric": {
+          "status": "success"
+        },
+        "value": [
+          1795363188.207,
+          "7"
+        ]
+      }
+    ]
+  }
+}

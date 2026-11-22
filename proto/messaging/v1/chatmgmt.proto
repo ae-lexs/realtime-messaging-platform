@@ -243,10 +243,70 @@ message ListChatsRequest {
 // ListChatsResponse contains the user's chats.
 message ListChatsResponse {
   // Chats the user is a member of.
-  repeated Chat chats = 1;
+  //
+  // Deprecated: use items, which carries the caller's own membership and, for
+  // a direct chat, the other participant (ADR-006 §4.2). Still populated, in
+  // the same order as items, so existing clients keep working.
+  repeated Chat chats = 1 [deprecated = true];
 
   // Pagination metadata.
   PageResponse page = 2;
+
+  // One entry per chat, as ADR-006 §4.2 lists it.
+  repeated ChatListItem items = 3;
+}
+
+// ChatListItem is one chat as seen by the caller (ADR-006 §4.2).
+//
+// It is deliberately not a Chat: my_membership depends on who is asking, so it
+// cannot live on the shared Chat resource. The chat fields are repeated here,
+// flat, because §4.2 lists them flat beside my_membership; their names match
+// Chat's wherever the meaning is the same, and a test fails if Chat gains a
+// field this message neither carries nor explicitly leaves out.
+//
+// Not yet carried: last_message (needs the Postgres messages table, M2.2) and
+// pending_ack_count (needs delivery_state).
+message ChatListItem {
+  string chat_id = 1;
+  ChatType chat_type = 2;
+
+  // Empty for direct chats, which cannot be named.
+  string name = 3;
+
+  // Number of members. Display only (ADR-016 §3.2).
+  int32 member_count = 4;
+
+  // When the chat was created.
+  Timestamp created_at = 5;
+
+  // When the chat metadata last changed.
+  Timestamp updated_at = 6;
+
+  // The caller's own membership. Always set.
+  MyMembership my_membership = 7;
+
+  // The other participant. Set for direct chats only.
+  OtherMember other_member = 8;
+}
+
+// MyMembership is the caller's own membership in a chat (ADR-006 §4.2).
+message MyMembership {
+  // The caller's role in the chat.
+  MemberRole role = 1;
+
+  // When the caller joined.
+  Timestamp joined_at = 2;
+
+  // When the caller's mute lapses. Absent when not muted.
+  optional Timestamp muted_until = 3;
+}
+
+// OtherMember is the other participant of a direct chat (ADR-006 §4.2).
+message OtherMember {
+  string user_id = 1;
+
+  // Read from the user's document. Empty if the user document is missing.
+  string display_name = 2;
 }
 
 // AddMemberRequest specifies the member to add.
@@ -402,8 +462,9 @@ message ChatMember {
   // When the user joined.
   Timestamp joined_at = 4;
 
-  // Denormalized for display, so rendering a member list costs no extra
-  // user lookups (ADR-006 §4.3).
+  // The member's display name, for rendering (ADR-006 §4.3). Not stored on
+  // the membership: it is read from the member's user document when the
+  // response is built, one read per member. Empty if that document is missing.
   string display_name = 5;
 
   // When this member's mute lapses. Absent when not muted. Per-user state
