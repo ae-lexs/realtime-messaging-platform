@@ -133,7 +133,10 @@ func (h *ChatHandler) ListChats(
 	// the MaxConcurrentChats ceiling and is not a silent truncation — the
 	// response carries no next_page_token, so a client cannot mistake a partial
 	// answer for a complete one.
-	return &messagingv1.ListChatsResponse{Chats: chats, Items: items}, nil
+	return &messagingv1.ListChatsResponse{
+		Chats: chats, //nolint:staticcheck // SA1019: deprecated on purpose and still filled, so existing clients keep working
+		Items: items,
+	}, nil
 }
 
 // UpdateChat renames a group chat (ADR-006 §4.4).
