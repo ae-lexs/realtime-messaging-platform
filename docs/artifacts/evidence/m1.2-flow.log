@@ -1,0 +1,32 @@
+# m1.2-flow — captured gate output
+# captured:  2026-11-22T15:59:14Z
+# commit:    8651af218c69d88adcdbab41bbd270185e012d7a
+# database:  messaging-dev (us-central1)
+# project:   redacted
+#
+# Re-running requires re-provisioning — the infrastructure this ran
+# against was destroyed at end of session. See docs/artifacts/README.md.
+
+ Container realtime-messaging-platform-toolbox-run-2182957cd98f Creating 
+ Container realtime-messaging-platform-toolbox-run-2182957cd98f Created 
+==> port-forwarding svc/chatmgmt
+   ✅ port-forward up
+==> 1. request OTP
+   ✅ OTP issued
+   ✅ OTP read from the pod log
+==> 2. verify OTP (registration)
+   ✅ registered; tokens issued
+   ✅ consumed OTP refused on replay
+==> 3. verify OTP (login, second device)
+   ✅ returning user recognised — the phone lookup resolved to the existing user
+==> 4. refresh tokens
+   ✅ tokens rotated
+==> 5. replay the spent refresh token
+   ✅ reuse detected and refused
+   ✅ session revoked, not just the replayed token
+==> 6. logout
+   ✅ logged out
+==> 7. exhaust the per-phone OTP rate limit
+   ✅ rate limit enforced via Memorystore
+
+✅ M1.2 flow gate passed: OTP -> token -> refresh -> reuse -> logout -> rate limit

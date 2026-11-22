@@ -28,7 +28,7 @@ flowchart LR
         CHAT["ChatService<br/>authorization ADR-016 §8"]
         DC["direct_chats sentinel<br/>group cap in-transaction"]
     end
-    LC["ListChats membership fields<br/>open · in review, gate not run"]
+    LC["ListChats membership fields<br/>gate met live · in review"]
     M14["M1.4 Idempotency-Key<br/>open · not started"]
     M22["M2.2 Ingest<br/>future reader of memberships"]
     OBS["OTel export PR #28<br/>Cloud Trace · Managed Prometheus"]
@@ -138,8 +138,8 @@ Without authentication no other RPC can know who is calling, and every membershi
 
 ### Doubts
 
-- **From voice discussion, 2026-11-22: what is a gate claim worth without a committed artifact?** The plan's M1.2 status says the deployed flow gate (OTP → registration → login → refresh → reuse-revokes-session → logout → rate limit) was met live. But `docs/artifacts/evidence/README.md` lists `m1.2-flow.log` as *pending*. A claim with no artifact can't be re-checked, and the evidence README's own vocabulary only upgrades a claim to *Measured* with a log. [Inference] Until a log exists, the claim should be graded *Implemented*, not *Measured*. Part of the flow (registration, then authenticated calls) is re-exercised by `m1.3-flow.log`, but refresh, reuse detection and logout are not.
-- **[Doubt — mine]** Does reissuing an OTP let an attacker reset the guess budget? The per-OTP counter resets (verified). The phone-level lockout and request-rate limit live in Redis. Do they bound *total* consecutive failures the way NIST 800-63B requires? Needs a test that alternates reissue and wrong guesses.
+- **From voice discussion, 2026-11-22: what is a gate claim worth without a committed artifact?** The plan's M1.2 status says the deployed flow gate (OTP → registration → login → refresh → reuse-revokes-session → logout → rate limit) was met live. But `docs/artifacts/evidence/README.md` lists `m1.2-flow.log` as *pending*. A claim with no artifact can't be re-checked, and the evidence README's own vocabulary only upgrades a claim to *Measured* with a log. [Inference] Until a log exists, the claim should be graded *Implemented*, not *Measured*. Part of the flow (registration, then authenticated calls) is re-exercised by `m1.3-flow.log`, but refresh, reuse detection and logout are not. **Update 2026-11-22:** the artifact now exists. `m1.2-flow.log` was captured against the deployed pod in the PR #32 live session, with all 7 steps passing. The general question (what a claim is worth without one) stands for the M1.1 gate, which still has no log.
+- **[Doubt — mine, now answered]** Does reissuing an OTP let an attacker reset the guess budget? **Partly, yes** (`m1.2-otp-reissue.log`). The per-OTP counter resets and the attempt-based lockout never fires. The Redis per-phone verify limit, keyed by phone, still caps failures at 5 per 15-minute window. Still open: whether a per-window cap "effectively limits the total number of consecutive failed authentication attempts" as NIST requires.
 - **[Doubt — mine]** RFC 9700 treats any invalidated refresh token as evidence of a breach; we act only on the immediately previous one. Is the bounded-storage argument still right now that sessions live in Firestore, which could hold a short history?
 
 ### Experiments
@@ -156,6 +156,8 @@ Without authentication no other RPC can know who is calling, and every membershi
   1. **Key discovery was ungrantable.** `secretmanager.secrets.list` can only be granted project-wide, so the pod crash-looped. Keys are now resolved by name.
   2. **A consumed OTP blocked reissue** for the rest of its 5-minute window. ADR-015's condition has three disjuncts; the code had two.
   3. **protojson dropped `false` booleans** from REST responses. The bridge now sets `EmitUnpopulated`.
+- **`m1.2-flow.log`** (2026-11-22, deployed pod, PR #32 live session): the deployed flow gate. **All 7 steps pass:** OTP issued and read from the pod log; registration; consumed OTP refused on replay; second-device login recognised as a returning user; refresh rotates the tokens; replaying the spent refresh token is detected and **revokes the session**; logout; the per-phone OTP request limit enforced through Memorystore. Previously *pending*.
+- **`m1.2-otp-reissue.log`** (2026-11-22, experiment). Four wrong guesses took `attempt_count` from 1 to 4. A reissue while the OTP was live returned the existing one. After the 5-minute expiry, the reissue **reset `attempt_count` to 0**. The next wrong guess got 401 (count 1), and every guess after that got **429**, from the Redis per-phone verify limit (5 per 15 minutes) rather than from the lockout. **Defect confirmed** against NIST SP 800-63B's "SHALL NOT reset the failed authentication count"; recorded as an open M1.2 defect in the plan, with the fix in its own PR.
 
 ### Measurement
 
@@ -168,11 +170,11 @@ Without authentication no other RPC can know who is calling, and every membershi
     - `security_rate_limits_total`;
     - `security_session_revocations_total`.
   - Spans `auth.request_otp`, `auth.verify_otp`, `auth.refresh_tokens` and `auth.logout`, with nested `firestore.*` and `redis.*` spans.
+  - **Seen live in the backends** (`m1-telemetry.log`): an `auth.verify_otp` trace with its `redis.ratelimit.*`, `firestore.*` and Firestore SDK child spans. Its `trace_id` also appears on the matching `auth.otp_verified` and `session.created` log lines, found with `jsonPayload.trace_id="…"`. `auth_otp_requests_total{status="success"}` = 7 in Managed Prometheus, matching the successful OTP requests sent.
 - **Not measured:**
-  - no committed deployed-flow log;
-  - no auth latency metric (no histogram exists anywhere);
+  - no auth latency metric (no histogram exists anywhere); span durations are visible in Cloud Trace only;
   - no test that Redis being down really denies access end-to-end (unit-tested only);
-  - the OTP reissue/lockout interaction above.
+  - whether the per-15-minute verify limit bounds consecutive failures over longer horizons (the reissue probe covers one window).
 
 ---
 
@@ -248,7 +250,7 @@ Without a chat lifecycle there is nothing to send messages *to*, and without mem
 
 ## `ListChats` membership fields (M1.3 open item 1)
 
-**Status:** implemented in the same PR as this dossier (`feat/m1.3-listchats-membership`, not yet merged). Local CI passes: 198 tests, lint clean, `buf breaking` clean. **The live gate has not run.** This section is written from the gate onward.
+**Status:** implemented in the same PR as this dossier (`feat/m1.3-listchats-membership`, not yet merged). CI is green (198 tests, lint, `buf breaking`). **The live gate was met on 2026-11-22** against the deployed pod (`m1.3-listchats.log`). This section was written forward from the gate; its Experiments and Measurement now record what the gate showed.
 
 ### Problem
 
@@ -288,24 +290,26 @@ Before this change, `ListChats` also read one chat document per round trip (a `G
 - **[Doubt — mine]** `participant_ids` exists only on direct chats created after this change. That is safe in dev, which is destroyed every session. Would a persistent environment need a backfill, or is "drift is logged, no `other_member`" enough?
 - **[Doubt — mine]** The approved design keeps the deprecated `chats` field populated beside `items`, which doubles the payload. When is it removed, and what tells us no client still reads it?
 
-### Experiments (planned: the gate)
+### Experiments (the gate, run 2026-11-22)
 
-1. Create Firestore only (`scripts/chat.sh apply`; billable; about 6 minutes to tear down).
-2. Run the store suite with `LOG_SUFFIX=-listchats`, which writes `m1.3-store-listchats.log` and doesn't overwrite the committed `m1.3-store.log`.
-3. **The gate:**
-   - **`TestServiceListChatsMixedPage`:** a group (caller is owner, muted) plus two direct chats, one opened by the caller and one by the peer, against the live database. Expect the caller's own membership on every item, the correct `other_member` with display name on both direct items, `muted_until` on the muted group, and persisted `participant_ids`.
-   - **`TestStoreGetManySkipsMissingChats`:** a present and an absent chat ID in one batch. Expect only the present one, and no error.
-4. Tear down (`scripts/chat.sh destroy`), then confirm Terraform state is empty and no Firestore database exists.
+The gate ran against the **full deployed stack**, through the REST API, instead of the planned Firestore-only store suite. That's a stronger test of the same behaviour: it goes through the real `AuthenticatedChatServer`, the REST bridge and the JSON rendering. Evidence: `m1.3-listchats.log`, from `scripts/chat.sh listchats` plus `listchats-cost`, apparatus commit `8651af2`.
 
-### Measurement (planned)
+1. **Setup:** A, B and C registered through OTP. A created a group with B and C and muted it for 24 hours. A opened a direct chat with B; **C opened** a direct chat with A.
+2. **`GET /v1/chats` as A returned 3 items:**
+   - **group:** `myMembership.role = MEMBER_ROLE_OWNER`, `mutedUntil` present, `otherMember` null;
+   - **direct with B** (opened by A): `role = MEMBER_ROLE_MEMBER`, `otherMember.userId` = B;
+   - **direct with C** (opened by C): `role = MEMBER_ROLE_MEMBER`, `otherMember.userId` = C, so the peer-opened case resolves correctly;
+   - every item carries `joinedAt`;
+   - the deprecated `chats` is populated in the same order as `items`.
+3. **Read cost, from the `chat.list` span tree in Cloud Trace:** exactly **3 Firestore spans** for the page: `firestore.membership.list_by_user` (one `RunQuery`), `firestore.chat.get_many` (one `BatchGetDocuments`) and `firestore.user.get_many` (one `BatchGetDocuments`). **50.7 ms** end to end, with no per-chat reads.
+4. **Observed, not a defect:** `otherMember.displayName` is `""`, because users registered through OTP have no display name yet (no profile endpoint). Unmuted items **omit** `mutedUntil` instead of returning `null`, the API-wide JSON divergence already recorded in Open items.
+5. **Not run separately:** the store-level `TestServiceListChatsMixedPage` / `TestStoreGetManySkipsMissingChats`. The deployed run supersedes them for this gate. The missing-chat skip is covered by unit tests only.
 
-- **Once the gate runs:**
-  - the evidence log above;
-  - the port JSON-shape test, which checks §4.2's fields under the API's conventions;
-  - the drift-guard test, which fails if `Chat` gains a field `ChatListItem` neither carries nor explicitly leaves out;
-  - the unit tests proving one batched chat read, no per-chat reads, and one batched user read.
-- **Read cost:** 2M + D document reads in at most three round trips (the user read is skipped when there are no direct chats), where M is the number of chats and D the number of direct chats. That's a stated design cost, not yet measured live.
-- **Not measured:** latency of `ListChats` at 500 chats; actual Firestore read counts (only inferable from the code); the payload size with both `chats` and `items`.
+### Measurement
+
+- **What shows it works:** the live gate above, the port JSON-shape test, the drift-guard test, and the unit tests proving one batched chat read, no per-chat reads and one batched user read.
+- **Read cost, measured:** 3 round trips for a page of 3 chats (2 direct), 50.7 ms, from one trace. The design cost is 2M + D document reads in at most three round trips.
+- **Not measured:** latency at 500 chats (only a 3-chat page ran); actual Firestore *document* read counts (the trace shows calls, not documents); the payload size with both `chats` and `items`; the missing-chat skip against a live store.
 
 ---
 
@@ -313,7 +317,7 @@ Before this change, `ListChats` also read one chat document per round trip (a `G
 
 - **From voice discussion, 2026-11-22: telemetry reaching Cloud Trace and Managed Prometheus is evidenced only in PR #28's prose. What would a re-checkable proof look like?**
   - The PR describes querying the Cloud Trace API (an `auth.verify_otp` span tree) and Managed Prometheus (`auth_otp_requests_total`, exact count), but **no query output was committed**.
-  - **[Doubt — mine]** A candidate proof: a script that runs the flow, then queries both APIs for that run's trace ID and the counter's delta, and writes the responses (project redacted) into `docs/artifacts/evidence/` like every other gate. A gate would then assert "the delta equals the requests sent".
+  - **[Doubt — mine]** A candidate proof: a script that runs the flow, then queries both APIs for that run's trace ID and the counter's delta, and writes the responses (project redacted) into `docs/artifacts/evidence/` like every other gate. A gate would then assert "the delta equals the requests sent". **Done 2026-11-22 (`m1-telemetry.log`, `scripts/telemetry-proof.sh`):** the log holds the raw Cloud Trace v1 response for an `auth.verify_otp` trace (span tree with Kubernetes and cloud resource attributes) and the raw Managed Prometheus responses. `chat_created_total` was {direct: 2, group: 1}, exactly the chats the gate created, and `auth_otp_requests_total{status="success"}` was 7. Two caveats: the proof *reports* the values rather than asserting a delta, and it covers one session. A gate that asserts the delta is a candidate follow-up.
   - **New finding while writing this dossier (verified 2026-11-22):** Google's *Managed OpenTelemetry for GKE* pages ([concepts](https://cloud.google.com/kubernetes-engine/docs/concepts/managed-otel-gke), [how-to](https://cloud.google.com/kubernetes-engine/docs/how-to/managed-otel-gke), both last updated 2026-11-20) document **both** an HTTP endpoint on `:4318` **and a gRPC endpoint on `:4317`**. PR #28 and the comments in `internal/observability/{tracer,metrics}.go` say "only documents an OTLP/HTTP endpoint — no gRPC port is published". Whether the documentation changed after September is unknown. **As of today the code comment is inaccurate**, although the HTTP choice still works.
 - **From voice discussion, 2026-11-22: what is the unit being measured?**
   - Today's counters count **events**: an OTP request, a token mint, a membership change.
@@ -343,16 +347,16 @@ Before this change, `ListChats` also read one chat document per round trip (a `G
 
 | Item | Owner | Notes |
 |---|---|---|
-| `ListChats` membership fields: live gate, then merge | M1.3 open item 1 | In review with this dossier; the Firestore-only gate must run before merge |
+| `ListChats` membership fields: merge | M1.3 open item 1 | Live gate met 2026-11-22 (`m1.3-listchats.log`); in review |
 | `ListChats` `last_message`, `pending_ack_count` | waits on M2.2 / `delivery_state` | Need the Postgres tables |
 | `GetMessages` | M5.2 | Served through Ingest `ReadMessages` (ADR-006 v1.2 §5) |
 | REST Idempotency-Key | M1.4 | ADR-006 v1.1 §10.4–§10.5 |
 | `ListChats` pagination ordered by `updated_at` | unassigned | Today: no pagination, document-ID order |
 | REST JSON conventions vs ADR-006 (envelope, camelCase, enum names, `Timestamp` shape, omitted unset optionals) | unassigned | Affects every endpoint |
-| Committed `m1.2-flow.log`; an M1.1 gate log | unassigned | Seed doubt 2 |
-| Re-checkable telemetry proof | unassigned | Seed doubt 3 |
+| An M1.1 gate log | unassigned | Seed doubt 2. `m1.2-flow.log` now exists (2026-11-22) |
+| A telemetry *gate* that asserts the counter delta | unassigned | Seed doubt 3. A re-checkable proof is committed (`m1-telemetry.log`), but it reports rather than asserts |
 | Golden signals: ADR-012 naming decision (plane for Chat Mgmt), then `otelgrpc` | unassigned | Seed doubt 1 |
-| **M1.2 defect candidate:** reissuing an OTP resets the per-OTP failed-attempt count, which NIST SP 800-63B forbids | unassigned (plan, M1.2 open item) | Recorded, not fixed. Verify whether the Redis phone lockout bounds total failures across reissues |
+| **M1.2 defect (confirmed):** reissuing an OTP resets the per-OTP failed-attempt count, which NIST SP 800-63B forbids | unassigned (plan, M1.2 open defect) | Confirmed live (`m1.2-otp-reissue.log`): the count resets 4 → 0 and the lockout never fires; the Redis verify limit still caps at 5 per 15 minutes. The fix goes in its own PR |
 | **Outdated comment:** `internal/observability/{tracer,metrics}.go` say GKE Managed OpenTelemetry has no gRPC endpoint; Google now lists `:4317` | unassigned (plan, M1.3 open item 7) | Recorded, not fixed. The HTTP exporters still work |
 
 ---
@@ -382,5 +386,6 @@ Before this change, `ListChats` also read one chat document per round trip (a `G
 
 | Version | Date | Change |
 |---|---|---|
+| v1.2 | 2026-11-22 | Results of the PR #32 live session. **ListChats:** gate met against the deployed pod, with 3 Firestore round trips per page measured from Cloud Trace (`m1.3-listchats.log`); Experiments and Measurement rewritten from planned to observed. **M1.2:** the deployed flow captured (`m1.2-flow.log`), and the OTP-reissue defect confirmed (`m1.2-otp-reissue.log`). **Telemetry:** a re-checkable proof committed (`m1-telemetry.log`), which also verifies trace-to-log correlation through `jsonPayload.trace_id`. Open items updated to match. |
 | v1.1 | 2026-11-22 | Consolidated into the ListChats PR. The `ListChats` section now quotes the ADR-023 v1.5 text that ships with it instead of describing it. Its status, the map and the open-items table reflect "in review, gate not run". Checked against the code: the read cost is "at most three round trips", because the user read is skipped when there are no direct chats. The two findings are now explicit open items, recorded and not fixed: the M1.2 OTP reissue defect candidate and the outdated gRPC-endpoint comment. |
 | v1.0 | 2026-11-22 | First Feature Dossier. M1.1–M1.3 written retrospectively; `ListChats` membership fields written forward-looking from its live gate. Records two findings made while writing: the OTP reissue resets the per-OTP attempt counter (compare NIST 800-63B), and Google now documents a gRPC endpoint (`:4317`) the code comments say does not exist. |

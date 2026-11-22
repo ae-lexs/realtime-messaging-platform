@@ -1,0 +1,36 @@
+# m1.2-otp-reissue — captured gate output
+# captured:  2026-11-22T15:59:29Z
+# commit:    8651af218c69d88adcdbab41bbd270185e012d7a
+# database:  messaging-dev (us-central1)
+# project:   redacted
+#
+# Re-running requires re-provisioning — the infrastructure this ran
+# against was destroyed at end of session. See docs/artifacts/README.md.
+
+ Container realtime-messaging-platform-toolbox-run-6da24ef115ed Creating 
+ Container realtime-messaging-platform-toolbox-run-6da24ef115ed Created 
+==> port-forwarding svc/chatmgmt
+   ✅ port-forward up
+==> 1. request OTP #1
+   ✅ OTP #1 issued; attempt_count=0 status=pending expires_at=2026-11-22T16:04:31Z
+==> 2. 4 wrong guesses against OTP #1
+   wrong #1 (otp 1)       HTTP 401  error=16                            attempt_count=1 status=pending expires_at=2026-11-22T16:04:31Z
+   wrong #2 (otp 1)       HTTP 401  error=16                            attempt_count=2 status=pending expires_at=2026-11-22T16:04:31Z
+   wrong #3 (otp 1)       HTTP 401  error=16                            attempt_count=3 status=pending expires_at=2026-11-22T16:04:31Z
+   wrong #4 (otp 1)       HTTP 401  error=16                            attempt_count=4 status=pending expires_at=2026-11-22T16:04:31Z
+==> 3. reissue while OTP #1 is still live
+   reissue-while-live     HTTP 200  error=-                             attempt_count=4 status=pending expires_at=2026-11-22T16:04:31Z
+==> 4. waiting 299s for OTP #1 to expire (a live OTP cannot be replaced)
+==> 5. request OTP #2 (the reissue)
+   reissue-after-expiry   HTTP 200  error=-                             attempt_count=0 status=pending expires_at=2026-11-22T16:09:36Z
+==> 6. 6 more wrong guesses
+   wrong #1 (after reissue) HTTP 401  error=16                            attempt_count=1 status=pending expires_at=2026-11-22T16:09:36Z
+   wrong #2 (after reissue) HTTP 429  error=8                             attempt_count=1 status=pending expires_at=2026-11-22T16:09:36Z
+   wrong #3 (after reissue) HTTP 429  error=8                             attempt_count=1 status=pending expires_at=2026-11-22T16:09:36Z
+   wrong #4 (after reissue) HTTP 429  error=8                             attempt_count=1 status=pending expires_at=2026-11-22T16:09:36Z
+   wrong #5 (after reissue) HTTP 429  error=8                             attempt_count=1 status=pending expires_at=2026-11-22T16:09:36Z
+   wrong #6 (after reissue) HTTP 429  error=8                             attempt_count=1 status=pending expires_at=2026-11-22T16:09:36Z
+
+==> result (reported, not asserted)
+   Read the attempt_count column across step 5 for whether the reissue reset it,
+   and the HTTP/error columns in step 6 for which mechanism, if any, stopped guessing.
