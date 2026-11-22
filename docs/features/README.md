@@ -46,7 +46,7 @@ flowchart LR
 | A telemetry *gate* that asserts counter deltas | [`m1-telemetry.log`](../artifacts/evidence/m1-telemetry.log) reports values rather than asserting them |
 | REST JSON conventions vs ADR-006 (envelope, enum names, `Timestamp`, omitted unset fields) | Affects every endpoint |
 | Outdated comment: the code says GKE's managed OpenTelemetry has no gRPC endpoint | Google now lists `:4317`; the HTTP exporters still work |
-| Teardown timing: deleting a Firestore TTL field takes ~6 min | At the next teardown: time each phase, try `terraform state rm` on the TTL fields first, then verify that nothing remains. The "destroy removes the database" claim is still unlogged |
+| Teardown: make the TTL-field `state rm` part of `scripts/teardown.sh` | **Measured 2026-11-22** ([`m1.1-teardown.log`](../artifacts/evidence/m1.1-teardown.log)): with both TTL fields removed from state first, the database's destroy took **1 s** and the ~6-min field deletion disappeared; the API then showed no database, 0 resources in state and nothing billable. Teardown is now bound by the network (subnetwork 15m47s of a 26m46s total), not Firestore. One run, with no same-day control run without `state rm` |
 
 ## Lessons
 

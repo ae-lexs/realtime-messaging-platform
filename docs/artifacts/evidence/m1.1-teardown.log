@@ -1,0 +1,130 @@
+# m1.1-teardown — captured experiment output
+# captured:  2026-11-22T18:57:39Z → 19:24:25Z (teardown), verification read after
+# commit:    3e894f4929930a9b8dea04896156c92bcfd0bac5
+# database:  messaging-dev (us-central1)
+# reps:      1
+# project:   redacted (project ID, project numbers, billing account)
+#
+# Experiment (M1.1 doubt, "teardown timing"): does removing the two Firestore
+# TTL fields from Terraform state before destroy avoid the ~6-minute field
+# deletion, and does destroy still remove the database (the M1.1 gate's
+# "destroy removes the database" claim)?
+#
+# Procedure: scripts/teardown.sh, run phase by phase with
+#   terraform state rm module.firestore.google_firestore_field.{sessions,otp_requests}_ttl
+# inserted before `terraform destroy`. Each phase timed by the runner; each
+# resource's time is Terraform's own "Destruction complete after" line.
+# The destroy plan body and "Still destroying..." progress lines are elided;
+# every other line of phases 1-4 and 6 is verbatim.
+#
+# Re-running requires re-provisioning — the infrastructure this ran
+# against was destroyed at end of session. See docs/artifacts/README.md.
+
+# ---- state before (terraform state list | wc -l): 40 = 39 managed resources + data.google_project.this
+
+### PHASE 1 delete namespace messaging — start 2026-11-22T18:57:39Z
+namespace "messaging" deleted
+### PHASE 1 delete namespace messaging — end 2026-11-22T19:00:58Z — 199 s — exit 0
+### PHASE 2 delete schema registry — start 2026-11-22T19:00:58Z
+==> deleting schema registry messaging_dev
+Deleted schema_registry [messaging_dev].
+### PHASE 2 delete schema registry — end 2026-11-22T19:00:59Z — 1 s — exit 0
+### PHASE 3 terraform init — start 2026-11-22T19:00:59Z
+Initializing the backend...
+
+Successfully configured the backend "gcs"! Terraform will automatically
+use this backend unless the backend configuration changes.
+Initializing modules...
+Initializing provider plugins...
+Terraform has been successfully initialized!
+### PHASE 3 terraform init — end 2026-11-22T19:01:02Z — 3 s — exit 0
+### PHASE 4 state rm the two TTL fields — start 2026-11-22T19:01:02Z
+Removed module.firestore.google_firestore_field.sessions_ttl
+Removed module.firestore.google_firestore_field.otp_requests_ttl
+Successfully removed 2 resource instance(s).
+### PHASE 4 state rm the two TTL fields — end 2026-11-22T19:01:04Z — 2 s — exit 0
+
+### PHASE 5 terraform destroy — start 2026-11-22T19:01:04Z
+Plan: 0 to add, 0 to change, 37 to destroy.   (39 managed − the 2 TTL fields removed in phase 4)
+module.budget.google_billing_budget.main: Destruction complete after 0s
+module.firestore.google_firestore_database.main: Destruction complete after 1s
+module.secrets.google_secret_manager_secret_iam_member.accessors["current_key_id:serviceAccount:messaging-dev-chatmgmt@PROJECT_ID.iam.gserviceaccount.com"]: Destruction complete after 4s
+module.artifact_registry.google_artifact_registry_repository_iam_member.readers["serviceAccount:PROJECT_NUMBER-compute@developer.gserviceaccount.com"]: Destruction complete after 4s
+module.service_accounts.google_service_account_iam_member.chatmgmt_workload_identity: Destruction complete after 5s
+module.secrets.google_secret_manager_secret_iam_member.accessors["public_key:serviceAccount:messaging-dev-chatmgmt@PROJECT_ID.iam.gserviceaccount.com"]: Destruction complete after 5s
+module.secrets.google_secret_manager_secret_iam_member.accessors["otp_pepper:serviceAccount:messaging-dev-chatmgmt@PROJECT_ID.iam.gserviceaccount.com"]: Destruction complete after 5s
+module.secrets.google_secret_manager_secret_iam_member.accessors["signing_key:serviceAccount:messaging-dev-chatmgmt@PROJECT_ID.iam.gserviceaccount.com"]: Destruction complete after 5s
+module.artifact_registry.google_artifact_registry_repository.main: Destruction complete after 1s
+module.secrets.google_secret_manager_secret.auth["current_key_id"]: Destruction complete after 0s
+module.secrets.google_secret_manager_secret.auth["otp_pepper"]: Destruction complete after 0s
+module.secrets.google_secret_manager_secret.auth["public_key"]: Destruction complete after 0s
+module.secrets.google_secret_manager_secret.auth["signing_key"]: Destruction complete after 0s
+module.service_accounts.google_project_iam_member.chatmgmt_firestore: Destruction complete after 7s
+module.service_accounts.google_service_account.chatmgmt: Destruction complete after 1s
+module.memorystore.google_redis_instance.main: Destruction complete after 2m53s
+module.networking.google_compute_router_nat.main: Destruction complete after 12s
+module.networking.google_compute_router.main: Destruction complete after 11s
+module.networking.google_service_networking_connection.private_service_access: Destruction complete after 52s
+module.networking.google_compute_global_address.private_service_access: Destruction complete after 11s
+module.gke.google_container_cluster.main: Destruction complete after 4m58s
+module.kafka.google_managed_kafka_cluster.main: Destruction complete after 6m57s
+module.networking.google_compute_subnetwork.main: Destruction complete after 15m47s
+module.networking.google_compute_network.main: Destruction complete after 22s
+module.project_services.google_project_service.this["artifactregistry.googleapis.com"]: Destruction complete after 0s
+module.project_services.google_project_service.this["firestore.googleapis.com"]: Destruction complete after 0s
+module.project_services.google_project_service.this["compute.googleapis.com"]: Destruction complete after 0s
+module.project_services.google_project_service.this["iam.googleapis.com"]: Destruction complete after 0s
+module.project_services.google_project_service.this["secretmanager.googleapis.com"]: Destruction complete after 0s
+module.project_services.google_project_service.this["managedkafka.googleapis.com"]: Destruction complete after 0s
+module.project_services.google_project_service.this["monitoring.googleapis.com"]: Destruction complete after 0s
+module.project_services.google_project_service.this["redis.googleapis.com"]: Destruction complete after 0s
+module.project_services.google_project_service.this["billingbudgets.googleapis.com"]: Destruction complete after 0s
+module.project_services.google_project_service.this["container.googleapis.com"]: Destruction complete after 0s
+module.project_services.google_project_service.this["servicenetworking.googleapis.com"]: Destruction complete after 0s
+module.project_services.google_project_service.this["cloudresourcemanager.googleapis.com"]: Destruction complete after 0s
+module.project_services.google_project_service.this["logging.googleapis.com"]: Destruction complete after 0s
+Destroy complete! Resources: 37 destroyed.
+### PHASE 5 terraform destroy — end 2026-11-22T19:24:24Z — 1400 s — exit 0
+### PHASE 6 terraform state list (expect empty) — start 2026-11-22T19:24:24Z
+### PHASE 6 terraform state list (expect empty) — end 2026-11-22T19:24:25Z — 1 s — exit 0
+
+### TOTAL 1606 s
+(state list printed nothing: 0 resources)
+### TOTAL 1606 s
+
+# ---- verification, operator-run after teardown (one toolbox container; output verbatim, redacted)
+== gcloud firestore databases list
+== gcloud container clusters list
+== gcloud redis instances list --region=us-central1
+== gcloud managed-kafka clusters list --location=us-central1
+== gcloud compute instances list
+== gcloud compute disks list
+== gcloud compute forwarding-rules list
+== gcloud compute addresses list
+== gcloud compute networks list --filter=name!=default
+== gcloud artifacts repositories list --location=us-central1
+(gcloud FutureWarning about Python 3.11 elided)
+Listing items under project PROJECT_ID, location us-central1.
+
+== gcloud secrets list
+== terraform state list
+(count: 0)
+
+# ---- result
+#   ✅ destroy removes the database: `firestore databases list` returns nothing
+#      (no messaging-dev); the M1.1 gate's third claim is now logged.
+#   ✅ Terraform state: 0 resources. No GKE, Redis, Kafka, VM, disk,
+#      forwarding rule, address, non-default network, Artifact Registry repo
+#      or secret remains.
+#   ✅ TTL-field timing: with both fields removed from state first, the
+#      database's destroy completed after 1s, and the ~6-minute field
+#      deletion did not occur; the fields went with the database (they cannot
+#      exist without it). Terraform reports the delete call complete; the API
+#      read above, taken afterwards, confirms the database is gone.
+#   Phase times: namespace 199 s · schema registry 1 s · init 3 s ·
+#      state rm 2 s · destroy 1400 s · state list 1 s · total 1606 s.
+#   Destroy's critical path is the network, not Firestore: subnetwork 15m47s
+#      (after GKE 4m58s), Kafka 6m57s, Redis 2m53s, service networking 52s.
+#   Not measured: the same teardown WITHOUT the state rm in this session (the
+#      ~6 min per field is the earlier measurement recorded for M1.1), and
+#      whether the subnetwork wait is GKE-created leftovers — inference only.
